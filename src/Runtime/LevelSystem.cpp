@@ -31,6 +31,7 @@
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
 #include "Headers/Runtime/Gameplay/PathfinderSystem.hpp"
+#include "Headers/Runtime/Gameplay/MonsterAISystem.hpp"
 #include "Headers/Runtime/Gameplay/UIButtonSystem.hpp"
 #include "Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp"
 
@@ -240,6 +241,21 @@ namespace LevelSystem {
 
         if (GetActivePlayerController(level) == nullptr) spdlog::info("Level started without an active player controller");
 
+        // Before the scripts' Start, so what they tell these there counts.
+        PathfinderSystem::Start(level);
+        MonsterAISystem::Start(level, [&level](const ID entityID, const MonsterAISystem::NoticeKind kind, const ID otherID) {
+            scriptingSystem.DispatchMonsterNotice(level, entityID, kind, otherID);
+
+            switch (kind) {
+                case MonsterAISystem::NoticeKind::TARGET_SPOTTED: EventSystem::FireMonsterTargetSpotted(level, entityID, otherID); break;
+                case MonsterAISystem::NoticeKind::TARGET_LOST: EventSystem::FireMonsterTargetLost(level, entityID); break;
+                case MonsterAISystem::NoticeKind::MELEE_READY: EventSystem::FireMonsterMeleeReady(level, entityID, otherID); break;
+                case MonsterAISystem::NoticeKind::MISSILE_READY: EventSystem::FireMonsterMissileReady(level, entityID, otherID); break;
+                case MonsterAISystem::NoticeKind::PAIN: EventSystem::FireMonsterPain(level, entityID, otherID); break;
+                case MonsterAISystem::NoticeKind::ACTIVE: EventSystem::FireMonsterActive(level, entityID, otherID); break;
+            }
+        });
+
         {
             ZoneScopedN("Scripting System Start");
             if (transfer != nullptr) scriptingSystem.ContinueIntoLevel(level, transfer->restartScripts);
@@ -264,7 +280,6 @@ namespace LevelSystem {
 
         // After scripts, so a first-frame event finds their functions.
         FlipbookSystem::Start(level);
-        PathfinderSystem::Start(level);
 
         // After the transforms' sectors are set, so they are the baseline.
         EventSystem::Start(level, {
@@ -361,11 +376,26 @@ namespace LevelSystem {
         }
 
         {
+            // After scripts, so a Wake or Hurt from this frame counts, and
+            // before the Pathfinders it steers.
+            ZoneScopedN("Monster AI");
+            MonsterAISystem::Update(level, GameTime::deltaTime);
+        }
+
+        {
             // After scripts, so a destination set this frame is used, and
             // before physics, which moves the Rigidbodies it steers.
             ZoneScopedN("Pathfinders");
-            PathfinderSystem::Update(level, GameTime::deltaTime, [&level](const ID entityID) {
-                scriptingSystem.DispatchPathfinderArrived(level, entityID);
+            PathfinderSystem::Update(level, GameTime::deltaTime, [&level](const ID entityID, const PathfinderSystem::NoticeKind kind, const ID targetID) {
+                scriptingSystem.DispatchPathfinderNotice(level, entityID, kind);
+
+                switch (kind) {
+                    case PathfinderSystem::NoticeKind::ARRIVED: EventSystem::FirePathfinderArrived(level, entityID, targetID); break;
+                    case PathfinderSystem::NoticeKind::BLOCKED: EventSystem::FirePathfinderBlocked(level, entityID); break;
+                    case PathfinderSystem::NoticeKind::STUCK: EventSystem::FirePathfinderStuck(level, entityID); break;
+                    case PathfinderSystem::NoticeKind::STARTED_MOVING: EventSystem::FirePathfinderStartedMoving(level, entityID); break;
+                    case PathfinderSystem::NoticeKind::STOPPED_MOVING: EventSystem::FirePathfinderStoppedMoving(level, entityID); break;
+                }
             });
         }
 
@@ -469,6 +499,8 @@ namespace LevelSystem {
                 }
                 PhysicsSystem::Run(level, frameContacts, subDeltaTime);
             }
+
+            PathfinderSystem::AfterPhysics(level);
 
         } // Zone Physics
 

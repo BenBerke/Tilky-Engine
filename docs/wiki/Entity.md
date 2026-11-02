@@ -88,6 +88,7 @@ except Transform and UI Transform). The property returns the **first** one, and
 | `hasCollider` | `collider` | [Collider](Collider.md) |
 | `hasRigidbody` | `rigidbody` | [Rigidbody](Rigidbody.md) |
 | `hasPathfinder` | `pathfinder` | [Pathfinder](Pathfinder.md) |
+| `hasMonsterAI` | `monsterAI` | [Monster AI](MonsterAI.md) |
 | `hasUITransform` | `uiTransform` | [UI Transform](UITransform.md) |
 | `hasUISprite` | `uiSprite` | [UI Sprite](UISprite.md) |
 | `hasUIText` | `uiText` | [UI Text](UIText.md) |
@@ -209,7 +210,7 @@ its values as you type `Component.`:
 
 | World entities | UI entities |
 |---|---|
-| `Component.Transform`, `Component.Sprite`, `Component.Model`, `Component.Flipbook`, `Component.AudioSource`, `Component.PlayerController`, `Component.Camera`, `Component.Collider`, `Component.Rigidbody`, `Component.Pathfinder` | `Component.UITransform`, `Component.UISprite`, `Component.UIText`, `Component.UIButton`, `Component.Flipbook` |
+| `Component.Transform`, `Component.Sprite`, `Component.Model`, `Component.Flipbook`, `Component.AudioSource`, `Component.PlayerController`, `Component.Camera`, `Component.Collider`, `Component.Rigidbody`, `Component.Pathfinder`, `Component.MonsterAI` | `Component.UITransform`, `Component.UISprite`, `Component.UIText`, `Component.UIButton`, `Component.Flipbook` |
 
 `Component.Flipbook` is the only one that goes on both: on a UI entity it animates a UI Sprite.
 

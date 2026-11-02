@@ -41,6 +41,10 @@ enum ComponentType {
     CMP_UI_TEXT,
     CMP_UI_BUTTON,
 
+    // A normal component. Here, not above CMP_NORMAL_COUNT, because levels and
+    // prefabs save these numbers: moving the UI ones would break their references.
+    CMP_MONSTER_AI,
+
     CMP_COUNT,
 };
 
@@ -181,6 +185,20 @@ enum class PathfinderInput : std::uint8_t {
     ENTITY
 };
 
+// What the owner faces: where it walks, what it heads for, or whatever a
+// script or dispatch last set.
+enum class PathfinderFacing : std::uint8_t {
+    MOVE_DIRECTION,
+    TARGET,
+    NONE
+};
+
+// How it turns to face where it walks: Doom's 45 degrees per chase step, or at once.
+enum class PathfinderTurning : std::uint8_t {
+    STEPS_45,
+    SNAP
+};
+
 // Walks the owner toward a destination the Doom way (P_NewChaseDir): along
 // one of 8 compass directions, held for a random number of chase steps, with
 // no baked paths. A step that would climb more than the collider's stepSize,
@@ -188,8 +206,7 @@ enum class PathfinderInput : std::uint8_t {
 // it picks another direction instead. With a Rigidbody it moves through
 // physics, so walls and other bodies block it too. See PathfinderSystem.
 //
-// Fields are ordered largest alignment first so the struct has no padding
-// holes (80 bytes with SIMD vectors).
+// Fields are ordered largest alignment first so the struct has no padding holes.
 struct ComponentPathfinder {
     // POSITION: the point it walks to. ENTITY: runtime only, the target's
     // position + offset, kept as the last known one while the target is disabled.
@@ -202,21 +219,44 @@ struct ComponentPathfinder {
     ID targetEntityID = INVALID_ID; // ENTITY only
 
     float speed = 64.0f; // world units per second, scaled by timeScale
-    float range = 0.0f;  // ranged only: stops once the destination is this close
+    float range = 0.0f;  // ranged only: arrives once the destination is this close
+
+    // Doom's numbers, Doom's values.
+    float chaseStep = 3.0f / 35.0f; // seconds per chase step: how often it turns, and what the holds count
+    float holdMinSteps = 1.0f;      // chase steps a direction is held at least (movecount 0..15 acts as 1..16)
+    float holdMaxSteps = 16.0f;     // and at most
+    float deadzone = 10.0f;         // this close on an axis counts as there; also the reach for arriving
+    float swapChance = 21.5f;       // percent: tries the shorter axis first (P_Random() > 200)
+    float floatSpeed = 140.0f;      // air only: units per second up and down (FLOATSPEED, 4 per tic)
+    float floatRatio = 3.0f;        // air only: changes height once height difference * this > distance. 0 = always
+    float pushFriction = 0.90625f;  // pushes keep this share of their speed per tic (FRICTION)
+    float stuckTime = 1.0f;         // seconds without progress before it counts as stuck. 0 = never
 
     // Runtime only, not saved. See PathfinderSystem.
     float lastX = 0.0f, lastZ = 0.0f; // owner position after the last step
     float expectedStep = 0.0f;        // how far that step should have gone
     float moveTimer = 0.0f;           // seconds left on the current direction (Doom's movecount)
+    float turnTimer = 0.0f;           // seconds until the next 45 degree turn
+    float pauseTimer = 0.0f;          // seconds left holding still
+    float stuckTimer = 0.0f;          // seconds without progress
+    float blockedCooldown = 0.0f;     // seconds until Blocked can be reported again
+    float pushX = 0.0f, pushZ = 0.0f; // velocity from outside (knockback), added to the walking
+    float settledX = 0.0f, settledZ = 0.0f; // Rigidbody velocity physics left: a change from it is a push
 
     enum MetadataMask : std::uint8_t {
-        IS_AIR_ENTITY = 1,    // flies: no step/drop-off limits, rises and sinks toward the destination
-        IS_RANGED_ENTITY = 2  // stops within `range` of the destination
+        IS_AIR_ENTITY = 1,        // flies: no step/drop-off limits, rises and sinks toward the destination
+        IS_RANGED_ENTITY = 2,     // arrives within `range` of the destination
+        CAN_DROP_OFF = 4,         // walks off ledges (Doom's MF_DROPOFF)
+        OPENS_DOORS = 8,          // a closed door in the way gets opened
+        KEEP_MOVING_IN_RANGE = 16 // ranged only: keeps walking once in range, as Doom's monsters do
     };
 
     PathfinderInput input = PathfinderInput::POSITION;
-    std::uint8_t metadata = 0;
+    PathfinderFacing facing = PathfinderFacing::MOVE_DIRECTION;
+    PathfinderTurning turning = PathfinderTurning::STEPS_45;
+    std::uint8_t metadata = OPENS_DOORS | KEEP_MOVING_IN_RANGE;
     std::uint8_t moveDirection = 8; // runtime only: PathfinderSystem's 0..7 compass direction, 8 = none
+    std::uint8_t facingOctant = 8;  // runtime only: the compass direction it faces, 8 = not set yet
 
     // Persist Between Levels (Entity::persistent): when the next level has an
     // entity with the same persistence key, this component takes its values.
@@ -226,18 +266,91 @@ struct ComponentPathfinder {
     bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
     bool driving = false; // runtime only: set its Rigidbody's velocity last update
     bool arrived = false; // runtime only: at the destination (within range when ranged) last update
+    bool moving = false;  // runtime only: walking last update
+    bool stuck = false;   // runtime only: no progress for stuckTime
 
     [[nodiscard]] bool IsAirEntity() const { return (metadata & IS_AIR_ENTITY) != 0; }
     [[nodiscard]] bool IsRangedEntity() const { return (metadata & IS_RANGED_ENTITY) != 0; }
+    [[nodiscard]] bool CanDropOff() const { return (metadata & CAN_DROP_OFF) != 0; }
+    [[nodiscard]] bool OpensDoors() const { return (metadata & OPENS_DOORS) != 0; }
+    [[nodiscard]] bool KeepsMovingInRange() const { return (metadata & KEEP_MOVING_IN_RANGE) != 0; }
 
     void SetFlag(const MetadataMask flag, const bool on) {
         metadata = on ? static_cast<std::uint8_t>(metadata | flag) : static_cast<std::uint8_t>(metadata & ~flag);
     }
 };
 
-#ifndef NOSIMD
-static_assert(sizeof(ComponentPathfinder) == 80, "ComponentPathfinder layout changed: keep fields largest alignment first");
-#endif
+// Idle: standing, looking and listening (A_Look). Chasing: after a target,
+// deciding when to attack (A_Chase).
+enum class MonsterAIState : std::uint8_t {
+    IDLE,
+    CHASING
+};
+
+// A Doom monster's brain: notices targets by sight and sound, decides when to
+// attack and who to fight. It never attacks: it fires events and callbacks,
+// and what they do is the user's. With Drive Pathfinder it also tells the
+// owner's Pathfinder where to go. See MonsterAISystem.
+struct ComponentMonsterAI {
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    ID ownerID = static_cast<ID>(-1);
+
+    // Who it hunts. Empty: entities with the built-in Player tag.
+    std::vector<TagId> targetTags;
+
+    // Senses (A_Look, P_LookForPlayers).
+    float sightFov = 180.0f;            // degrees, centred on where it faces
+    float sightRange = 0.0f;            // 0 = no limit
+    float nearRange = 64.0f;            // sees all around within this (MELEERANGE)
+    float lookInterval = 10.0f / 35.0f; // seconds between looks while idle
+
+    // Attacks (A_Chase, P_CheckMeleeRange, P_CheckMissileRange).
+    float chaseStep = 3.0f / 35.0f;     // seconds per decision while chasing
+    float reactionTime = 24.0f / 35.0f; // seconds chasing before its first missile (8 chase steps)
+    float meleeRange = 44.0f;           // plus the target's radius (MELEERANGE - 20)
+    float missileMinRange = 0.0f;       // no missiles closer than this (the Revenant's 196). 0 = none
+    float missileMaxRange = 0.0f;       // nor further (the Arch-Vile's 896). 0 = no limit
+    float missileDistanceOffset = 64.0f;   // taken off the distance before the roll; 128 more without a melee attack
+    float missileDistanceScale = 1.0f;     // then multiplied (the Cyberdemon's 0.5 fires more)
+    float missileDistanceCap = 200.0f;     // no attack in (cap / 256) of rolls at worst
+    float attackPause = 21.0f / 35.0f;  // seconds it stands still after deciding to attack
+
+    // Being hurt (P_DamageMobj), through Hurt().
+    float painChance = 78.4f;          // percent (the Imp's 200 of 256)
+    float painPause = 6.0f / 35.0f;    // seconds it stands still in pain
+    float targetLockTime = 300.0f / 35.0f; // seconds it won't switch to a new attacker (threshold: 100 chase steps)
+
+    float activeChance = 1.17f;        // percent per chase step: the Active event (P_Random() < 3)
+
+    // Runtime only, not saved.
+    float lookTimer = 0.0f;
+    float chaseTimer = 0.0f;
+    float reactionLeft = 0.0f;
+    float lockLeft = 0.0f;
+    float attackLeft = 0.0f;
+    ID targetID = INVALID_ID;
+    MonsterAIState state = MonsterAIState::IDLE;
+    bool justAttacked = false; // MF_JUSTATTACKED: its next decision only picks a direction
+    bool justHit = false;      // MF_JUSTHIT: its next missile roll always passes
+    bool started = false;
+
+    bool hasMelee = true;
+    bool hasMissile = true;
+    bool hearing = true;           // wakes on a Noise Alert
+    bool ambush = false;           // MF_AMBUSH: a noise only wakes it with the target in sight
+    bool startAwake = false;       // chases from the first frame, without seeing anyone
+    bool aggressive = false;       // -fast: attacks while walking, no pause in decisions after an attack
+    bool infights = true;          // Hurt() turns it on its attacker
+    bool drivePathfinder = true;   // sends the owner's Pathfinder after the target, holds it while idle
+    bool faceTargetOnAttack = true; // A_FaceTarget
+
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
+
+    bool isActive = true;
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
+};
 
 // Static 3D model drawn at the owner's ComponentTransform. fileName is
 // relative to the project's Assets folder, extension included (same as

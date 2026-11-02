@@ -99,6 +99,13 @@ struct Wall {
     bool middleHasCollision = true;
     bool middleIgnoredByRaycast = false;
 
+    // Doom's block-monsters line: Pathfinders won't step across it, whatever
+    // the heights. Everything else still can.
+    bool blocksPathfinders = false;
+    // Doom's sound-block line: a Noise Alert crosses one of these, and stops
+    // at the second.
+    bool blocksSound = false;
+
     // Stable ID of the sector that is to the front or to the left of the Wall in top down view
     // Should be -1 if there is no sector
     ID frontSector  = INVALID_ID;

@@ -5,6 +5,8 @@
 #include "Headers/Runtime/Scripting/IScripting.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
 #include "Headers/Runtime/EventSystem.hpp"
+#include "Headers/Runtime/Gameplay/PathfinderSystem.hpp"
+#include "Headers/Runtime/Gameplay/MonsterAISystem.hpp"
 
 #include <string>
 #include <unordered_set>
@@ -87,9 +89,15 @@ public:
     // on every enabled script of the UI Button's entity. From UIButtonSystem.
     void DispatchUIButtonCallback(Level& level, ID entityID, EventSystem::UIButtonEvent kind);
 
-    // Calls OnPathfinderArrived() on every enabled script of the entity. From
-    // PathfinderSystem, once each time its Pathfinder arrives.
-    void DispatchPathfinderArrived(Level& level, ID entityID);
+    // Calls OnPathfinderArrived / Blocked / Stuck / StartedMoving /
+    // StoppedMoving (no arguments) on every enabled script of the entity. From
+    // PathfinderSystem through LevelSystem.
+    void DispatchPathfinderNotice(Level& level, ID entityID, PathfinderSystem::NoticeKind kind);
+
+    // Calls OnTargetSpotted(target) / OnTargetLost() / OnMeleeReady(target) /
+    // OnMissileReady(target) / OnPain(attacker) / OnActive() on every enabled
+    // script of the entity. From MonsterAISystem through LevelSystem.
+    void DispatchMonsterNotice(Level& level, ID entityID, MonsterAISystem::NoticeKind kind, ID otherID);
 
     // Set Field dispatches on script fields (EventSystem::Hooks): the public
     // field `field` of the entity's `scriptIndex`-th script, read from / written

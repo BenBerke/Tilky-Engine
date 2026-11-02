@@ -477,6 +477,100 @@ struct PayloadPathfinderArrived {
     TagFilter filter{TagType::ALL, {}};
 };
 
+// The Pathfinder's current direction got blocked (at most once per chase step).
+struct PayloadPathfinderBlocked {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsPathfinder = true;
+    transKey translationKey = "event.pathfinder_blocked";
+    transKey saveName = "pathfinder_blocked"; // level file name, never change
+    bool operator==(const PayloadPathfinderBlocked&) const = default;
+};
+
+// The Pathfinder has made no progress for its Stuck Time.
+struct PayloadPathfinderStuck {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsPathfinder = true;
+    transKey translationKey = "event.pathfinder_stuck";
+    transKey saveName = "pathfinder_stuck"; // level file name, never change
+    bool operator==(const PayloadPathfinderStuck&) const = default;
+};
+
+// It started or stopped walking: what a walk / idle flipbook swap hangs on.
+struct PayloadPathfinderStartedMoving {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsPathfinder = true;
+    transKey translationKey = "event.pathfinder_started_moving";
+    transKey saveName = "pathfinder_started_moving"; // level file name, never change
+    bool operator==(const PayloadPathfinderStartedMoving&) const = default;
+};
+
+struct PayloadPathfinderStoppedMoving {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsPathfinder = true;
+    transKey translationKey = "event.pathfinder_stopped_moving";
+    transKey saveName = "pathfinder_stopped_moving"; // level file name, never change
+    bool operator==(const PayloadPathfinderStoppedMoving&) const = default;
+};
+
+// Monster AI events (see MonsterAISystem). It decides; these are where the
+// user's attack, sound and animation go. The target (the attacker for Pain)
+// is the instigator and what the tag filter checks.
+struct PayloadMonsterTargetSpotted { // Doom's see sound
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsMonsterAI = true;
+    transKey translationKey = "event.monster.target_spotted";
+    transKey saveName = "monster.target_spotted"; // level file name, never change
+    bool operator==(const PayloadMonsterTargetSpotted&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+};
+
+struct PayloadMonsterTargetLost { // nothing left to chase: it went back to idle
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsMonsterAI = true;
+    transKey translationKey = "event.monster.target_lost";
+    transKey saveName = "monster.target_lost"; // level file name, never change
+    bool operator==(const PayloadMonsterTargetLost&) const = default;
+};
+
+struct PayloadMonsterMeleeReady {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsMonsterAI = true;
+    transKey translationKey = "event.monster.melee_ready";
+    transKey saveName = "monster.melee_ready"; // level file name, never change
+    bool operator==(const PayloadMonsterMeleeReady&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+};
+
+struct PayloadMonsterMissileReady {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsMonsterAI = true;
+    transKey translationKey = "event.monster.missile_ready";
+    transKey saveName = "monster.missile_ready"; // level file name, never change
+    bool operator==(const PayloadMonsterMissileReady&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+};
+
+struct PayloadMonsterPain { // a Hurt passed the Pain Chance roll
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsMonsterAI = true;
+    transKey translationKey = "event.monster.pain";
+    transKey saveName = "monster.pain"; // level file name, never change
+    bool operator==(const PayloadMonsterPain&) const = default;
+
+    TagFilter filter{TagType::ALL, {}};
+};
+
+struct PayloadMonsterActive { // Doom's active sound: a random chance per chase step
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsMonsterAI = true;
+    transKey translationKey = "event.monster.active";
+    transKey saveName = "monster.active"; // level file name, never change
+    bool operator==(const PayloadMonsterActive&) const = default;
+};
+
 // "On Start", like a script's Start(): on everything in the level when it
 // loads (after the scripts' Start callbacks; the level's own first, then
 // walls, linedefs, sectors and entities), and on an entity spawned later
@@ -703,6 +797,10 @@ struct PayloadDispatchSectorDoor {
     std::string lockedMessage; // empty: none
     float lockedMessageDuration = 2.0f;
     Vector3 lockedMessageColor = {1.0f, 1.0f, 1.0f}; // 0-1
+
+    // A blocked Pathfinder with Opens Doors may open it, as Doom's monsters
+    // do. They never close one or open a locked one without its tag.
+    bool pathfindersCanOpen = true;
 };
 
 struct PayloadDispatchSectorStopMovement {
@@ -980,7 +1078,8 @@ enum class ToggleableComponent : uint8_t {
     CAMERA = 3,
     COLLIDER = 4,
     UI_SPRITE = 5,
-    PATHFINDER = 6
+    PATHFINDER = 6,
+    MONSTER_AI = 7
 };
 
 // Every component of the type on the owner.
@@ -1010,7 +1109,8 @@ enum class FieldComponent : uint8_t {
     UI_SPRITE = 11,
     UI_TEXT = 12,
     UI_BUTTON = 13,
-    PATHFINDER = 14
+    PATHFINDER = 14,
+    MONSTER_AI = 15
 };
 
 // What a field holds. Numbers, vectors and colours can change over time.
@@ -1121,6 +1221,8 @@ enum class PathfinderAction : uint8_t {
     FOLLOW_INSTIGATOR = 3, // follow the instigator, + `offset`
     STOP = 4,              // isActive = false
     RESUME = 5,            // isActive = true
+    PAUSE = 6,             // holds still for `seconds`, then carries on
+    PICK_NEW_DIRECTION = 7 // chooses a direction again now
 };
 
 // Controls the owner's Pathfinder, like Pathfinder:SetDestination /
@@ -1137,6 +1239,46 @@ struct PayloadDispatchEntityPathfinder {
     ID targetID = INVALID_ID; // GO_TO_SECTOR (sector) or FOLLOW_ENTITY (entity)
     int floorIndex = 0;       // GO_TO_SECTOR: which of its floors
     Vector3 offset;           // FOLLOW_ENTITY / FOLLOW_INSTIGATOR, world axes
+    float seconds = 1.0f;     // PAUSE
+};
+
+// What a Monster AI dispatch does to its owner's Monster AI (its first).
+enum class MonsterAIAction : uint8_t {
+    WAKE_ON_PLAYER = 0,     // chase the player
+    WAKE_ON_INSTIGATOR = 1, // chase the instigator
+    WAKE_ON_ENTITY = 2,     // chase entity `targetID`
+    SLEEP = 3,              // back to idle, target forgotten
+    HURT = 4                // what taking damage does in Doom, the instigator as the attacker
+};
+
+struct PayloadDispatchEntityMonsterAI {
+    static constexpr EventOwnerMask owners = OwnerBit(EventOwnerKind::ENTITY);
+    static constexpr bool needsMonsterAI = true;
+    transKey translationKey = "event.dispatch.entity.monster_ai";
+    transKey saveName = "dispatch.entity.monster_ai"; // level file name, never change
+    bool operator==(const PayloadDispatchEntityMonsterAI&) const = default;
+
+    MonsterAIAction action = MonsterAIAction::WAKE_ON_PLAYER;
+    ID targetID = INVALID_ID; // WAKE_ON_ENTITY
+};
+
+// Who a Noise Alert's monsters go after.
+enum class NoiseTarget : uint8_t {
+    PLAYER = 0,
+    INSTIGATOR = 1,
+    SELF = 2 // the dispatch's entity
+};
+
+// Doom's P_NoiseAlert: spreads from the owner's sector through every open
+// portal (see Wall::blocksSound). Sleeping Monster AIs in those sectors wake
+// on the target, now or whenever they next look.
+struct PayloadDispatchNoiseAlert {
+    static constexpr EventOwnerMask owners = ALL_EVENT_OWNERS;
+    transKey translationKey = "event.dispatch.noise_alert";
+    transKey saveName = "dispatch.noise_alert"; // level file name, never change
+    bool operator==(const PayloadDispatchNoiseAlert&) const = default;
+
+    NoiseTarget target = NoiseTarget::PLAYER;
 };
 
 // Spawns at the owner: an entity's transform, a wall or linedef's middle on
@@ -1306,7 +1448,10 @@ using EventPayload = std::variant<
     PayloadEntityChangeSector, PayloadEntityGroundedInSector, PayloadEntityCollide, PayloadEntityDisable, PayloadEntityEnable, PayloadEntityDestroyed,
     PayloadReceiveRay, PayloadConditionMet, PayloadTimer, PayloadLuaSignal, PayloadOnStart,
     PayloadUIButtonClick, PayloadUIButtonRelease, PayloadUIButtonHoverEnter, PayloadUIButtonHoverExit,
-    PayloadKeyPress, PayloadKeyRelease, PayloadPathfinderArrived>;
+    PayloadKeyPress, PayloadKeyRelease, PayloadPathfinderArrived,
+    PayloadPathfinderBlocked, PayloadPathfinderStuck, PayloadPathfinderStartedMoving, PayloadPathfinderStoppedMoving,
+    PayloadMonsterTargetSpotted, PayloadMonsterTargetLost, PayloadMonsterMeleeReady, PayloadMonsterMissileReady,
+    PayloadMonsterPain, PayloadMonsterActive>;
 
 using DispatchPayload = std::variant<
     PayloadDispatchLineSetColor, PayloadDispatchLineSetTexture, PayloadDispatchLineSetCollision,
@@ -1318,6 +1463,7 @@ using DispatchPayload = std::variant<
     PayloadDispatchEntityCallFunction, PayloadDispatchEntityDestroy, PayloadDispatchEntityDisable, PayloadDispatchEntityEnable,
     PayloadDispatchEntityTeleport, PayloadDispatchEntityChangeVelocity, PayloadDispatchEntityMoveTo, PayloadDispatchEntitySetComponent,
     PayloadDispatchEntitySetField, PayloadDispatchEntitySetSprite, PayloadDispatchEntityPathfinder,
+    PayloadDispatchEntityMonsterAI, PayloadDispatchNoiseAlert,
     PayloadDispatchChangeTag, PayloadDispatchSpawnPrefab, PayloadDispatchPlaySound, PayloadDispatchShowMessage,
     PayloadDispatchRelay, PayloadDispatchResetEvent, PayloadDispatchLoadLevel, PayloadDispatchChangeVariable,
     PayloadDispatchPause, PayloadDispatchResume, PayloadDispatchQuit, PayloadDispatchSetUIText, PayloadDispatchMusic>;
@@ -1339,6 +1485,10 @@ inline constexpr bool NeedsUIButton = requires { requires Payload::needsUIButton
 // Payloads that only go on an entity with a Pathfinder.
 template <typename Payload>
 inline constexpr bool NeedsPathfinder = requires { requires Payload::needsPathfinder; };
+
+// Payloads that only go on an entity with a Monster AI.
+template <typename Payload>
+inline constexpr bool NeedsMonsterAI = requires { requires Payload::needsMonsterAI; };
 
 template <typename Payload>
 [[nodiscard]] constexpr const char* GetTranslationKey(const Payload& payload) noexcept {

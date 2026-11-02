@@ -364,6 +364,9 @@ namespace {
             Method("Signal", {Param("name", "string"), Param("instigator", "Entity?")}, {},
                    "Fires every Lua Signal event named `name`, on any wall, sector, entity, linedef or the level. "
                    "`instigator` is what their tag filters check and what their dispatches get."),
+            Method("NoiseAlert", {Param("target", "Entity"), Param("emitter", "Entity?")}, {},
+                   "Doom's noise: spreads from the sector the emitter is in (the target's when left out) through open portals, "
+                   "past at most one Blocks Sound wall. Sleeping Monster AIs in those sectors wake on the target."),
             Method("LineOfSight", {Param("from", "Vector3"), Param("to", "Vector3")}, "boolean",
                    "true when nothing solid is between `from` and `to`. Walls, floors and ceilings block it; "
                    "entities don't. Much cheaper than Raycast for sight checks."),
@@ -867,6 +870,14 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
     InstallProperties(lua, messageBox, &MessageBoxProperties, &CurrentMessageStyle);
 
     game["MessageBox"] = messageBox;
+
+    game.set_function("NoiseAlert", [](const ScriptEntity& target, const sol::optional<ScriptEntity> emitter) {
+        Level& level = LevelManager::CurrentLevel();
+        const ComponentTransform* source = level.transforms.Get(emitter ? emitter->ownerID : target.ownerID);
+        if (source == nullptr || level.GetEntity(target.ownerID) == nullptr) return;
+
+        MonsterAISystem::NoiseAlert(level, target.ownerID, MapQueries::FindSectorContainingPoint(level.sectors, {source->position.x, source->position.z}));
+    });
 
     game.set_function("LineOfSight", [](const Vector3& from, const Vector3& to) {
         return GameFunctions::LineOfSight(LevelManager::CurrentLevel(), from, to);

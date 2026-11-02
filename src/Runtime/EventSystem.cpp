@@ -12,6 +12,8 @@
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 #include "Headers/Runtime/Sound/MusicPlayer.hpp"
+#include "Headers/Runtime/Gameplay/PathfinderSystem.hpp"
+#include "Headers/Runtime/Gameplay/MonsterAISystem.hpp"
 #include "Headers/TagRegistry.hpp"
 
 #include <spdlog/spdlog.h>
@@ -1715,6 +1717,12 @@ namespace {
             case ToggleableComponent::UI_SPRITE:
                 setFlags(level.ui_sprites.GetAll(entityID), [](ComponentUISprite& c) -> bool& { return c.isActive; });
                 break;
+            case ToggleableComponent::PATHFINDER:
+                setFlags(level.pathfinders.GetAll(entityID), [](ComponentPathfinder& c) -> bool& { return c.isActive; });
+                break;
+            case ToggleableComponent::MONSTER_AI:
+                setFlags(level.monsterAIs.GetAll(entityID), [](ComponentMonsterAI& c) -> bool& { return c.isActive; });
+                break;
             case ToggleableComponent::SCRIPT:
                 setFlags(level.scripts.GetAll(entityID), [](ComponentScript& c) -> bool& { return c.enabled; });
                 break;
@@ -2550,6 +2558,79 @@ namespace {
                 if (field == "speed") { Access(c->speed, read, write); return true; }
                 return false;
             }
+            case FieldComponent::PATHFINDER: {
+                ComponentPathfinder* c = NthComponent(level.pathfinders, owner, index);
+                if (!c) return false;
+                if (field == "isActive") { Access(c->isActive, read, write); return true; }
+                if (field == "speed") {
+                    Access(c->speed, read, write);
+                    c->speed = std::max(c->speed, 0.0f);
+                    return true;
+                }
+                if (field == "range") {
+                    Access(c->range, read, write);
+                    c->range = std::max(c->range, 0.0f);
+                    return true;
+                }
+                if (field == "offset") { Access(c->offset, read, write); return true; }
+                if (field == "chaseStep") { Access(c->chaseStep, read, write); c->chaseStep = std::max(c->chaseStep, 0.0f); return true; }
+                if (field == "holdMinSteps") { Access(c->holdMinSteps, read, write); c->holdMinSteps = std::max(c->holdMinSteps, 0.0f); return true; }
+                if (field == "holdMaxSteps") { Access(c->holdMaxSteps, read, write); c->holdMaxSteps = std::max(c->holdMaxSteps, 0.0f); return true; }
+                if (field == "deadzone") { Access(c->deadzone, read, write); c->deadzone = std::max(c->deadzone, 0.0f); return true; }
+                if (field == "swapChance") { Access(c->swapChance, read, write); return true; }
+                if (field == "floatSpeed") { Access(c->floatSpeed, read, write); c->floatSpeed = std::max(c->floatSpeed, 0.0f); return true; }
+                if (field == "floatRatio") { Access(c->floatRatio, read, write); c->floatRatio = std::max(c->floatRatio, 0.0f); return true; }
+                if (field == "pushFriction") { Access(c->pushFriction, read, write); c->pushFriction = std::clamp(c->pushFriction, 0.0f, 1.0f); return true; }
+                if (field == "stuckTime") { Access(c->stuckTime, read, write); c->stuckTime = std::max(c->stuckTime, 0.0f); return true; }
+
+                constexpr std::pair<const char*, ComponentPathfinder::MetadataMask> kFlags[] = {
+                    {"isAirEntity", ComponentPathfinder::IS_AIR_ENTITY},
+                    {"isRangedEntity", ComponentPathfinder::IS_RANGED_ENTITY},
+                    {"canDropOff", ComponentPathfinder::CAN_DROP_OFF},
+                    {"opensDoors", ComponentPathfinder::OPENS_DOORS},
+                    {"keepMovingInRange", ComponentPathfinder::KEEP_MOVING_IN_RANGE}
+                };
+                for (const auto& [name, flag] : kFlags) {
+                    if (field != name) continue;
+                    bool on = (c->metadata & flag) != 0;
+                    Access(on, read, write);
+                    if (write) c->SetFlag(flag, on);
+                    return true;
+                }
+                return false;
+            }
+            case FieldComponent::MONSTER_AI: {
+                ComponentMonsterAI* c = NthComponent(level.monsterAIs, owner, index);
+                if (!c) return false;
+
+                const std::pair<const char*, float*> floats[] = {
+                    {"sightFov", &c->sightFov}, {"sightRange", &c->sightRange}, {"nearRange", &c->nearRange},
+                    {"lookInterval", &c->lookInterval}, {"chaseStep", &c->chaseStep}, {"reactionTime", &c->reactionTime},
+                    {"meleeRange", &c->meleeRange}, {"missileMinRange", &c->missileMinRange}, {"missileMaxRange", &c->missileMaxRange},
+                    {"missileDistanceOffset", &c->missileDistanceOffset}, {"missileDistanceScale", &c->missileDistanceScale},
+                    {"missileDistanceCap", &c->missileDistanceCap}, {"attackPause", &c->attackPause},
+                    {"painChance", &c->painChance}, {"painPause", &c->painPause}, {"targetLockTime", &c->targetLockTime},
+                    {"activeChance", &c->activeChance}
+                };
+                for (const auto& [name, value] : floats) {
+                    if (field != name) continue;
+                    Access(*value, read, write);
+                    *value = std::max(*value, 0.0f);
+                    return true;
+                }
+
+                const std::pair<const char*, bool*> flags[] = {
+                    {"isActive", &c->isActive}, {"hasMelee", &c->hasMelee}, {"hasMissile", &c->hasMissile}, {"hearing", &c->hearing},
+                    {"ambush", &c->ambush}, {"aggressive", &c->aggressive}, {"infights", &c->infights},
+                    {"drivePathfinder", &c->drivePathfinder}, {"faceTargetOnAttack", &c->faceTargetOnAttack}
+                };
+                for (const auto& [name, value] : flags) {
+                    if (field != name) continue;
+                    Access(*value, read, write);
+                    return true;
+                }
+                return false;
+            }
             case FieldComponent::UI_TRANSFORM: {
                 ComponentUITransform* c = index == 0 ? level.ui_transforms.Get(owner) : nullptr;
                 if (!c) return false;
@@ -3227,6 +3308,87 @@ namespace EventSystem {
             [&](const PayloadDispatchEntitySetComponent& set) {
                 SetComponents(level, ownerID, set.component, set.mode);
             },
+            [&](const PayloadDispatchEntityPathfinder& pathfinderDispatch) {
+                ComponentPathfinder* pathfinder = level.pathfinders.Get(ownerID);
+                if (!pathfinder) {
+                    spdlog::warn("Pathfinder dispatch on entity {} skipped: it has no Pathfinder", ownerID);
+                    return;
+                }
+
+                const auto follow = [&](const ID targetID, const char* what) {
+                    if (targetID == ownerID || !level.GetEntity(targetID)) {
+                        if (targetID != ownerID)
+                            spdlog::warn("Pathfinder dispatch on entity {} skipped: {} doesn't exist", ownerID, what);
+                        return;
+                    }
+                    PathfinderSystem::SetTarget(level, *pathfinder, targetID, pathfinderDispatch.offset);
+                };
+
+                switch (pathfinderDispatch.action) {
+                    case PathfinderAction::GO_TO_COORDINATES:
+                        PathfinderSystem::SetDestination(*pathfinder, pathfinderDispatch.position);
+                        break;
+                    case PathfinderAction::GO_TO_SECTOR: {
+                        const Sector* sector = level.GetSector(pathfinderDispatch.targetID);
+                        if (!sector || sector->floors.empty()) {
+                            spdlog::warn("Pathfinder dispatch on entity {} skipped: its sector {} doesn't exist",
+                                         ownerID, pathfinderDispatch.targetID);
+                            return;
+                        }
+
+                        const Vector2 centre = SectorCentre(*sector);
+                        const int floorIndex = std::clamp(pathfinderDispatch.floorIndex, 0, static_cast<int>(sector->floors.size()) - 1);
+                        const float height = MapQueries::SurfaceHeightAt(*sector, sector->floors[floorIndex].floor, centre);
+                        PathfinderSystem::SetDestination(*pathfinder, {centre.x, height, centre.y});
+                        break;
+                    }
+                    case PathfinderAction::FOLLOW_ENTITY: follow(pathfinderDispatch.targetID, "its target entity"); break;
+                    case PathfinderAction::FOLLOW_INSTIGATOR:
+                        if (instigatorID == INVALID_ID) {
+                            spdlog::warn("Pathfinder dispatch on entity {} skipped: Follow Instigator, but the event has no instigator", ownerID);
+                            return;
+                        }
+                        follow(instigatorID, "the instigator");
+                        break;
+                    case PathfinderAction::STOP: pathfinder->isActive = false; break;
+                    case PathfinderAction::RESUME: pathfinder->isActive = true; break;
+                    case PathfinderAction::PAUSE: PathfinderSystem::Pause(*pathfinder, pathfinderDispatch.seconds); break;
+                    case PathfinderAction::PICK_NEW_DIRECTION: PathfinderSystem::PickNewDirection(*pathfinder); break;
+                }
+            },
+            [&](const PayloadDispatchEntityMonsterAI& monsterDispatch) {
+                ComponentMonsterAI* ai = level.monsterAIs.Get(ownerID);
+                if (!ai) {
+                    spdlog::warn("Monster AI dispatch on entity {} skipped: it has no Monster AI", ownerID);
+                    return;
+                }
+
+                switch (monsterDispatch.action) {
+                    case MonsterAIAction::WAKE_ON_PLAYER: MonsterAISystem::Wake(level, *ai, MonsterAISystem::FindPlayer(level)); break;
+                    case MonsterAIAction::WAKE_ON_INSTIGATOR: MonsterAISystem::Wake(level, *ai, instigatorID); break;
+                    case MonsterAIAction::WAKE_ON_ENTITY: MonsterAISystem::Wake(level, *ai, monsterDispatch.targetID); break;
+                    case MonsterAIAction::SLEEP: MonsterAISystem::Sleep(level, *ai); break;
+                    case MonsterAIAction::HURT: MonsterAISystem::Hurt(level, *ai, instigatorID); break;
+                }
+            },
+            [&](const PayloadDispatchNoiseAlert& noise) {
+                const ID noiseTarget = noise.target == NoiseTarget::SELF ? (ownerKind == EventOwnerKind::ENTITY ? ownerID : INVALID_ID)
+                                     : noise.target == NoiseTarget::INSTIGATOR ? instigatorID
+                                     : MonsterAISystem::FindPlayer(level);
+
+                if (noiseTarget == INVALID_ID || !level.GetEntity(noiseTarget)) {
+                    spdlog::warn("Noise Alert dispatch skipped: its target doesn't exist");
+                    return;
+                }
+
+                // From the owner; the level has no place of its own, so from the target.
+                std::optional<Vector3> from = OwnerPosition(level, ownerKind, ownerID);
+                const ComponentTransform* targetTransform = level.transforms.Get(noiseTarget);
+                if (ownerKind == EventOwnerKind::LEVEL && targetTransform) from = targetTransform->position;
+                if (!from) return;
+
+                MonsterAISystem::NoiseAlert(level, noiseTarget, MapQueries::FindSectorContainingPoint(level.sectors, {from->x, from->z}));
+            },
             [&](const PayloadDispatchEntitySetSprite& setSprite) {
                 if (ComponentSprite* sprite = level.sprites.Get(ownerID)) sprite->textureFileNames = setSprite.textures;
             },
@@ -3479,6 +3641,95 @@ namespace EventSystem {
         FieldValue value;
         if (!AccessEngineField(level, {entityID, component, componentIndex, field}, &value, nullptr)) return std::nullopt;
         return value;
+    }
+
+    void FirePathfinderArrived(Level& level, const ID entityID, const ID targetID) {
+        if (!running || !IsEnabledEntity(level, entityID)) return;
+        FireEvents<PayloadPathfinderArrived>(level, EventOwnerKind::ENTITY, entityID, targetID, EntityTags(level, targetID));
+    }
+
+    // Fires `Payload` events of the entity, `otherID` as instigator and filter.
+    template <typename Payload>
+    static void FireEntityNotice(Level& level, const ID entityID, const ID otherID) {
+        if (!running || !IsEnabledEntity(level, entityID)) return;
+        FireEvents<Payload>(level, EventOwnerKind::ENTITY, entityID, otherID, EntityTags(level, otherID));
+    }
+
+    void FirePathfinderBlocked(Level& level, const ID entityID) { FireEntityNotice<PayloadPathfinderBlocked>(level, entityID, INVALID_ID); }
+    void FirePathfinderStuck(Level& level, const ID entityID) { FireEntityNotice<PayloadPathfinderStuck>(level, entityID, INVALID_ID); }
+    void FirePathfinderStartedMoving(Level& level, const ID entityID) { FireEntityNotice<PayloadPathfinderStartedMoving>(level, entityID, INVALID_ID); }
+    void FirePathfinderStoppedMoving(Level& level, const ID entityID) { FireEntityNotice<PayloadPathfinderStoppedMoving>(level, entityID, INVALID_ID); }
+
+    void FireMonsterTargetSpotted(Level& level, const ID entityID, const ID otherID) { FireEntityNotice<PayloadMonsterTargetSpotted>(level, entityID, otherID); }
+    void FireMonsterTargetLost(Level& level, const ID entityID) { FireEntityNotice<PayloadMonsterTargetLost>(level, entityID, INVALID_ID); }
+    void FireMonsterMeleeReady(Level& level, const ID entityID, const ID otherID) { FireEntityNotice<PayloadMonsterMeleeReady>(level, entityID, otherID); }
+    void FireMonsterMissileReady(Level& level, const ID entityID, const ID otherID) { FireEntityNotice<PayloadMonsterMissileReady>(level, entityID, otherID); }
+    void FireMonsterPain(Level& level, const ID entityID, const ID otherID) { FireEntityNotice<PayloadMonsterPain>(level, entityID, otherID); }
+    void FireMonsterActive(Level& level, const ID entityID, const ID otherID) { FireEntityNotice<PayloadMonsterActive>(level, entityID, otherID); }
+
+    WalkerDoor CheckDoorForWalker(const Level& level, const ID sectorID, const int floorIndex, const ID walkerID) {
+        using Door = PayloadDispatchSectorDoor;
+
+        const Sector* sector = level.GetSector(sectorID);
+        if (!sector) return WalkerDoor::NONE;
+
+        const Entity* walker = level.GetEntity(walkerID);
+
+        for (const Dispatch& dispatch : sector->dispatches) {
+            const Door* door = std::get_if<Door>(&dispatch.payload);
+            if (!door || door->floorIndex != floorIndex || !door->pathfindersCanOpen) continue;
+
+            // Bad guys never close doors.
+            if (door->type == Door::CLOSE_WAIT_OPEN || door->type == Door::CLOSE_STAY) continue;
+
+            if (door->locked && (!walker || std::ranges::find(walker->tagIds, door->requiredTag) == walker->tagIds.end())) continue;
+
+            const auto existing = std::ranges::find_if(doors, [&](const DoorState& state) {
+                return state.sectorID == sectorID && state.floorIndex == floorIndex;
+            });
+
+            if (existing == doors.end()) return WalkerDoor::OPEN;
+
+            switch (existing->phase) {
+                case DoorState::OPENING: return WalkerDoor::WAIT;
+                case DoorState::CLOSING: return WalkerDoor::OPEN;
+                case DoorState::STILL: return existing->open ? WalkerDoor::NONE : WalkerDoor::OPEN;
+                default: return WalkerDoor::NONE; // open and still too tight: it won't get any better
+            }
+        }
+
+        return WalkerDoor::NONE;
+    }
+
+    void OpenDoorForWalker(Level& level, const WalkerDoorRequest& request) {
+        using Door = PayloadDispatchSectorDoor;
+
+        if (!running || CheckDoorForWalker(level, request.sectorID, request.floorIndex, request.walkerID) != WalkerDoor::OPEN) return;
+
+        const auto existing = std::ranges::find_if(doors, [&](const DoorState& state) {
+            return state.sectorID == request.sectorID && state.floorIndex == request.floorIndex;
+        });
+
+        if (existing != doors.end()) {
+            if (SectorFloor* floor = GetSectorFloor(level, request.sectorID, request.floorIndex)) MoveDoor(level, *floor, *existing, true);
+            return;
+        }
+
+        const Sector* sector = level.GetSector(request.sectorID);
+        if (!sector) return;
+
+        for (const Dispatch& dispatch : sector->dispatches) {
+            const Door* door = std::get_if<Door>(&dispatch.payload);
+            if (!door || door->floorIndex != request.floorIndex || !door->pathfindersCanOpen) continue;
+            if (door->type == Door::CLOSE_WAIT_OPEN || door->type == Door::CLOSE_STAY) continue;
+
+            const Entity* walker = level.GetEntity(request.walkerID);
+            if (door->locked && (!walker || std::ranges::find(walker->tagIds, door->requiredTag) == walker->tagIds.end())) continue;
+
+            const Dispatch copy = dispatch; // running it can move the sector's dispatches
+            ExecuteDispatch(level, copy, EventOwnerKind::SECTOR, request.sectorID, request.walkerID);
+            return;
+        }
     }
 
     void FireEntityDestroyed(Level& level, const ID entityID) {

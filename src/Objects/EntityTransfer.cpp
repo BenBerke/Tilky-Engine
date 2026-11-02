@@ -120,6 +120,14 @@ namespace EntityTransfer {
             std::visit([&visitor]<typename P>(P& payload) {
                 if constexpr (std::is_same_v<P, PayloadDispatchRelay>) VisitCall(visitor, payload.call);
                 else if constexpr (std::is_base_of_v<TeleportSettings, P>) VisitTeleport(visitor, payload);
+                else if constexpr (std::is_same_v<P, PayloadDispatchEntityPathfinder>) {
+                    if (payload.targetID == INVALID_ID) return;
+                    if (payload.action == PathfinderAction::FOLLOW_ENTITY) VisitEntity(visitor, payload.targetID);
+                    else if (payload.action == PathfinderAction::GO_TO_SECTOR && visitor.sector) visitor.sector(payload.targetID);
+                }
+                else if constexpr (std::is_same_v<P, PayloadDispatchEntityMonsterAI>) {
+                    if (payload.action == MonsterAIAction::WAKE_ON_ENTITY) VisitEntity(visitor, payload.targetID);
+                }
             }, dispatch.payload);
         }
     }

@@ -127,7 +127,114 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
             self.SetTargetID(target.ownerID, offset ? std::optional<Vector3>(*offset) : std::nullopt);
         },
         "Stop", &ScriptPathfinder::Stop,
-        "Resume", &ScriptPathfinder::Resume
+        "Resume", &ScriptPathfinder::Resume,
+        "Pause", &ScriptPathfinder::Pause,
+        "PickNewDirection", &ScriptPathfinder::PickNewDirection,
+
+        "isMoving", sol::property(&ScriptPathfinder::GetIsMoving),
+        "isStuck", sol::property(&ScriptPathfinder::GetIsStuck),
+        "moveDirection", sol::property(&ScriptPathfinder::GetMoveDirection),
+
+        "keepMovingInRange", sol::property(
+            [](const ScriptPathfinder& self) { const auto* c = self.GetComponent(); return c != nullptr && c->KeepsMovingInRange(); },
+            [](const ScriptPathfinder& self, const bool on) { if (auto* c = self.GetComponent()) c->SetFlag(ComponentPathfinder::KEEP_MOVING_IN_RANGE, on); }),
+        "canDropOff", sol::property(
+            [](const ScriptPathfinder& self) { const auto* c = self.GetComponent(); return c != nullptr && c->CanDropOff(); },
+            [](const ScriptPathfinder& self, const bool on) { if (auto* c = self.GetComponent()) c->SetFlag(ComponentPathfinder::CAN_DROP_OFF, on); }),
+        "opensDoors", sol::property(
+            [](const ScriptPathfinder& self) { const auto* c = self.GetComponent(); return c != nullptr && c->OpensDoors(); },
+            [](const ScriptPathfinder& self, const bool on) { if (auto* c = self.GetComponent()) c->SetFlag(ComponentPathfinder::OPENS_DOORS, on); }),
+        "facing", sol::property(
+            [](const ScriptPathfinder& self) { const auto* c = self.GetComponent(); return c != nullptr ? static_cast<int>(c->facing) : 0; },
+            [](const ScriptPathfinder& self, const int value) { if (auto* c = self.GetComponent()) c->facing = static_cast<PathfinderFacing>(std::clamp(value, 0, 2)); }),
+        "turning", sol::property(
+            [](const ScriptPathfinder& self) { const auto* c = self.GetComponent(); return c != nullptr ? static_cast<int>(c->turning) : 0; },
+            [](const ScriptPathfinder& self, const int value) { if (auto* c = self.GetComponent()) c->turning = static_cast<PathfinderTurning>(std::clamp(value, 0, 1)); }),
+
+#define TILKY_PATHFINDER_NUMBER(name) \
+        #name, sol::property( \
+            [](const ScriptPathfinder& self) { const auto* c = self.GetComponent(); return c != nullptr ? c->name : 0.0f; }, \
+            [](const ScriptPathfinder& self, const float value) { if (auto* c = self.GetComponent()) c->name = std::max(value, 0.0f); })
+
+        TILKY_PATHFINDER_NUMBER(chaseStep),
+        TILKY_PATHFINDER_NUMBER(holdMinSteps),
+        TILKY_PATHFINDER_NUMBER(holdMaxSteps),
+        TILKY_PATHFINDER_NUMBER(deadzone),
+        TILKY_PATHFINDER_NUMBER(swapChance),
+        TILKY_PATHFINDER_NUMBER(floatSpeed),
+        TILKY_PATHFINDER_NUMBER(floatRatio),
+        TILKY_PATHFINDER_NUMBER(pushFriction),
+        TILKY_PATHFINDER_NUMBER(stuckTime)
+#undef TILKY_PATHFINDER_NUMBER
+    );
+
+    lua.new_usertype<ScriptMonsterAI>(
+        "MonsterAI",
+
+        "isValid", sol::property(&ScriptMonsterAI::IsValid),
+
+        "state", sol::property(
+            [](const ScriptMonsterAI& self) { const auto* c = self.GetComponent(); return static_cast<int>(c != nullptr ? c->state : MonsterAIState::IDLE); }),
+        "target", sol::property(
+            [](const ScriptMonsterAI& self, const sol::this_state state) -> sol::object {
+                const auto* c = self.GetComponent();
+                if (c == nullptr || c->state != MonsterAIState::CHASING || self.level->GetEntity(c->targetID) == nullptr)
+                    return sol::make_object(state, sol::nil);
+                return sol::make_object(state, ScriptEntity{self.level, c->targetID});
+            }),
+        "canSeeTarget", sol::property(
+            [](const ScriptMonsterAI& self) {
+                const auto* c = self.GetComponent();
+                return c != nullptr && MonsterAISystem::CanSee(*self.level, *c, c->targetID);
+            }),
+
+#define TILKY_MONSTER_NUMBER(name) \
+        #name, sol::property( \
+            [](const ScriptMonsterAI& self) { const auto* c = self.GetComponent(); return c != nullptr ? c->name : 0.0f; }, \
+            [](const ScriptMonsterAI& self, const float value) { if (auto* c = self.GetComponent()) c->name = std::max(value, 0.0f); })
+#define TILKY_MONSTER_FLAG(name) \
+        #name, sol::property( \
+            [](const ScriptMonsterAI& self) { const auto* c = self.GetComponent(); return c != nullptr && c->name; }, \
+            [](const ScriptMonsterAI& self, const bool value) { if (auto* c = self.GetComponent()) c->name = value; })
+
+        TILKY_MONSTER_FLAG(isActive),
+        TILKY_MONSTER_NUMBER(sightFov),
+        TILKY_MONSTER_NUMBER(sightRange),
+        TILKY_MONSTER_NUMBER(nearRange),
+        TILKY_MONSTER_NUMBER(lookInterval),
+        TILKY_MONSTER_NUMBER(chaseStep),
+        TILKY_MONSTER_NUMBER(reactionTime),
+        TILKY_MONSTER_NUMBER(meleeRange),
+        TILKY_MONSTER_NUMBER(missileMinRange),
+        TILKY_MONSTER_NUMBER(missileMaxRange),
+        TILKY_MONSTER_NUMBER(missileDistanceOffset),
+        TILKY_MONSTER_NUMBER(missileDistanceScale),
+        TILKY_MONSTER_NUMBER(missileDistanceCap),
+        TILKY_MONSTER_NUMBER(attackPause),
+        TILKY_MONSTER_NUMBER(painChance),
+        TILKY_MONSTER_NUMBER(painPause),
+        TILKY_MONSTER_NUMBER(targetLockTime),
+        TILKY_MONSTER_NUMBER(activeChance),
+        TILKY_MONSTER_FLAG(hasMelee),
+        TILKY_MONSTER_FLAG(hasMissile),
+        TILKY_MONSTER_FLAG(hearing),
+        TILKY_MONSTER_FLAG(ambush),
+        TILKY_MONSTER_FLAG(aggressive),
+        TILKY_MONSTER_FLAG(infights),
+        TILKY_MONSTER_FLAG(drivePathfinder),
+        TILKY_MONSTER_FLAG(faceTargetOnAttack),
+#undef TILKY_MONSTER_NUMBER
+#undef TILKY_MONSTER_FLAG
+
+        "Wake", [](const ScriptMonsterAI& self, const ScriptEntity& target) {
+            if (auto* c = self.GetComponent()) MonsterAISystem::Wake(*self.level, *c, target.ownerID);
+        },
+        "Sleep", [](const ScriptMonsterAI& self) {
+            if (auto* c = self.GetComponent()) MonsterAISystem::Sleep(*self.level, *c);
+        },
+        "Hurt", [](const ScriptMonsterAI& self, const sol::optional<ScriptEntity> attacker) {
+            if (auto* c = self.GetComponent()) MonsterAISystem::Hurt(*self.level, *c, attacker ? attacker->ownerID : INVALID_ID);
+        }
     );
 
     lua.new_usertype<ScriptCollider>(

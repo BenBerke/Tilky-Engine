@@ -29,6 +29,7 @@
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 #include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
 #include "Headers/Runtime/Gameplay/PathfinderSystem.hpp"
+#include "Headers/Runtime/Gameplay/MonsterAISystem.hpp"
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 // ---------------------------------------------------------
@@ -1063,6 +1064,56 @@ struct ScriptPathfinder {
     [[nodiscard]] bool GetHasArrived() const {
         const ComponentPathfinder* pathfinder = GetComponent();
         return pathfinder != nullptr && pathfinder->arrived;
+    }
+
+    [[nodiscard]] bool GetIsMoving() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr && pathfinder->moving;
+    }
+
+    [[nodiscard]] bool GetIsStuck() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr && pathfinder->stuck;
+    }
+
+    [[nodiscard]] Vector3 GetMoveDirection() const {
+        const ComponentPathfinder* pathfinder = GetComponent();
+        return pathfinder != nullptr ? PathfinderSystem::MoveDirection(*pathfinder) : Vector3{};
+    }
+
+    void Pause(const float seconds) const {
+        if (ComponentPathfinder* pathfinder = GetComponent()) PathfinderSystem::Pause(*pathfinder, seconds);
+    }
+
+    void PickNewDirection() const {
+        if (ComponentPathfinder* pathfinder = GetComponent()) PathfinderSystem::PickNewDirection(*pathfinder);
+    }
+
+public:
+    // The LevelEpoch this handle was made at: one kept from an earlier
+    // level doesn't reach what has the same ID in this one (see Level::GetEntityForHandle).
+    std::uint32_t epoch = LevelEpoch::current;
+};
+
+// ---------------------------------------------------------
+// Monster AI
+// ---------------------------------------------------------
+
+// Its plain fields are bound straight to the component in
+// LuaGameplayComponentBindings.cpp, entities being handed over as IDs there too.
+struct ScriptMonsterAI {
+    Level* level = nullptr;
+    ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Monster AIs this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+
+    [[nodiscard]] ComponentMonsterAI* GetComponent() const {
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
+        return level->monsterAIs.GetInstance(instanceID);
+    }
+
+    [[nodiscard]] bool IsValid() const {
+        return GetComponent() != nullptr;
     }
 
 public:
@@ -2102,6 +2153,10 @@ struct ScriptEntity {
         return LiveLevel() != nullptr && LiveLevel()->pathfinders.Has(ownerID);
     }
 
+    [[nodiscard]] bool HasMonsterAI() const {
+        return LiveLevel() != nullptr && LiveLevel()->monsterAIs.Has(ownerID);
+    }
+
     [[nodiscard]] bool HasUITransform() const {
         return LiveLevel() != nullptr && LiveLevel()->ui_transforms.Has(ownerID);
     }
@@ -2203,6 +2258,11 @@ struct ScriptEntity {
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptPathfinder GetPathfinder() const {
         return {LiveLevel(), ownerID, FirstInstance(&Level::pathfinders)};
+    }
+
+    // The first one; GetComponents lists them all.
+    [[nodiscard]] ScriptMonsterAI GetMonsterAI() const {
+        return {LiveLevel(), ownerID, FirstInstance(&Level::monsterAIs)};
     }
 
     [[nodiscard]] ScriptUITransform GetUITransform() const {
@@ -2469,6 +2529,12 @@ struct ScriptWall {
 
     [[nodiscard]] bool GetMiddleIgnoredByRaycast() const { return CheckedWall().middleIgnoredByRaycast; }
     void SetMiddleIgnoredByRaycast(const bool value) const { CheckedWall().middleIgnoredByRaycast = value; }
+
+    [[nodiscard]] bool GetBlocksPathfinders() const { return CheckedWall().blocksPathfinders; }
+    void SetBlocksPathfinders(const bool value) const { CheckedWall().blocksPathfinders = value; }
+
+    [[nodiscard]] bool GetBlocksSound() const { return CheckedWall().blocksSound; }
+    void SetBlocksSound(const bool value) const { CheckedWall().blocksSound = value; }
 
     [[nodiscard]] Wall& CheckedWall() const {
         Wall* wall = GetWall();

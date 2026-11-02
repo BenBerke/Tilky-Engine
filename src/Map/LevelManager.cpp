@@ -169,9 +169,27 @@ namespace LevelManager {
         for (ComponentAudioSource& audioSource : level.audioSources.components)
             if (audioSource.soundFileName == oldReference) audioSource.soundFileName = newReference;
 
+        const auto rename = [&](std::string& sound) { if (sound == oldReference) sound = newReference; };
+
         ForEachDispatch(level, [&](Dispatch& dispatch) {
-            if (auto* play = std::get_if<PayloadDispatchPlaySound>(&dispatch.payload); play && play->sound == oldReference)
-                play->sound = newReference;
+            if (auto* play = std::get_if<PayloadDispatchPlaySound>(&dispatch.payload)) rename(play->sound);
+
+            if (auto* door = std::get_if<PayloadDispatchSectorDoor>(&dispatch.payload)) {
+                rename(door->openSound);
+                rename(door->closeSound);
+                rename(door->lockedSound);
+            }
+
+            if (auto* lift = std::get_if<PayloadDispatchSectorLift>(&dispatch.payload)) {
+                rename(lift->startSound);
+                rename(lift->stopSound);
+                rename(lift->lockedSound);
+            }
+
+            // Only an Audio Source's sound field holds a sound (EventFields.hpp).
+            if (auto* setField = std::get_if<PayloadDispatchEntitySetField>(&dispatch.payload);
+                setField && setField->component == FieldComponent::AUDIO_SOURCE && setField->field == "sound")
+                rename(setField->value.text);
         });
 
         for (std::string& track : level.worldSettings.music.tracks)

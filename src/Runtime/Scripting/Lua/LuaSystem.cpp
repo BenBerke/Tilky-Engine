@@ -183,6 +183,16 @@ namespace {
         sol::protected_function onReleaseFunction;
         sol::protected_function onHoverEnterFunction;
         sol::protected_function onPathfinderArrivedFunction;
+        sol::protected_function onPathfinderBlockedFunction;
+        sol::protected_function onPathfinderStuckFunction;
+        sol::protected_function onPathfinderStartedMovingFunction;
+        sol::protected_function onPathfinderStoppedMovingFunction;
+        sol::protected_function onTargetSpottedFunction;
+        sol::protected_function onTargetLostFunction;
+        sol::protected_function onMeleeReadyFunction;
+        sol::protected_function onMissileReadyFunction;
+        sol::protected_function onPainFunction;
+        sol::protected_function onActiveFunction;
         sol::protected_function onHoverExitFunction;
 
         bool started = false;   // Start() has run at least once
@@ -467,6 +477,27 @@ namespace {
             {&ScriptInstance::onPathfinderArrivedFunction, {"OnPathfinderArrived", CallbackOwner::Entity, {},
                 "Pathfinder: called each time this entity's Pathfinder gets to its destination (within Range when ranged). "
                 "Following an entity, it is called again every time it catches up after the target moved away."}},
+            {&ScriptInstance::onPathfinderBlockedFunction, {"OnPathfinderBlocked", CallbackOwner::Entity, {},
+                "Pathfinder: called when the direction it is walking in gets blocked, at most once per chase step."}},
+            {&ScriptInstance::onPathfinderStuckFunction, {"OnPathfinderStuck", CallbackOwner::Entity, {},
+                "Pathfinder: called when it has made no progress for its Stuck Time."}},
+            {&ScriptInstance::onPathfinderStartedMovingFunction, {"OnPathfinderStartedMoving", CallbackOwner::Entity, {},
+                "Pathfinder: called when it starts walking. Good for switching to a walk flipbook."}},
+            {&ScriptInstance::onPathfinderStoppedMovingFunction, {"OnPathfinderStoppedMoving", CallbackOwner::Entity, {},
+                "Pathfinder: called when it stops walking, for any reason. Good for switching to an idle flipbook."}},
+
+            {&ScriptInstance::onTargetSpottedFunction, {"OnTargetSpotted", CallbackOwner::Entity, {Param("target", "Entity")},
+                "Monster AI: called when it wakes up and starts chasing target, by sight, sound or Wake."}},
+            {&ScriptInstance::onTargetLostFunction, {"OnTargetLost", CallbackOwner::Entity, {},
+                "Monster AI: called when it goes back to idle, having nothing left to chase."}},
+            {&ScriptInstance::onMeleeReadyFunction, {"OnMeleeReady", CallbackOwner::Entity, {Param("target", "Entity")},
+                "Monster AI: called when it decides on a melee attack. Do the attack here: the AI does none itself."}},
+            {&ScriptInstance::onMissileReadyFunction, {"OnMissileReady", CallbackOwner::Entity, {Param("target", "Entity")},
+                "Monster AI: called when it decides on a ranged attack. Do the attack here: the AI does none itself."}},
+            {&ScriptInstance::onPainFunction, {"OnPain", CallbackOwner::Entity, {Param("attacker", "Entity?")},
+                "Monster AI: called when Hurt passes its Pain Chance roll. attacker is nil if nobody did it."}},
+            {&ScriptInstance::onActiveFunction, {"OnActive", CallbackOwner::Entity, {},
+                "Monster AI: called now and then while chasing, Doom's active sound. See activeChance."}},
         };
 
         return callbacks;
@@ -779,6 +810,7 @@ namespace {
             case CMP_MODEL: return ResolveInstanceRef<ScriptModel>(luaView, level, level.models, ref);
             case CMP_FLIPBOOK: return ResolveInstanceRef<ScriptFlipbook>(luaView, level, level.flipbooks, ref);
             case CMP_PATHFINDER: return ResolveInstanceRef<ScriptPathfinder>(luaView, level, level.pathfinders, ref);
+            case CMP_MONSTER_AI: return ResolveInstanceRef<ScriptMonsterAI>(luaView, level, level.monsterAIs, ref);
 
             default: break;
         }
@@ -2058,16 +2090,58 @@ void LuaScriptSystem::DispatchUIButtonCallback(Level&, const ID entityID, const 
     }
 }
 
-void LuaScriptSystem::DispatchPathfinderArrived(Level&, const ID entityID) {
+void LuaScriptSystem::DispatchPathfinderNotice(Level&, const ID entityID, const PathfinderSystem::NoticeKind kind) {
+    using Callback = sol::protected_function ScriptInstance::*;
+
+    Callback callback = nullptr;
+    const char* name = "";
+    switch (kind) {
+        case PathfinderSystem::NoticeKind::ARRIVED: callback = &ScriptInstance::onPathfinderArrivedFunction; name = "OnPathfinderArrived"; break;
+        case PathfinderSystem::NoticeKind::BLOCKED: callback = &ScriptInstance::onPathfinderBlockedFunction; name = "OnPathfinderBlocked"; break;
+        case PathfinderSystem::NoticeKind::STUCK: callback = &ScriptInstance::onPathfinderStuckFunction; name = "OnPathfinderStuck"; break;
+        case PathfinderSystem::NoticeKind::STARTED_MOVING: callback = &ScriptInstance::onPathfinderStartedMovingFunction; name = "OnPathfinderStartedMoving"; break;
+        case PathfinderSystem::NoticeKind::STOPPED_MOVING: callback = &ScriptInstance::onPathfinderStoppedMovingFunction; name = "OnPathfinderStoppedMoving"; break;
+    }
+
     // By index: a handler can attach a script, which can grow the vector.
     for (size_t i = 0; i < scriptInstances.size(); ++i) {
         const ScriptInstance& candidate = scriptInstances[i];
         if (candidate.ownerKind != ScriptOwnerKind::Entity || candidate.ownerID != entityID) continue;
-        if (candidate.destroyed || !candidate.enabled || !candidate.onPathfinderArrivedFunction.valid()) continue;
+        if (candidate.destroyed || !candidate.enabled || !(candidate.*callback).valid()) continue;
 
         // Copied: the instance can move while the handler runs.
         const ScriptInstance instance = candidate;
-        CallLifecycle(instance, instance.onPathfinderArrivedFunction, "OnPathfinderArrived");
+        CallLifecycle(instance, instance.*callback, name);
+    }
+}
+
+void LuaScriptSystem::DispatchMonsterNotice(Level& level, const ID entityID, const MonsterAISystem::NoticeKind kind, const ID otherID) {
+    using Callback = sol::protected_function ScriptInstance::*;
+
+    Callback callback = nullptr;
+    const char* name = "";
+    bool passesEntity = false;
+    switch (kind) {
+        case MonsterAISystem::NoticeKind::TARGET_SPOTTED: callback = &ScriptInstance::onTargetSpottedFunction; name = "OnTargetSpotted"; passesEntity = true; break;
+        case MonsterAISystem::NoticeKind::TARGET_LOST: callback = &ScriptInstance::onTargetLostFunction; name = "OnTargetLost"; break;
+        case MonsterAISystem::NoticeKind::MELEE_READY: callback = &ScriptInstance::onMeleeReadyFunction; name = "OnMeleeReady"; passesEntity = true; break;
+        case MonsterAISystem::NoticeKind::MISSILE_READY: callback = &ScriptInstance::onMissileReadyFunction; name = "OnMissileReady"; passesEntity = true; break;
+        case MonsterAISystem::NoticeKind::PAIN: callback = &ScriptInstance::onPainFunction; name = "OnPain"; passesEntity = true; break;
+        case MonsterAISystem::NoticeKind::ACTIVE: callback = &ScriptInstance::onActiveFunction; name = "OnActive"; break;
+    }
+
+    // By index: a handler can attach a script, which can grow the vector.
+    for (size_t i = 0; i < scriptInstances.size(); ++i) {
+        const ScriptInstance& candidate = scriptInstances[i];
+        if (candidate.ownerKind != ScriptOwnerKind::Entity || candidate.ownerID != entityID) continue;
+        if (candidate.destroyed || !candidate.enabled || !(candidate.*callback).valid()) continue;
+
+        // Copied: the instance can move while the handler runs.
+        const ScriptInstance instance = candidate;
+
+        if (!passesEntity) CallLifecycle(instance, instance.*callback, name);
+        else if (level.GetEntity(otherID) != nullptr) CallLifecycle(instance, instance.*callback, name, ScriptEntity{&level, otherID});
+        else CallLifecycle(instance, instance.*callback, name, sol::nil);
     }
 }
 

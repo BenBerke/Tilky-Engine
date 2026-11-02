@@ -884,7 +884,34 @@ namespace {
         {ToggleableComponent::PLAYER_CONTROLLER, "player_controller"},
         {ToggleableComponent::CAMERA, "camera"},
         {ToggleableComponent::COLLIDER, "collider"},
-        {ToggleableComponent::UI_SPRITE, "ui_sprite"}
+        {ToggleableComponent::UI_SPRITE, "ui_sprite"},
+        {ToggleableComponent::PATHFINDER, "pathfinder"},
+        {ToggleableComponent::MONSTER_AI, "monster_ai"}
+    };
+
+    constexpr std::pair<PathfinderAction, const char*> kPathfinderActionNames[] = {
+        {PathfinderAction::GO_TO_COORDINATES, "go_to_coordinates"},
+        {PathfinderAction::GO_TO_SECTOR, "go_to_sector"},
+        {PathfinderAction::FOLLOW_ENTITY, "follow_entity"},
+        {PathfinderAction::FOLLOW_INSTIGATOR, "follow_instigator"},
+        {PathfinderAction::STOP, "stop"},
+        {PathfinderAction::RESUME, "resume"},
+        {PathfinderAction::PAUSE, "pause"},
+        {PathfinderAction::PICK_NEW_DIRECTION, "pick_new_direction"}
+    };
+
+    constexpr std::pair<MonsterAIAction, const char*> kMonsterAIActionNames[] = {
+        {MonsterAIAction::WAKE_ON_PLAYER, "wake_on_player"},
+        {MonsterAIAction::WAKE_ON_INSTIGATOR, "wake_on_instigator"},
+        {MonsterAIAction::WAKE_ON_ENTITY, "wake_on_entity"},
+        {MonsterAIAction::SLEEP, "sleep"},
+        {MonsterAIAction::HURT, "hurt"}
+    };
+
+    constexpr std::pair<NoiseTarget, const char*> kNoiseTargetNames[] = {
+        {NoiseTarget::PLAYER, "player"},
+        {NoiseTarget::INSTIGATOR, "instigator"},
+        {NoiseTarget::SELF, "self"}
     };
 
     constexpr std::pair<PayloadDispatchSectorLift::Type, const char*> kLiftTypeNames[] = {
@@ -930,7 +957,9 @@ namespace {
         {FieldComponent::UI_TRANSFORM, "ui_transform"},
         {FieldComponent::UI_SPRITE, "ui_sprite"},
         {FieldComponent::UI_TEXT, "ui_text"},
-        {FieldComponent::UI_BUTTON, "ui_button"}
+        {FieldComponent::UI_BUTTON, "ui_button"},
+        {FieldComponent::PATHFINDER, "pathfinder"},
+        {FieldComponent::MONSTER_AI, "monster_ai"}
     };
 
     constexpr std::pair<PayloadDispatchEntitySetField::Operation, const char*> kSetFieldOperationNames[] = {
@@ -1074,6 +1103,23 @@ namespace {
         if constexpr (std::is_same_v<Payload, PayloadDispatchEntityCallFunction>)
             j["functionName"] = payload.functionName;
 
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityPathfinder>) {
+            j["action"] = EnumName(kPathfinderActionNames, payload.action);
+            j["position"] = {payload.position.x, payload.position.y, payload.position.z};
+            j["targetID"] = payload.targetID;
+            j["floorIndex"] = payload.floorIndex;
+            j["offset"] = {payload.offset.x, payload.offset.y, payload.offset.z};
+            j["seconds"] = payload.seconds;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityMonsterAI>) {
+            j["action"] = EnumName(kMonsterAIActionNames, payload.action);
+            j["targetID"] = payload.targetID;
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchNoiseAlert>)
+            j["target"] = EnumName(kNoiseTargetNames, payload.target);
+
         if constexpr (std::is_same_v<Payload, PayloadDispatchChangeVariable>) {
             j["variable"] = payload.variable;
             j["operation"] = EnumName(kVariableOperationNames, payload.operation);
@@ -1154,6 +1200,7 @@ namespace {
             j["lockedMessage"] = payload.lockedMessage;
             j["lockedMessageDuration"] = payload.lockedMessageDuration;
             j["lockedMessageColor"] = {payload.lockedMessageColor.x, payload.lockedMessageColor.y, payload.lockedMessageColor.z};
+            j["pathfindersCanOpen"] = payload.pathfindersCanOpen;
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {
@@ -1333,6 +1380,24 @@ namespace {
             payload.insideFloor = std::max(-1, payload.insideFloor);
         }
 
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityPathfinder>) {
+            ReadOptionalEnum(j, "action", kPathfinderActionNames, payload.action);
+            ReadOptionalVector3(j, "position", payload.position);
+            ReadOptional(j, "targetID", payload.targetID);
+            ReadOptional(j, "floorIndex", payload.floorIndex);
+            payload.floorIndex = std::max(0, payload.floorIndex);
+            ReadOptionalVector3(j, "offset", payload.offset);
+            ReadOptional(j, "seconds", payload.seconds);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEntityMonsterAI>) {
+            ReadOptionalEnum(j, "action", kMonsterAIActionNames, payload.action);
+            ReadOptional(j, "targetID", payload.targetID);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchNoiseAlert>)
+            ReadOptionalEnum(j, "target", kNoiseTargetNames, payload.target);
+
         if constexpr (std::is_base_of_v<TeleportSettings, Payload>) {
             // Older levels have only position and rotation: Coordinates, Set.
             ReadOptionalEnum(j, "target", kTeleportTargetNames, payload.target);
@@ -1435,6 +1500,7 @@ namespace {
             ReadOptional(j, "lockedMessage", payload.lockedMessage);
             ReadOptional(j, "lockedMessageDuration", payload.lockedMessageDuration);
             ReadOptionalVector3(j, "lockedMessageColor", payload.lockedMessageColor);
+            ReadOptional(j, "pathfindersCanOpen", payload.pathfindersCanOpen);
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSectorStopMovement>) {
@@ -2022,6 +2088,8 @@ namespace {
             if (wallJson.contains("middle")) LoadWallSurface(wallJson.at("middle"), wall.middle);
             wall.middleHasCollision = wallJson.value("middleHasCollision", wall.middleHasCollision);
             wall.middleIgnoredByRaycast = wallJson.value("middleIgnoredByRaycast", wall.middleIgnoredByRaycast);
+            wall.blocksPathfinders = wallJson.value("blocksPathfinders", wall.blocksPathfinders);
+            wall.blocksSound = wallJson.value("blocksSound", wall.blocksSound);
             wall.angle = wallJson.value("angle", 0.0f);
 
             wall.id = LoadIDField(wallJson,"id",static_cast<ID>(i));
@@ -2099,6 +2167,8 @@ namespace {
                 {"middle", SaveWallSurface(wall.middle)},
                 {"middleHasCollision", wall.middleHasCollision},
                 {"middleIgnoredByRaycast", wall.middleIgnoredByRaycast},
+                {"blocksPathfinders", wall.blocksPathfinders},
+                {"blocksSound", wall.blocksSound},
                 {"frontSector", wall.frontSector},
                 {"backSector", wall.backSector},
                 {"tagIds", wall.tagIds},
@@ -2143,6 +2213,7 @@ namespace {
 
             linedef.name = linedefJson.value("name", std::string{});
             linedef.enabled = linedefJson.value("enabled", true);
+            linedef.blocksPathfinders = linedefJson.value("blocksPathfinders", false);
             LoadEventsAndDispatches(linedefJson, "Linedef", linedef.id, linedef.events, linedef.dispatches);
 
             level.linedefs.push_back(std::move(linedef));
@@ -2160,7 +2231,8 @@ namespace {
                 {"name", linedef.name},
                 {"start", {linedef.start.x, linedef.start.y}},
                 {"end", {linedef.end.x, linedef.end.y}},
-                {"enabled", linedef.enabled}
+                {"enabled", linedef.enabled},
+                {"blocksPathfinders", linedef.blocksPathfinders}
             };
 
             SaveEventsAndDispatches(linedefJson, linedef.events, linedef.dispatches);
@@ -2991,8 +3063,85 @@ namespace LevelSerialization {
             {"speed", c.speed},
             {"range", c.range},
             {"metadata", c.metadata},
-            {"isActive", c.isActive}
+            {"isActive", c.isActive},
+            {"facing", static_cast<int>(c.facing)},
+            {"turning", static_cast<int>(c.turning)},
+            {"chaseStep", c.chaseStep},
+            {"holdMinSteps", c.holdMinSteps},
+            {"holdMaxSteps", c.holdMaxSteps},
+            {"deadzone", c.deadzone},
+            {"swapChance", c.swapChance},
+            {"floatSpeed", c.floatSpeed},
+            {"floatRatio", c.floatRatio},
+            {"pushFriction", c.pushFriction},
+            {"stuckTime", c.stuckTime}
         };
+    }
+
+    json ComponentOwnFieldsToJson(const ComponentMonsterAI& c) {
+        return {
+            {"isActive", c.isActive},
+            {"targetTags", c.targetTags},
+            {"sightFov", c.sightFov},
+            {"sightRange", c.sightRange},
+            {"nearRange", c.nearRange},
+            {"lookInterval", c.lookInterval},
+            {"chaseStep", c.chaseStep},
+            {"reactionTime", c.reactionTime},
+            {"meleeRange", c.meleeRange},
+            {"missileMinRange", c.missileMinRange},
+            {"missileMaxRange", c.missileMaxRange},
+            {"missileDistanceOffset", c.missileDistanceOffset},
+            {"missileDistanceScale", c.missileDistanceScale},
+            {"missileDistanceCap", c.missileDistanceCap},
+            {"attackPause", c.attackPause},
+            {"painChance", c.painChance},
+            {"painPause", c.painPause},
+            {"targetLockTime", c.targetLockTime},
+            {"activeChance", c.activeChance},
+            {"hasMelee", c.hasMelee},
+            {"hasMissile", c.hasMissile},
+            {"hearing", c.hearing},
+            {"ambush", c.ambush},
+            {"startAwake", c.startAwake},
+            {"aggressive", c.aggressive},
+            {"infights", c.infights},
+            {"drivePathfinder", c.drivePathfinder},
+            {"faceTargetOnAttack", c.faceTargetOnAttack}
+        };
+    }
+
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentMonsterAI& c) {
+        const ComponentMonsterAI d{};
+        c.isActive = j.value("isActive", d.isActive);
+        c.targetTags = j.value("targetTags", std::vector<TagId>{});
+        c.sightFov = j.value("sightFov", d.sightFov);
+        c.sightRange = j.value("sightRange", d.sightRange);
+        c.nearRange = j.value("nearRange", d.nearRange);
+        c.lookInterval = j.value("lookInterval", d.lookInterval);
+        c.chaseStep = j.value("chaseStep", d.chaseStep);
+        c.reactionTime = j.value("reactionTime", d.reactionTime);
+        c.meleeRange = j.value("meleeRange", d.meleeRange);
+        c.missileMinRange = j.value("missileMinRange", d.missileMinRange);
+        c.missileMaxRange = j.value("missileMaxRange", d.missileMaxRange);
+        c.missileDistanceOffset = j.value("missileDistanceOffset", d.missileDistanceOffset);
+        c.missileDistanceScale = j.value("missileDistanceScale", d.missileDistanceScale);
+        c.missileDistanceCap = j.value("missileDistanceCap", d.missileDistanceCap);
+        c.attackPause = j.value("attackPause", d.attackPause);
+        c.painChance = j.value("painChance", d.painChance);
+        c.painPause = j.value("painPause", d.painPause);
+        c.targetLockTime = j.value("targetLockTime", d.targetLockTime);
+        c.activeChance = j.value("activeChance", d.activeChance);
+        c.hasMelee = j.value("hasMelee", d.hasMelee);
+        c.hasMissile = j.value("hasMissile", d.hasMissile);
+        c.hearing = j.value("hearing", d.hearing);
+        c.ambush = j.value("ambush", d.ambush);
+        c.startAwake = j.value("startAwake", d.startAwake);
+        c.aggressive = j.value("aggressive", d.aggressive);
+        c.infights = j.value("infights", d.infights);
+        c.drivePathfinder = j.value("drivePathfinder", d.drivePathfinder);
+        c.faceTargetOnAttack = j.value("faceTargetOnAttack", d.faceTargetOnAttack);
+        return true;
     }
 
     bool ComponentOwnFieldsFromJson(const json& j, ComponentPathfinder& c) {
@@ -3003,8 +3152,21 @@ namespace LevelSerialization {
         if (j.contains("offset")) c.offset = Vec3FromJson(j["offset"]);
         c.speed = j.value("speed", defaults.speed);
         c.range = j.value("range", defaults.range);
+        // Saved before these existed: Keep Moving In Range and Opens Doors off,
+        // since metadata has no bit for them, and turning at once.
         c.metadata = j.value("metadata", std::uint8_t{0});
         c.isActive = j.value("isActive", true);
+        c.facing = static_cast<PathfinderFacing>(std::clamp(j.value("facing", 0), 0, 2));
+        c.turning = static_cast<PathfinderTurning>(std::clamp(j.value("turning", static_cast<int>(PathfinderTurning::SNAP)), 0, 1));
+        c.chaseStep = j.value("chaseStep", defaults.chaseStep);
+        c.holdMinSteps = j.value("holdMinSteps", defaults.holdMinSteps);
+        c.holdMaxSteps = j.value("holdMaxSteps", defaults.holdMaxSteps);
+        c.deadzone = j.value("deadzone", defaults.deadzone);
+        c.swapChance = j.value("swapChance", defaults.swapChance);
+        c.floatSpeed = j.value("floatSpeed", defaults.floatSpeed);
+        c.floatRatio = j.value("floatRatio", defaults.floatRatio);
+        c.pushFriction = j.value("pushFriction", defaults.pushFriction);
+        c.stuckTime = j.value("stuckTime", defaults.stuckTime);
         return true;
     }
 
@@ -3097,6 +3259,7 @@ namespace {
         LoadComponentArray<ComponentModel>(componentsJson, "models", level, level.models, CMP_MODEL);
         LoadComponentArray<ComponentFlipbook>(componentsJson, "flipbooks", level, level.flipbooks, CMP_FLIPBOOK);
         LoadComponentArray<ComponentPathfinder>(componentsJson, "pathfinders", level, level.pathfinders, CMP_PATHFINDER);
+        LoadComponentArray<ComponentMonsterAI>(componentsJson, "monsterAIs", level, level.monsterAIs, CMP_MONSTER_AI);
     }
 
     // A storage's components grouped by entity, each entity's in their own
@@ -3156,6 +3319,7 @@ namespace {
         SaveComponentArray(componentsJson, "models", entities, level.models);
         SaveComponentArray(componentsJson, "flipbooks", entities, level.flipbooks);
         SaveComponentArray(componentsJson, "pathfinders", entities, level.pathfinders);
+        SaveComponentArray(componentsJson, "monsterAIs", entities, level.monsterAIs);
 
         levelData["components"] = componentsJson;
     }

@@ -71,9 +71,8 @@ namespace {
             if (std::isspace(static_cast<unsigned char>(c))) { ++i; continue; }
 
             if (c == '-' && i + 1 < n && source[i + 1] == '-') {
-                if (const auto level = LongBracketLevel(source, i + 2)) {
-                    i = SkipLongBracket(source, i + 2, *level);
-                } else {
+                if (const auto level = LongBracketLevel(source, i + 2)) i = SkipLongBracket(source, i + 2, *level);
+                else {
                     const std::size_t newline = source.find('\n', i);
                     i = newline == std::string_view::npos ? n : newline;
                 }
@@ -119,9 +118,9 @@ namespace {
                 continue;
             }
 
-            if (source.substr(i, 3) == "...") {
+            if (source.substr(i, 3) == "...")
                 i += 3;
-            } else {
+            else {
                 static constexpr std::array<std::string_view, 9> kTwoChar = {"==", "~=", "<=", ">=", "//", "..", "::", "<<", ">>"};
                 const std::string_view two = source.substr(i, 2);
                 i += std::ranges::find(kTwoChar, two) != kTwoChar.end() ? 2 : 1;
@@ -183,6 +182,7 @@ namespace {
             {"Model",            ScriptValueType::Component, "Model",            CMP_MODEL},
             {"Flipbook",         ScriptValueType::Component, "Flipbook",         CMP_FLIPBOOK},
             {"Pathfinder",       ScriptValueType::Component, "Pathfinder",       CMP_PATHFINDER},
+            {"MonsterAI",        ScriptValueType::Component, "MonsterAI",        CMP_MONSTER_AI},
         };
         return types;
     }

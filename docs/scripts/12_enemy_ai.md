@@ -10,7 +10,9 @@ works.
 `Steer` heads in a straight line, so these enemies get stuck behind pillars and corners. For an
 enemy that walks around obstacles, give it a [Pathfinder](../wiki/Pathfinder.md) and replace the
 `Steer` calls with `entity.pathfinder:SetTarget(target)` (chase) and `entity.pathfinder:Stop()`
-(stand still), as in the [Pathfinder examples](../wiki/Pathfinder.md#examples).
+(stand still), as in the [Pathfinder examples](../wiki/Pathfinder.md#examples). For Doom's whole
+monster logic without writing it, noticing the player and deciding when to attack included, add a
+[Monster AI](../wiki/MonsterAI.md) as well.
 
 ---
 

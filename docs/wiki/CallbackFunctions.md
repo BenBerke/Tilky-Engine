@@ -25,6 +25,16 @@ them for public fields.
 | [`OnHoverEnter()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The cursor came onto the button |
 | [`OnHoverExit()`](#onclick--onrelease--onhoverenter--onhoverexit) | ✓ | | The cursor left the button |
 | [`OnPathfinderArrived()`](#onpathfinderarrived) | ✓ | | This entity's [Pathfinder](Pathfinder.md) got to its destination |
+| [`OnPathfinderBlocked()`](#other-pathfinder-callbacks) | ✓ | | The way it is walking got blocked |
+| [`OnPathfinderStuck()`](#other-pathfinder-callbacks) | ✓ | | It has made no progress for its Stuck Time |
+| [`OnPathfinderStartedMoving()`](#other-pathfinder-callbacks) | ✓ | | It started walking |
+| [`OnPathfinderStoppedMoving()`](#other-pathfinder-callbacks) | ✓ | | It stopped walking |
+| [`OnTargetSpotted(target)`](#monster-ai-callbacks) | ✓ | | Its [Monster AI](MonsterAI.md) woke and started chasing |
+| [`OnTargetLost()`](#monster-ai-callbacks) | ✓ | | It has nothing left to chase |
+| [`OnMeleeReady(target)`](#monster-ai-callbacks) | ✓ | | It decided on a melee attack |
+| [`OnMissileReady(target)`](#monster-ai-callbacks) | ✓ | | It decided on a ranged attack |
+| [`OnPain(attacker)`](#monster-ai-callbacks) | ✓ | | A `Hurt` passed its Pain Chance |
+| [`OnActive()`](#monster-ai-callbacks) | ✓ | | Now and then while chasing |
 | [`OnEntityEnter(entity)`](#onentityenter--onentityexit) | | ✓ | An entity entered this sector |
 | [`OnEntityExit(entity)`](#onentityenter--onentityexit) | | ✓ | An entity left this sector |
 | [Flipbook frame events](#flipbook-frame-events) | ✓ | | A [Flipbook](Flipbook.md) reached a frame with an event function |
@@ -421,8 +431,9 @@ it, or within **Range** for a ranged entity.
   stays `true` meanwhile.
 - Following an entity that walks away, the Pathfinder sets off again, and catching up calls
   `OnPathfinderArrived` again.
-- `SetDestination` and `SetTarget` count as a new trip: arriving fires it again, even at a point
-  it is already standing on (on the next frame).
+- `SetDestination` and `SetTarget` to a different place count as a new trip: arriving fires it
+  again. Sending the place it is already heading for changes nothing, so doing it from this
+  callback doesn't loop.
 - It doesn't fire when the Pathfinder stops because its target was destroyed.
 
 ```lua
@@ -443,6 +454,37 @@ end
 ```
 
 ---
+
+
+## Other Pathfinder callbacks
+
+```lua
+function OnPathfinderBlocked() end
+function OnPathfinderStuck() end
+function OnPathfinderStartedMoving() end
+function OnPathfinderStoppedMoving() end
+```
+
+- **Blocked:** the direction it is walking in can't go on, at most once per chase step.
+- **Stuck:** it has made no progress for its **Stuck Time**, once until it moves again. Waiting at a
+  door that is opening doesn't count.
+- **Started / Stopped Moving:** it started or stopped walking, for any reason. This is where to swap
+  walk and idle flipbooks.
+
+## Monster AI callbacks
+
+```lua
+function OnTargetSpotted(target) end
+function OnTargetLost() end
+function OnMeleeReady(target) end
+function OnMissileReady(target) end
+function OnPain(attacker) end
+function OnActive() end
+```
+
+Called by this entity's [Monster AI](MonsterAI.md). It decides, and these are where your attack,
+sounds and animations go: the AI does no attacking itself. `attacker` is `nil` when `Hurt` was
+called with nobody.
 
 ## Flipbook frame events
 
@@ -476,7 +518,7 @@ See [Flipbook: Frame events](Flipbook.md#frame-events).
 | 1 | Scripts | For each script in turn: `OnEnable`/`Start` or `OnDisable` if its active state changed, then `Update`. Then all `FixedUpdate` steps. |
 | 2 | Sector movement | Floor/ceiling moves and light fades advance. |
 | 3 | Flipbooks | Every [Flipbook](Flipbook.md) advances and updates its sprite, then frame events fire. |
-| 4 | Pathfinders | Every [Pathfinder](Pathfinder.md) picks its direction and sets its entity moving, then `OnPathfinderArrived` fires. |
+| 4 | Monster AI and Pathfinders | Every [Monster AI](MonsterAI.md) thinks and its callbacks fire. Then every [Pathfinder](Pathfinder.md) picks its direction and sets its entity moving, then its callbacks fire. |
 | 5 | Player controller | WASD movement, jumping, mouse look. |
 | 6 | Physics | Gravity, velocity, collisions. |
 | 7 | Sector membership | Every moved entity is assigned to the sector it's in now. |

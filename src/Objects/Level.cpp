@@ -150,6 +150,22 @@ namespace {
         flipbook.eventPending = false;
     }
 
+    void ResetCopiedRuntimeState(ComponentPathfinder& pathfinder) {
+        pathfinder.moveDirection = 8;
+        pathfinder.facingOctant = 8;
+        pathfinder.moveTimer = pathfinder.turnTimer = pathfinder.pauseTimer = 0.0f;
+        pathfinder.stuckTimer = pathfinder.blockedCooldown = pathfinder.expectedStep = 0.0f;
+        pathfinder.pushX = pathfinder.pushZ = 0.0f;
+        pathfinder.driving = pathfinder.arrived = pathfinder.moving = pathfinder.stuck = false;
+    }
+
+    void ResetCopiedRuntimeState(ComponentMonsterAI& ai) {
+        ai.state = MonsterAIState::IDLE;
+        ai.targetID = INVALID_ID;
+        ai.lookTimer = ai.chaseTimer = ai.reactionLeft = ai.lockLeft = ai.attackLeft = 0.0f;
+        ai.justAttacked = ai.justHit = ai.started = false;
+    }
+
     // The owner's component instance IDs (script instance IDs for scripts), in order.
     template<typename Storage>
     std::vector<std::uint64_t> OwnerInstanceIDs(const Storage& storage, const ID owner) {
@@ -217,6 +233,7 @@ ID Level::CreateEntity(Entity& copy) {
     CopyComponents(models, copy.id, entity.id, entity.componentsMask, CMP_MODEL);
     CopyComponents(flipbooks, copy.id, entity.id, entity.componentsMask, CMP_FLIPBOOK);
     CopyComponents(pathfinders, copy.id, entity.id, entity.componentsMask, CMP_PATHFINDER);
+    CopyComponents(monsterAIs, copy.id, entity.id, entity.componentsMask, CMP_MONSTER_AI);
     CopyComponents(ui_transforms, copy.id, entity.id, entity.componentsMask, CMP_UI_TRANSFORM);
     CopyComponents(ui_sprites, copy.id, entity.id, entity.componentsMask, CMP_UI_SPRITE);
     CopyComponents(ui_texts, copy.id, entity.id, entity.componentsMask, CMP_UI_TEXT);
@@ -297,6 +314,7 @@ void Level::DestroyEntity(const ID entityID) {
     models.RemoveAll(entityID);
     flipbooks.RemoveAll(entityID);
     pathfinders.RemoveAll(entityID);
+    monsterAIs.RemoveAll(entityID);
     audioSources.RemoveAll(entityID);
     scripts.RemoveAll(entityID);
     playerControllers.RemoveAll(entityID);
@@ -350,6 +368,7 @@ void Level::ApplyEntityEnabled(Entity& entity) {
     SetOwnerEnabled(models, entity.id, enabled);
     SetOwnerEnabled(flipbooks, entity.id, enabled);
     SetOwnerEnabled(pathfinders, entity.id, enabled);
+    SetOwnerEnabled(monsterAIs, entity.id, enabled);
     SetOwnerEnabled(ui_sprites, entity.id, enabled);
     SetOwnerEnabled(ui_texts, entity.id, enabled);
     SetOwnerEnabled(ui_buttons, entity.id, enabled);

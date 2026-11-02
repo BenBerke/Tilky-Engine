@@ -3656,6 +3656,8 @@ namespace {
         WallSurface middle;
         bool middleHasCollision = true;
         bool middleIgnoredByRaycast = false;
+        bool blocksPathfinders = false;
+        bool blocksSound = false;
     };
 
     struct EntityTransformSnapshot {
@@ -3780,6 +3782,8 @@ namespace {
         snapshot.middle = wall.middle;
         snapshot.middleHasCollision = wall.middleHasCollision;
         snapshot.middleIgnoredByRaycast = wall.middleIgnoredByRaycast;
+        snapshot.blocksPathfinders = wall.blocksPathfinders;
+        snapshot.blocksSound = wall.blocksSound;
         return snapshot;
     }
 
@@ -3834,6 +3838,16 @@ namespace {
 
             if (primary.middleIgnoredByRaycast != before.middleIgnoredByRaycast) {
                 target.middleIgnoredByRaycast = primary.middleIgnoredByRaycast;
+                changedAnything = true;
+            }
+
+            if (primary.blocksPathfinders != before.blocksPathfinders) {
+                target.blocksPathfinders = primary.blocksPathfinders;
+                changedAnything = true;
+            }
+
+            if (primary.blocksSound != before.blocksSound) {
+                target.blocksSound = primary.blocksSound;
                 changedAnything = true;
             }
         }

@@ -1641,7 +1641,9 @@ namespace ImGuiDrawFunctions {
         {FieldComponent::UI_TRANSFORM, "component.ui_transform"},
         {FieldComponent::UI_SPRITE, "component.ui_sprite"},
         {FieldComponent::UI_TEXT, "component.ui_text"},
-        {FieldComponent::UI_BUTTON, "component.ui_button"}
+        {FieldComponent::UI_BUTTON, "component.ui_button"},
+        {FieldComponent::PATHFINDER, "component.pathfinder"},
+        {FieldComponent::MONSTER_AI, "component.monster_ai"}
     };
 
     constexpr std::pair<PayloadDispatchEntitySetField::Operation, const char *> kSetFieldNumberOperations[] = {
@@ -1697,7 +1699,34 @@ namespace ImGuiDrawFunctions {
         {ToggleableComponent::SCRIPT, "component.script"},
         {ToggleableComponent::CAMERA, "component.camera"},
         {ToggleableComponent::PLAYER_CONTROLLER, "component.player_controller"},
-        {ToggleableComponent::UI_SPRITE, "component.ui_sprite"}
+        {ToggleableComponent::UI_SPRITE, "component.ui_sprite"},
+        {ToggleableComponent::PATHFINDER, "component.pathfinder"},
+        {ToggleableComponent::MONSTER_AI, "component.monster_ai"}
+    };
+
+    constexpr std::pair<PathfinderAction, const char *> kPathfinderActionOptions[] = {
+        {PathfinderAction::GO_TO_COORDINATES, "events.pathfinder.action.go_to_coordinates"},
+        {PathfinderAction::GO_TO_SECTOR, "events.pathfinder.action.go_to_sector"},
+        {PathfinderAction::FOLLOW_ENTITY, "events.pathfinder.action.follow_entity"},
+        {PathfinderAction::FOLLOW_INSTIGATOR, "events.pathfinder.action.follow_instigator"},
+        {PathfinderAction::STOP, "events.pathfinder.action.stop"},
+        {PathfinderAction::RESUME, "events.pathfinder.action.resume"},
+        {PathfinderAction::PAUSE, "events.pathfinder.action.pause"},
+        {PathfinderAction::PICK_NEW_DIRECTION, "events.pathfinder.action.pick_new_direction"}
+    };
+
+    constexpr std::pair<MonsterAIAction, const char *> kMonsterAIActionOptions[] = {
+        {MonsterAIAction::WAKE_ON_PLAYER, "events.monster_ai.action.wake_on_player"},
+        {MonsterAIAction::WAKE_ON_INSTIGATOR, "events.monster_ai.action.wake_on_instigator"},
+        {MonsterAIAction::WAKE_ON_ENTITY, "events.monster_ai.action.wake_on_entity"},
+        {MonsterAIAction::SLEEP, "events.monster_ai.action.sleep"},
+        {MonsterAIAction::HURT, "events.monster_ai.action.hurt"}
+    };
+
+    constexpr std::pair<NoiseTarget, const char *> kNoiseTargetOptions[] = {
+        {NoiseTarget::PLAYER, "events.noise.target.player"},
+        {NoiseTarget::INSTIGATOR, "events.noise.target.instigator"},
+        {NoiseTarget::SELF, "events.noise.target.self"}
     };
 
     constexpr std::pair<bool, const char *> kTagOperationOptions[] = {
@@ -1835,14 +1864,21 @@ namespace ImGuiDrawFunctions {
         else return nullptr;
     }
 
-    // Whether the owner can have a `Payload`: the owner kind fits, and the UI
-    // Button events only go on an entity with a UI Button.
+    // Whether the owner can have a `Payload`: the owner kind fits, the UI
+    // Button events only go on an entity with a UI Button, and the Pathfinder
+    // event and dispatch only on one with a Pathfinder.
     template<typename Payload>
     static bool PayloadAllowedOn(const EventOwnerKind kind, const ID ownerID) {
         if ((Payload::owners & OwnerBit(kind)) == 0) return false;
 
         if constexpr (NeedsUIButton<Payload>)
             return kind == EventOwnerKind::ENTITY && LevelManager::CurrentLevel().ui_buttons.Has(ownerID);
+
+        if constexpr (NeedsPathfinder<Payload>)
+            return kind == EventOwnerKind::ENTITY && LevelManager::CurrentLevel().pathfinders.Has(ownerID);
+
+        if constexpr (NeedsMonsterAI<Payload>)
+            return kind == EventOwnerKind::ENTITY && LevelManager::CurrentLevel().monsterAIs.Has(ownerID);
 
         return true;
     }
@@ -1895,6 +1931,9 @@ namespace ImGuiDrawFunctions {
             // The first event tag, so a new entry starts on a real link.
             const auto eventTags = TagRegistry::GetAllOfKind(TagRegistry::TagKind::EVENT);
             if (!eventTags.empty()) entry.tagId = eventTags.front().second;
+
+            // A new dispatch listens on nothing until a tag is picked.
+            if constexpr (std::is_same_v<Entry, Dispatch>) entry.useTag = false;
 
             entries.push_back(std::move(entry));
         });
@@ -2118,6 +2157,13 @@ namespace ImGuiDrawFunctions {
                                std::is_same_v<Payload, PayloadEntityCollide>) return "events.call.instigator.touched";
             else if constexpr (std::is_same_v<Payload, PayloadReceiveRay>) return "events.call.instigator.ray";
             else if constexpr (std::is_same_v<Payload, PayloadLuaSignal>) return "events.call.instigator.signal";
+            else if constexpr (std::is_same_v<Payload, PayloadPathfinderArrived>) return "events.call.instigator.followed";
+            else if constexpr (std::is_same_v<Payload, PayloadMonsterTargetSpotted> || std::is_same_v<Payload, PayloadMonsterMeleeReady> ||
+                               std::is_same_v<Payload, PayloadMonsterMissileReady> || std::is_same_v<Payload, PayloadMonsterActive>) return "events.call.instigator.monster_target";
+            else if constexpr (std::is_same_v<Payload, PayloadMonsterPain>) return "events.call.instigator.attacker";
+            else if constexpr (std::is_same_v<Payload, PayloadPathfinderBlocked> || std::is_same_v<Payload, PayloadPathfinderStuck> ||
+                               std::is_same_v<Payload, PayloadPathfinderStartedMoving> || std::is_same_v<Payload, PayloadPathfinderStoppedMoving> ||
+                               std::is_same_v<Payload, PayloadMonsterTargetLost>) return nullptr;
             else if constexpr (std::is_same_v<Payload, PayloadUIButtonClick> || std::is_same_v<Payload, PayloadUIButtonRelease> ||
                                std::is_same_v<Payload, PayloadUIButtonHoverEnter> ||
                                std::is_same_v<Payload, PayloadUIButtonHoverExit>) return "events.call.instigator.player";
@@ -2604,6 +2650,8 @@ namespace ImGuiDrawFunctions {
             case FieldComponent::UI_SPRITE: return static_cast<int>(level.ui_sprites.InstancesOf(owner).size());
             case FieldComponent::UI_TEXT: return static_cast<int>(level.ui_texts.InstancesOf(owner).size());
             case FieldComponent::UI_BUTTON: return static_cast<int>(level.ui_buttons.InstancesOf(owner).size());
+            case FieldComponent::PATHFINDER: return static_cast<int>(level.pathfinders.InstancesOf(owner).size());
+            case FieldComponent::MONSTER_AI: return static_cast<int>(level.monsterAIs.InstancesOf(owner).size());
         }
         return 0;
     }
@@ -3217,6 +3265,102 @@ namespace ImGuiDrawFunctions {
                                 ImGui::InputText("##Function", &payload.functionName);
                                 Tooltip(Get("editor.tooltip.dispatches.function_name").c_str());
                             }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityPathfinder>) {
+                                // A prefab has no level objects to pick.
+                                const bool inPrefab = EditingPrefab();
+                                Property(Get("events.pathfinder.action").c_str());
+                                if (ImGui::BeginCombo("##PathfinderAction", Get(EnumOptionKey(payload.action, kPathfinderActionOptions)).c_str())) {
+                                    for (const auto &[option, key]: kPathfinderActionOptions) {
+                                        if (inPrefab && (option == PathfinderAction::GO_TO_SECTOR || option == PathfinderAction::FOLLOW_ENTITY)) continue;
+                                        if (ImGui::Selectable(Get(key).c_str(), option == payload.action) && option != payload.action) {
+                                            payload.action = option;
+                                            payload.targetID = INVALID_ID;
+                                            payload.floorIndex = 0;
+                                        }
+                                        OptionTooltip(key);
+                                    }
+                                    ImGui::EndCombo();
+                                }
+                                Tooltip(Get("editor.tooltip.dispatches.pathfinder_action").c_str());
+
+                                switch (payload.action) {
+                                    case PathfinderAction::GO_TO_COORDINATES: {
+                                        Property(Get("events.position").c_str());
+                                        InputOrDrag3("##Position", &payload.position.x, draggable);
+
+                                        const ComponentTransform *transform = level.transforms.Get(ownerID);
+                                        Property("");
+                                        ImGui::BeginDisabled(transform == nullptr);
+                                        if (ImGui::Button(Get("events.use_entity").c_str(), ImVec2(-FLT_MIN, 0.0f)) && transform != nullptr)
+                                            payload.position = transform->position;
+                                        ImGui::EndDisabled();
+                                        Tooltip(Get("editor.tooltip.dispatches.pathfinder_use_entity").c_str());
+                                        break;
+                                    }
+                                    case PathfinderAction::GO_TO_SECTOR: {
+                                        Property(Get("events.teleport.sector").c_str());
+                                        DrawLevelObjectPicker("##PathfinderSector", EventOwnerKind::SECTOR, payload.targetID);
+                                        if (ImGui::GetDragDropPayload() == nullptr) Tooltip(Get("editor.tooltip.dispatches.pathfinder_sector").c_str());
+
+                                        const Sector *sector = level.GetSector(payload.targetID);
+                                        const int floorCount = sector ? static_cast<int>(sector->floors.size()) : 1;
+                                        payload.floorIndex = std::clamp(payload.floorIndex, 0, std::max(0, floorCount - 1));
+                                        ImGui::BeginDisabled(floorCount <= 1);
+                                        DrawFloorIndexRow(payload.floorIndex, payload.targetID, false);
+                                        ImGui::EndDisabled();
+                                        break;
+                                    }
+                                    case PathfinderAction::FOLLOW_ENTITY:
+                                    case PathfinderAction::FOLLOW_INSTIGATOR:
+                                        if (payload.action == PathfinderAction::FOLLOW_ENTITY) {
+                                            Property(Get("events.teleport.entity").c_str());
+                                            DrawLevelObjectPicker("##PathfinderEntity", EventOwnerKind::ENTITY, payload.targetID);
+                                            if (payload.targetID == ownerID) payload.targetID = INVALID_ID; // can't follow itself
+                                            if (ImGui::GetDragDropPayload() == nullptr) Tooltip(Get("editor.tooltip.dispatches.pathfinder_entity").c_str());
+                                        }
+
+                                        Property(Get("events.offset").c_str());
+                                        InputOrDrag3("##Offset", &payload.offset.x, draggable);
+                                        Tooltip(Get("editor.tooltip.dispatches.pathfinder_offset").c_str());
+                                        break;
+                                    case PathfinderAction::PAUSE:
+                                        Property(Get("events.pathfinder.seconds").c_str());
+                                        if (InputOrDrag("##Seconds", &payload.seconds, draggable, 0.05f))
+                                            payload.seconds = std::max(0.0f, payload.seconds);
+                                        break;
+                                    case PathfinderAction::STOP:
+                                    case PathfinderAction::RESUME:
+                                    case PathfinderAction::PICK_NEW_DIRECTION:
+                                        break;
+                                }
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchEntityMonsterAI>) {
+                                const bool inPrefab = EditingPrefab();
+                                Property(Get("events.pathfinder.action").c_str());
+                                if (ImGui::BeginCombo("##MonsterAction", Get(EnumOptionKey(payload.action, kMonsterAIActionOptions)).c_str())) {
+                                    for (const auto &[option, key]: kMonsterAIActionOptions) {
+                                        if (inPrefab && option == MonsterAIAction::WAKE_ON_ENTITY) continue;
+                                        if (ImGui::Selectable(Get(key).c_str(), option == payload.action) && option != payload.action) {
+                                            payload.action = option;
+                                            payload.targetID = INVALID_ID;
+                                        }
+                                        OptionTooltip(key);
+                                    }
+                                    ImGui::EndCombo();
+                                }
+                                Tooltip(Get("editor.tooltip.dispatches.monster_ai_action").c_str());
+
+                                if (payload.action == MonsterAIAction::WAKE_ON_ENTITY) {
+                                    Property(Get("events.teleport.entity").c_str());
+                                    DrawLevelObjectPicker("##MonsterEntity", EventOwnerKind::ENTITY, payload.targetID);
+                                    if (payload.targetID == ownerID) payload.targetID = INVALID_ID; // can't chase itself
+                                }
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchNoiseAlert>) {
+                                Property(Get("events.noise.target").c_str());
+                                DrawEnumCombo("##NoiseTarget", payload.target, kNoiseTargetOptions);
+                                Tooltip(Get("editor.tooltip.dispatches.noise_target").c_str());
+                            }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchChangeVariable>) {
                                 Property(Get("events.variable").c_str());
                                 DrawEventVariableCombo("##Variable", payload.variable, -FLT_MIN);
@@ -3388,6 +3532,10 @@ namespace ImGuiDrawFunctions {
                                     ImGui::ColorEdit3("##LockedColor", &payload.lockedMessageColor.x,
                                                       CompactColorFlags(ImGui::GetContentRegionAvail().x, 3));
                                 }
+
+                                Property(Get("events.door.pathfinders_can_open").c_str());
+                                ImGui::Checkbox("##PathfindersCanOpen", &payload.pathfindersCanOpen);
+                                Tooltip(Get("editor.tooltip.dispatches.door_pathfinders_can_open").c_str());
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchSectorLift>) {
                                 using Lift = PayloadDispatchSectorLift;
@@ -4529,6 +4677,12 @@ namespace ImGuiDrawFunctions {
                               [&] { DrawWallSurfaceRows(wall.top, draggable); });
         }
 
+        ImGui::Checkbox(Get("wall.blocks_pathfinders").c_str(), &wall.blocksPathfinders);
+        Tooltip(Get("editor.tooltip.wall.blocks_pathfinders").c_str());
+
+        ImGui::Checkbox(Get("wall.blocks_sound").c_str(), &wall.blocksSound);
+        Tooltip(Get("editor.tooltip.wall.blocks_sound").c_str());
+
         // ── Tags ─────────────────────────────────────────────────────────────
         if (InspectorSection(Get("wall.tags"), "Tags", static_cast<int>(wall.tagIds.size()), false)) {
             ImGui::PushID("WallTags");
@@ -4611,6 +4765,9 @@ namespace ImGuiDrawFunctions {
 
         ImGui::Checkbox(Get("linedef.enabled").c_str(), &linedef.enabled);
         Tooltip(Get("editor.tooltip.linedef.enabled").c_str());
+
+        ImGui::Checkbox(Get("linedef.blocks_pathfinders").c_str(), &linedef.blocksPathfinders);
+        Tooltip(Get("editor.tooltip.linedef.blocks_pathfinders").c_str());
         EndSection();
 
         DrawEventSections(linedef.events, linedef.dispatches, EventOwnerKind::LINEDEF, linedef.id, draggable);
@@ -5170,6 +5327,9 @@ namespace ImGuiDrawFunctions {
                 case CMP_PATHFINDER:
                     if (const auto *c = entity.GetComponentInstance<ComponentPathfinder>(instanceID)) { enabled = c->isActive; header.enabled = &enabled; }
                     break;
+                case CMP_MONSTER_AI:
+                    if (const auto *c = entity.GetComponentInstance<ComponentMonsterAI>(instanceID)) { enabled = c->isActive; header.enabled = &enabled; }
+                    break;
                 default: break;
             }
 
@@ -5254,6 +5414,9 @@ namespace ImGuiDrawFunctions {
                     case CMP_PATHFINDER:
                         if (auto *c = entity.GetComponentInstance<ComponentPathfinder>(instanceID)) c->isActive = enabled;
                         break;
+                    case CMP_MONSTER_AI:
+                        if (auto *c = entity.GetComponentInstance<ComponentMonsterAI>(instanceID)) c->isActive = enabled;
+                        break;
                     default: break;
                 }
             }
@@ -5321,7 +5484,7 @@ namespace ImGuiDrawFunctions {
         {
             ImGui::PushID("add_component_combo");
 
-            std::array<std::string, CMP_NORMAL_COUNT> componentNames{};
+            std::array<std::string, CMP_COUNT> componentNames{};
 
 #define FILL_COMPONENT_NAME(Type, Bit, Storage, LabelKey) \
             componentNames[Bit] = Get(LabelKey);
@@ -5333,8 +5496,8 @@ namespace ImGuiDrawFunctions {
             ImGui::Spacing();
             FieldWidth(-FLT_MIN);
             if (ImGui::BeginCombo("##AddComponent", Get("entity.add_component_placeholder").c_str())) {
-                for (int i = 0; i < CMP_NORMAL_COUNT; i++) {
-                    if (i == CMP_TRANSFORM) continue;
+                for (int i = 0; i < CMP_COUNT; i++) {
+                    if (i == CMP_TRANSFORM || componentNames[i].empty()) continue;
                     if (ImGui::Selectable(componentNames[i].c_str())) AddEditorComponentByType(entity, i);
                 }
                 ImGui::EndCombo();
@@ -6237,11 +6400,161 @@ namespace ImGuiDrawFunctions {
                     Tooltip(Get("editor.tooltip.component.pathfinder.range").c_str());
                     c->range = std::max(c->range, 0.0f);
                 }
+                {
+                    PrefabField prefabField("metadata");
+                    if (c->IsRangedEntity()) {
+                        bool keepMoving = c->KeepsMovingInRange();
+                        if (ImGui::Checkbox(Get("component.pathfinder.keep_moving").c_str(), &keepMoving))
+                            c->SetFlag(ComponentPathfinder::KEEP_MOVING_IN_RANGE, keepMoving);
+                        Tooltip(Get("editor.tooltip.component.pathfinder.keep_moving").c_str());
+                    }
+
+                    bool dropOff = c->CanDropOff();
+                    if (ImGui::Checkbox(Get("component.pathfinder.can_drop_off").c_str(), &dropOff))
+                        c->SetFlag(ComponentPathfinder::CAN_DROP_OFF, dropOff);
+                    Tooltip(Get("editor.tooltip.component.pathfinder.can_drop_off").c_str());
+
+                    bool doors = c->OpensDoors();
+                    if (ImGui::Checkbox(Get("component.pathfinder.opens_doors").c_str(), &doors))
+                        c->SetFlag(ComponentPathfinder::OPENS_DOORS, doors);
+                    Tooltip(Get("editor.tooltip.component.pathfinder.opens_doors").c_str());
+                }
+                EndSection();
+
+                BeginSection(Get("component.pathfinder.facing_section").c_str());
+                {
+                    PrefabField prefabField("facing");
+                    const std::string labels[] = {
+                        Get("component.pathfinder.facing.move_direction"), Get("component.pathfinder.facing.target"), Get("component.pathfinder.facing.none")
+                    };
+                    const int value = static_cast<int>(c->facing);
+                    FieldWidth(160.0f);
+                    if (ImGui::BeginCombo(Get("component.pathfinder.facing").c_str(), labels[value].c_str())) {
+                        for (int i = 0; i < 3; ++i)
+                            if (ImGui::Selectable(labels[i].c_str(), value == i)) c->facing = static_cast<PathfinderFacing>(i);
+                        ImGui::EndCombo();
+                    }
+                    Tooltip(Get("editor.tooltip.component.pathfinder.facing").c_str());
+                }
+                if (c->facing == PathfinderFacing::MOVE_DIRECTION) {
+                    PrefabField prefabField("turning");
+                    const std::string labels[] = {Get("component.pathfinder.turning.steps_45"), Get("component.pathfinder.turning.snap")};
+                    const int value = static_cast<int>(c->turning);
+                    FieldWidth(160.0f);
+                    if (ImGui::BeginCombo(Get("component.pathfinder.turning").c_str(), labels[value].c_str())) {
+                        for (int i = 0; i < 2; ++i)
+                            if (ImGui::Selectable(labels[i].c_str(), value == i)) c->turning = static_cast<PathfinderTurning>(i);
+                        ImGui::EndCombo();
+                    }
+                    Tooltip(Get("editor.tooltip.component.pathfinder.turning").c_str());
+                }
+                EndSection();
+
+                BeginSection(Get("component.pathfinder.doom_numbers").c_str());
+                {
+                    const auto number = [&](const char *field, const char *labelKey, const char *tooltipKey, float *value) {
+                        PrefabField prefabField(field);
+                        FieldWidth(160.0f);
+                        InputOrDrag(Get(labelKey).c_str(), value, draggable);
+                        Tooltip(Get(tooltipKey).c_str());
+                        *value = std::max(*value, 0.0f);
+                    };
+
+                    number("chaseStep", "component.pathfinder.chase_step", "editor.tooltip.component.pathfinder.chase_step", &c->chaseStep);
+                    number("holdMinSteps", "component.pathfinder.hold_min", "editor.tooltip.component.pathfinder.hold_min", &c->holdMinSteps);
+                    number("holdMaxSteps", "component.pathfinder.hold_max", "editor.tooltip.component.pathfinder.hold_max", &c->holdMaxSteps);
+                    number("deadzone", "component.pathfinder.deadzone", "editor.tooltip.component.pathfinder.deadzone", &c->deadzone);
+                    number("swapChance", "component.pathfinder.swap_chance", "editor.tooltip.component.pathfinder.swap_chance", &c->swapChance);
+                    if (c->IsAirEntity()) {
+                        number("floatSpeed", "component.pathfinder.float_speed", "editor.tooltip.component.pathfinder.float_speed", &c->floatSpeed);
+                        number("floatRatio", "component.pathfinder.float_ratio", "editor.tooltip.component.pathfinder.float_ratio", &c->floatRatio);
+                    }
+                    number("pushFriction", "component.pathfinder.push_friction", "editor.tooltip.component.pathfinder.push_friction", &c->pushFriction);
+                    c->pushFriction = std::min(c->pushFriction, 1.0f);
+                    number("stuckTime", "component.pathfinder.stuck_time", "editor.tooltip.component.pathfinder.stuck_time", &c->stuckTime);
+                }
                 EndSection();
 
                 if (!entity.HasComponent<ComponentRigidbody>())
                     ImGui::TextWrapped("%s", Get("component.pathfinder.no_rigidbody").c_str());
             } else { ImGui::TextDisabled("Pathfinder component missing"); }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Monster AI
+        // ════════════════════════════════════════════════════════════════════
+        else if (componentType == CMP_MONSTER_AI) {
+            auto *c = entity.GetComponentInstance<ComponentMonsterAI>(instanceID);
+            if (c) {
+                if (entity.GetComponent<ComponentMonsterAI>() != c)
+                    ImGui::TextWrapped("%s", Get("component.monster_ai.not_first").c_str());
+
+                const auto number = [&](const char *field, const char *labelKey, const char *tooltipKey, float *value) {
+                    PrefabField prefabField(field);
+                    FieldWidth(160.0f);
+                    InputOrDrag(Get(labelKey).c_str(), value, draggable);
+                    Tooltip(Get(tooltipKey).c_str());
+                    *value = std::max(*value, 0.0f);
+                };
+                const auto flag = [&](const char *field, const char *labelKey, const char *tooltipKey, bool *value) {
+                    PrefabField prefabField(field);
+                    ImGui::Checkbox(Get(labelKey).c_str(), value);
+                    Tooltip(Get(tooltipKey).c_str());
+                };
+
+                BeginSection(Get("component.monster_ai.senses").c_str());
+                {
+                    PrefabField prefabField("targetTags");
+                    ImGui::TextUnformatted(Get("component.monster_ai.target_tags").c_str());
+                    Tooltip(Get("editor.tooltip.component.monster_ai.target_tags").c_str());
+                    ImGui::PushID("MonsterTargetTags");
+                    DrawTagsEditor(c->targetTags);
+                    ImGui::PopID();
+                }
+                number("sightFov", "component.monster_ai.sight_fov", "editor.tooltip.component.monster_ai.sight_fov", &c->sightFov);
+                number("sightRange", "component.monster_ai.sight_range", "editor.tooltip.component.monster_ai.sight_range", &c->sightRange);
+                number("nearRange", "component.monster_ai.near_range", "editor.tooltip.component.monster_ai.near_range", &c->nearRange);
+                number("lookInterval", "component.monster_ai.look_interval", "editor.tooltip.component.monster_ai.look_interval", &c->lookInterval);
+                flag("hearing", "component.monster_ai.hearing", "editor.tooltip.component.monster_ai.hearing", &c->hearing);
+                flag("ambush", "component.monster_ai.ambush", "editor.tooltip.component.monster_ai.ambush", &c->ambush);
+                flag("startAwake", "component.monster_ai.start_awake", "editor.tooltip.component.monster_ai.start_awake", &c->startAwake);
+                EndSection();
+
+                BeginSection(Get("component.monster_ai.attacks").c_str());
+                flag("hasMelee", "component.monster_ai.has_melee", "editor.tooltip.component.monster_ai.has_melee", &c->hasMelee);
+                if (c->hasMelee) number("meleeRange", "component.monster_ai.melee_range", "editor.tooltip.component.monster_ai.melee_range", &c->meleeRange);
+                flag("hasMissile", "component.monster_ai.has_missile", "editor.tooltip.component.monster_ai.has_missile", &c->hasMissile);
+                if (c->hasMissile) {
+                    number("reactionTime", "component.monster_ai.reaction_time", "editor.tooltip.component.monster_ai.reaction_time", &c->reactionTime);
+                    number("missileMinRange", "component.monster_ai.missile_min_range", "editor.tooltip.component.monster_ai.missile_min_range", &c->missileMinRange);
+                    number("missileMaxRange", "component.monster_ai.missile_max_range", "editor.tooltip.component.monster_ai.missile_max_range", &c->missileMaxRange);
+                    number("missileDistanceOffset", "component.monster_ai.missile_distance_offset", "editor.tooltip.component.monster_ai.missile_distance_offset", &c->missileDistanceOffset);
+                    number("missileDistanceScale", "component.monster_ai.missile_distance_scale", "editor.tooltip.component.monster_ai.missile_distance_scale", &c->missileDistanceScale);
+                    number("missileDistanceCap", "component.monster_ai.missile_distance_cap", "editor.tooltip.component.monster_ai.missile_distance_cap", &c->missileDistanceCap);
+                }
+                number("attackPause", "component.monster_ai.attack_pause", "editor.tooltip.component.monster_ai.attack_pause", &c->attackPause);
+                number("chaseStep", "component.monster_ai.chase_step", "editor.tooltip.component.monster_ai.chase_step", &c->chaseStep);
+                flag("aggressive", "component.monster_ai.aggressive", "editor.tooltip.component.monster_ai.aggressive", &c->aggressive);
+                flag("faceTargetOnAttack", "component.monster_ai.face_target", "editor.tooltip.component.monster_ai.face_target", &c->faceTargetOnAttack);
+                EndSection();
+
+                BeginSection(Get("component.monster_ai.pain").c_str());
+                number("painChance", "component.monster_ai.pain_chance", "editor.tooltip.component.monster_ai.pain_chance", &c->painChance);
+                number("painPause", "component.monster_ai.pain_pause", "editor.tooltip.component.monster_ai.pain_pause", &c->painPause);
+                flag("infights", "component.monster_ai.infights", "editor.tooltip.component.monster_ai.infights", &c->infights);
+                if (c->infights) number("targetLockTime", "component.monster_ai.target_lock_time", "editor.tooltip.component.monster_ai.target_lock_time", &c->targetLockTime);
+                EndSection();
+
+                BeginSection(Get("component.monster_ai.other").c_str());
+                number("activeChance", "component.monster_ai.active_chance", "editor.tooltip.component.monster_ai.active_chance", &c->activeChance);
+                flag("drivePathfinder", "component.monster_ai.drive_pathfinder", "editor.tooltip.component.monster_ai.drive_pathfinder", &c->drivePathfinder);
+                EndSection();
+
+                if (c->drivePathfinder && !entity.HasComponent<ComponentPathfinder>())
+                    ImGui::TextWrapped("%s", Get("component.monster_ai.no_pathfinder").c_str());
+                if (!c->hasMelee && !c->hasMissile)
+                    ImGui::TextWrapped("%s", Get("component.monster_ai.no_attacks").c_str());
+            } else { ImGui::TextDisabled("Monster AI component missing"); }
         }
     }
 

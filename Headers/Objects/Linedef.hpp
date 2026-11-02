@@ -27,6 +27,10 @@ struct Linedef {
     // A disabled linedef fires no events and typed rays pass it by.
     bool enabled = true;
 
+    // While enabled, Pathfinders won't step across it (Doom's block-monsters
+    // line). Everything else still can.
+    bool blocksPathfinders = false;
+
     std::vector<Event> events;
     std::vector<Dispatch> dispatches;
 

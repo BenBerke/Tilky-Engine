@@ -47,6 +47,8 @@ namespace {
             Prop("middleAnchor", "WallAnchor"),
             Prop("middleHasCollision", "boolean"),
             Prop("middleIgnoredByRaycast", "boolean"),
+            Prop("blocksPathfinders", "boolean", false, "Pathfinders won't step across this wall (Doom's block-monsters line)."),
+            Prop("blocksSound", "boolean", false, "A Noise Alert crosses one of these walls and stops at the second (Doom's sound-block line)."),
             Prop("tagCount", "integer", true),
         };
 
@@ -204,6 +206,16 @@ void LuaScriptSystem::RegisterWallBindings(sol::state& lua) {
         "middleAnchor", sol::property(
             &ScriptWall::GetMiddleAnchor,
             &ScriptWall::SetMiddleAnchor
+        ),
+
+        "blocksPathfinders", sol::property(
+            &ScriptWall::GetBlocksPathfinders,
+            &ScriptWall::SetBlocksPathfinders
+        ),
+
+        "blocksSound", sol::property(
+            &ScriptWall::GetBlocksSound,
+            &ScriptWall::SetBlocksSound
         ),
 
         "middleHasCollision", sol::property(

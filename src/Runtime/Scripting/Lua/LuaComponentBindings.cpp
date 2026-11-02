@@ -105,7 +105,24 @@ namespace {
             Prop("speed", "number", false, "World units per second, slowed and paused by the time scale."),
             Prop("range", "number", false, "How close a ranged entity gets before it stops."),
             Prop("isAirEntity", "boolean", false, "Flies: ignores step height and drop-offs, and rises or sinks toward the destination's height."),
-            Prop("isRangedEntity", "boolean", false, "Stops once the destination is within range instead of walking right up to it."),
+            Prop("isRangedEntity", "boolean", false, "Arrives once the destination is within range. See keepMovingInRange."),
+            Prop("keepMovingInRange", "boolean", false, "Ranged entities: keeps walking toward it once in range, as Doom's monsters do. False stops in range."),
+            Prop("canDropOff", "boolean", false, "Walks off ledges higher than its step size instead of refusing to."),
+            Prop("opensDoors", "boolean", false, "A closed door in the way gets opened: the sector's Door dispatch, unless locked without the tag or Pathfinders Can Open is off."),
+            Prop("facing", "PathfinderFacing", false, "What it turns to face."),
+            Prop("turning", "PathfinderTurning", false, "How it turns to face where it walks."),
+            Prop("chaseStep", "number", false, "Seconds per chase step (Doom: 3/35): how often it turns, and what the direction holds count."),
+            Prop("holdMinSteps", "number", false, "Chase steps it holds a direction at least (Doom: 1)."),
+            Prop("holdMaxSteps", "number", false, "Chase steps it holds a direction at most (Doom: 16)."),
+            Prop("deadzone", "number", false, "This close on an axis counts as there (Doom: 10). Also the reach for arriving."),
+            Prop("swapChance", "number", false, "Percent chance to try the shorter axis first (Doom: about 21.5)."),
+            Prop("floatSpeed", "number", false, "Air only: units per second up and down (Doom: 140)."),
+            Prop("floatRatio", "number", false, "Air only: changes height once the height difference times this is more than the distance (Doom: 3). 0 = always."),
+            Prop("pushFriction", "number", false, "How much of a push's speed is left per tic, 1/35 of a second (Doom: 0.90625)."),
+            Prop("stuckTime", "number", false, "Seconds without progress before it counts as stuck. 0 = never."),
+            Prop("isMoving", "boolean", true, "True while it is walking."),
+            Prop("isStuck", "boolean", true, "True once it has made no progress for stuckTime."),
+            Prop("moveDirection", "Vector3", true, "The way it is walking, one of 8 compass directions, or zero when it isn't."),
         }, {
             Method("SetDestination", {Param("position", "Vector3")}, {},
                    "Walks to this world position (switches input to Position)."),
@@ -113,6 +130,61 @@ namespace {
                    "Follows this entity, keeping up as it moves (switches input to Entity). offset is added to its position on the world axes; left out, the current offset is kept."),
             Method("Stop", {}, {}, "Stops moving: isActive = false."),
             Method("Resume", {}, {}, "Starts moving again: isActive = true."),
+            Method("Pause", {Param("seconds", "number")}, {}, "Holds still for this long, keeping an air entity's height and any push, then carries on. 0 carries on now."),
+            Method("PickNewDirection", {}, {}, "Chooses a direction again at its next update."),
+        }));
+
+        RegisterType(Type("PathfinderFacing", "Enum: MoveDirection, Target or None - see Pathfinder.facing.", {
+            Prop("MoveDirection", "integer", true),
+            Prop("Target", "integer", true),
+            Prop("None", "integer", true),
+        }));
+
+        RegisterType(Type("PathfinderTurning", "Enum: Steps45 or Snap - see Pathfinder.turning.", {
+            Prop("Steps45", "integer", true),
+            Prop("Snap", "integer", true),
+        }));
+
+        RegisterType(Type("MonsterAIState", "Enum: Idle or Chasing - see MonsterAI.state.", {
+            Prop("Idle", "integer", true),
+            Prop("Chasing", "integer", true),
+        }));
+
+        RegisterType(Type("MonsterAI", "A Doom monster's brain: notices targets by sight and sound, decides when to attack and who to fight. It never attacks: OnMeleeReady, OnMissileReady and the events of the same name are where the attack goes.", {
+            Prop("isValid", "boolean", true),
+            Prop("isActive", "boolean", false, "False stops it thinking."),
+            Prop("state", "MonsterAIState", true, "Idle (looking and listening) or Chasing."),
+            Prop("target", "Entity?", true, "Who it is chasing. nil while idle."),
+            Prop("canSeeTarget", "boolean", true, "True when it could see its target now: range, field of view and line of sight."),
+            Prop("sightFov", "number", false, "Field of view in degrees (Doom: 180)."),
+            Prop("sightRange", "number", false, "How far it sees. 0 = no limit."),
+            Prop("nearRange", "number", false, "Sees all around within this (Doom: 64)."),
+            Prop("lookInterval", "number", false, "Seconds between looks while idle (Doom: 10/35)."),
+            Prop("chaseStep", "number", false, "Seconds per decision while chasing (Doom: 3/35)."),
+            Prop("reactionTime", "number", false, "Seconds chasing before its first missile (Doom: 24/35)."),
+            Prop("meleeRange", "number", false, "Melee reach, plus the target's radius (Doom: 44)."),
+            Prop("missileMinRange", "number", false, "No missile closer than this. 0 = no limit."),
+            Prop("missileMaxRange", "number", false, "No missile further than this. 0 = no limit."),
+            Prop("missileDistanceOffset", "number", false, "Taken off the distance before the missile roll (Doom: 64). 128 more without a melee attack."),
+            Prop("missileDistanceScale", "number", false, "Then multiplied: lower fires more (Doom: 1, the Cyberdemon's 0.5)."),
+            Prop("missileDistanceCap", "number", false, "At most this many of 256 rolls fail (Doom: 200)."),
+            Prop("attackPause", "number", false, "Seconds it stands still after deciding to attack."),
+            Prop("painChance", "number", false, "Percent chance Hurt causes pain (the Imp's 78.4)."),
+            Prop("painPause", "number", false, "Seconds it stands still in pain."),
+            Prop("targetLockTime", "number", false, "Seconds a new attacker can't turn it (Doom's threshold: 300/35)."),
+            Prop("activeChance", "number", false, "Percent chance per chase step of OnActive (Doom: about 1.17)."),
+            Prop("hasMelee", "boolean"),
+            Prop("hasMissile", "boolean"),
+            Prop("hearing", "boolean", false, "Wakes on a Noise Alert."),
+            Prop("ambush", "boolean", false, "A noise only wakes it with the target in sight (Doom's Ambush flag)."),
+            Prop("aggressive", "boolean", false, "Attacks while walking, with no gap between attacks (Doom's -fast)."),
+            Prop("infights", "boolean", false, "Hurt turns it on its attacker."),
+            Prop("drivePathfinder", "boolean", false, "Sends this entity's Pathfinder after the target and holds it while idle."),
+            Prop("faceTargetOnAttack", "boolean", false, "Turns to the target when it attacks."),
+        }, {
+            Method("Wake", {Param("target", "Entity")}, {}, "Starts chasing target, or switches to it if already chasing."),
+            Method("Sleep", {}, {}, "Back to idle, target forgotten."),
+            Method("Hurt", {Param("attacker", "Entity?")}, {}, "Tell it it took damage: rolls painChance for OnPain, and turns it on attacker unless locked on another target. The AI keeps no health: that's yours."),
         }));
 
         RegisterType(Type("Collider", "Sphere, capsule or box collision volume. It is the body for every physics contact.", {
@@ -277,6 +349,16 @@ void LuaScriptSystem::RegisterComponentBindings(sol::state& lua) {
     lua.new_enum("PathfinderInput",
                  "Position", static_cast<int>(PathfinderInput::POSITION),
                  "Entity", static_cast<int>(PathfinderInput::ENTITY));
+    lua.new_enum("PathfinderFacing",
+                 "MoveDirection", static_cast<int>(PathfinderFacing::MOVE_DIRECTION),
+                 "Target", static_cast<int>(PathfinderFacing::TARGET),
+                 "None", static_cast<int>(PathfinderFacing::NONE));
+    lua.new_enum("PathfinderTurning",
+                 "Steps45", static_cast<int>(PathfinderTurning::STEPS_45),
+                 "Snap", static_cast<int>(PathfinderTurning::SNAP));
+    lua.new_enum("MonsterAIState",
+                 "Idle", static_cast<int>(MonsterAIState::IDLE),
+                 "Chasing", static_cast<int>(MonsterAIState::CHASING));
 
     lua.new_usertype<ScriptAudioSource>(
         "AudioSource",

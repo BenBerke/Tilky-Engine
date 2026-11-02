@@ -124,6 +124,48 @@ namespace EventSystem {
     // Fires the entity's Entity Destroyed events. Call before it is removed.
     void FireEntityDestroyed(Level& level, ID entityID);
 
+    // Pathfinder Arrived events of `entityID`. `targetID` is the entity it
+    // followed there (the instigator), INVALID_ID for a point. From
+    // PathfinderSystem through LevelSystem.
+    void FirePathfinderArrived(Level& level, ID entityID, ID targetID);
+
+    // Pathfinder Blocked / Stuck / Started Moving / Stopped Moving events.
+    void FirePathfinderBlocked(Level& level, ID entityID);
+    void FirePathfinderStuck(Level& level, ID entityID);
+    void FirePathfinderStartedMoving(Level& level, ID entityID);
+    void FirePathfinderStoppedMoving(Level& level, ID entityID);
+
+    // Monster AI events. `otherID` is the instigator: the target (the
+    // attacker for Pain), INVALID_ID if none. From MonsterAISystem through
+    // LevelSystem.
+    void FireMonsterTargetSpotted(Level& level, ID entityID, ID otherID);
+    void FireMonsterTargetLost(Level& level, ID entityID);
+    void FireMonsterMeleeReady(Level& level, ID entityID, ID otherID);
+    void FireMonsterMissileReady(Level& level, ID entityID, ID otherID);
+    void FireMonsterPain(Level& level, ID entityID, ID otherID);
+    void FireMonsterActive(Level& level, ID entityID, ID otherID);
+
+    // What a Pathfinder with Opens Doors should do about a tight sector.
+    enum class WalkerDoor {
+        NONE, // no door it may open: try another way
+        WAIT, // it's on its way open
+        OPEN  // shut: ask for it (OpenDoorForWalker)
+    };
+
+    struct WalkerDoorRequest {
+        ID sectorID;
+        int floorIndex;
+        ID walkerID;
+    };
+
+    // Doom's monsters and doors: only an opening door, one that lets them
+    // (Door::pathfindersCanOpen), never a locked one without its tag. Changes nothing.
+    [[nodiscard]] WalkerDoor CheckDoorForWalker(const Level& level, ID sectorID, int floorIndex, ID walkerID);
+
+    // Opens it, running its Door dispatch with the walker as the instigator
+    // (a door heading back shut just reverses). Nothing unless the check still says OPEN.
+    void OpenDoorForWalker(Level& level, const WalkerDoorRequest& request);
+
     // The value of an engine field (EventFields.hpp) of the entity's
     // `componentIndex`-th component of that type, nullopt if there is no such
     // component or field. Changes nothing; the editor starts a Set Field's
