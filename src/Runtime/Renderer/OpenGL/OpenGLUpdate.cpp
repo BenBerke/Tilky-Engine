@@ -4,6 +4,8 @@
 
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
+#include <algorithm>
+
 #include <spdlog/spdlog.h>
 
 #ifndef TILKY_STANDALONE
@@ -344,6 +346,13 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         );
 
         glUniform1i(fullbrightUniform, fullbright ? 1 : 0);
+
+        // The fade needs End above Start, whatever the sliders say mid-drag.
+        const RendererSettings& renderer = level.rendererSettings;
+        glUniform1f(distanceLightStartUniform, renderer.distanceLightStart);
+        glUniform1f(distanceLightEndUniform, std::max(renderer.distanceLightEnd, renderer.distanceLightStart + 1.0f));
+        glUniform1f(distanceLightDarkestUniform, renderer.distanceLightDarkest);
+
         glUniform2f(viewportSizeUniform, static_cast<float>(screenWidth), static_cast<float>(screenHeight));
     }
 

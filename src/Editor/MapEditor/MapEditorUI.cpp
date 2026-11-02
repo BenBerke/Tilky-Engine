@@ -1391,6 +1391,30 @@ namespace {
             HoverTooltip(tooltip.c_str());
         }
 
+        {
+            const std::string tooltip = Get("settings.rendering.tooltip.distance_light_start");
+            SettingRow(Get("settings.rendering.distance_light_start"), tooltip.c_str());
+            if (ImGui::DragFloat("##DistanceLightStart", &level.rendererSettings.distanceLightStart, 1.0f, 0.0f, 100000.0f, "%.0f"))
+                hasUnsavedChanges = true;
+            HoverTooltip(tooltip.c_str());
+        }
+
+        {
+            const std::string tooltip = Get("settings.rendering.tooltip.distance_light_end");
+            SettingRow(Get("settings.rendering.distance_light_end"), tooltip.c_str());
+            if (ImGui::DragFloat("##DistanceLightEnd", &level.rendererSettings.distanceLightEnd, 1.0f, 0.0f, 100000.0f, "%.0f"))
+                hasUnsavedChanges = true;
+            HoverTooltip(tooltip.c_str());
+        }
+
+        {
+            const std::string tooltip = Get("settings.rendering.tooltip.distance_light_darkest");
+            SettingRow(Get("settings.rendering.distance_light_darkest"), tooltip.c_str());
+            if (ImGui::SliderFloat("##DistanceLightDarkest", &level.rendererSettings.distanceLightDarkest, 0.0f, 1.0f, "%.2f"))
+                hasUnsavedChanges = true;
+            HoverTooltip(tooltip.c_str());
+        }
+
         EndSettingsTable();
     }
 

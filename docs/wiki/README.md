@@ -4,6 +4,8 @@ Reference pages for everything you can place in a level and everything a Lua scr
 
 ## Start here
 
+- [Make a Doom-Style Game](guide/README.md) is a beginner's guide, with no programming. It goes from
+  creating a project in the launcher to a level with doors and lifts, and on to exporting a game.
 - [Getting Started with Scripting](GettingStarted.md) walks you from an empty project to a working
   script, step by step.
 - [Callback Functions](CallbackFunctions.md) lists every function the engine calls on your

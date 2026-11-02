@@ -397,6 +397,9 @@ bool OpenGL::CreateMap() {
     // Not fatal when missing: the driver drops uniforms a shader never reads.
     cameraWorldPosUniform = glGetUniformLocation(projectionShader->ID, "uCameraWorldPos");
     fullbrightUniform = glGetUniformLocation(projectionShader->ID, "uFullbright");
+    distanceLightStartUniform = glGetUniformLocation(projectionShader->ID, "uDistanceLightStart");
+    distanceLightEndUniform = glGetUniformLocation(projectionShader->ID, "uDistanceLightEnd");
+    distanceLightDarkestUniform = glGetUniformLocation(projectionShader->ID, "uDistanceLightDarkest");
     viewportSizeUniform = glGetUniformLocation(projectionShader->ID, "uViewportSize");
     modelInstanceOffsetUniform = glGetUniformLocation(projectionShader->ID, "uModelInstanceOffset");
     flatInstanceOffsetUniform = glGetUniformLocation(projectionShader->ID, "uFlatInstanceOffset");

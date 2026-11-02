@@ -431,6 +431,9 @@ private:
     GLint modelTextureUniform = -1;
     GLint cameraWorldPosUniform = -1;
     GLint fullbrightUniform = -1;
+    GLint distanceLightStartUniform = -1;
+    GLint distanceLightEndUniform = -1;
+    GLint distanceLightDarkestUniform = -1;
     GLint viewportSizeUniform = -1;
 
     std::vector<GpuWall> gpuWalls;

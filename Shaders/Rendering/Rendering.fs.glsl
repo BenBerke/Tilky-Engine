@@ -45,10 +45,10 @@ uniform int renderMode;
 uniform vec3 uCameraWorldPos;
 uniform int uFullbright; // runtime editor: no distance light or wall AO
 
-// Shader-only lighting controls. Values are in world units.
-const float DISTANCE_LIGHT_START = 256.0;
-const float DISTANCE_LIGHT_END = 1536.0;
-const float DISTANCE_MIN_LIGHT = 0.18;
+// World Settings > Rendering. Start and End are in world units, End is above Start.
+uniform float uDistanceLightStart;
+uniform float uDistanceLightEnd;
+uniform float uDistanceLightDarkest;
 
 // Fixed directional shading so a model's shape reads. The level has no light
 // sources; sector light and distance light still apply on top of this.
@@ -108,9 +108,9 @@ vec4 SampleTexture(int textureIndex, vec2 uv, bool repeatUV) {
 
 float GetDistanceLight() {
     float cameraDistance = length(vWorldPos - uCameraWorldPos);
-    float fade = smoothstep(DISTANCE_LIGHT_START, DISTANCE_LIGHT_END, cameraDistance);
+    float fade = smoothstep(uDistanceLightStart, uDistanceLightEnd, cameraDistance);
 
-    return mix(1.0, DISTANCE_MIN_LIGHT, fade);
+    return mix(1.0, uDistanceLightDarkest, fade);
 }
 
 float GetModelShade() {

@@ -1,0 +1,15 @@
+{
+    "assetsFolder": "Assets",
+    "engineVersion": "",
+    "levels": [
+        "Main Menu",
+        "Level 1 - Outpost",
+        "Level 2 - Keys",
+        "Level 3 - Courtyard",
+        "Level 4 - The Tripod",
+        "Blank Base Level",
+        "Prefab Gallery"
+    ],
+    "name": "Classic FPS Kit",
+    "uiReferenceHeight": 1080.0
+}

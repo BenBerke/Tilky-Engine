@@ -658,6 +658,12 @@ namespace {
                 0.0f,
                 MAX_WALL_CONTRAST
             );
+            rendererSettings.distanceLightStart = std::max(
+                rendererSettingsJson.value("distanceLightStart", RendererSettings{}.distanceLightStart), 0.0f);
+            rendererSettings.distanceLightEnd = std::max(
+                rendererSettingsJson.value("distanceLightEnd", RendererSettings{}.distanceLightEnd), 0.0f);
+            rendererSettings.distanceLightDarkest = std::clamp(
+                rendererSettingsJson.value("distanceLightDarkest", RendererSettings{}.distanceLightDarkest), 0.0f, 1.0f);
         }
 
         if (levelStatsJson.contains("sky") && levelStatsJson["sky"].is_object()) LoadSky(levelStatsJson["sky"], level.sky);
@@ -694,7 +700,10 @@ namespace {
             {
                 "rendererSettings", {
                     {"textureSetting", rendererSettings.textureSetting},
-                    {"wallContrast", rendererSettings.wallContrast}
+                    {"wallContrast", rendererSettings.wallContrast},
+                    {"distanceLightStart", rendererSettings.distanceLightStart},
+                    {"distanceLightEnd", rendererSettings.distanceLightEnd},
+                    {"distanceLightDarkest", rendererSettings.distanceLightDarkest}
                 }
             },
             {"sky", SaveSky(level.sky)}
@@ -2480,7 +2489,8 @@ namespace {
                     sectorFloor.floor = loadSurface(floorJson.at("floor"), 0.0f);
                     sectorFloor.ceiling = loadSurface(floorJson.at("ceiling"), 40.0f);
 
-                    if (sectorFloor.floor.height >= sectorFloor.ceiling.height) {
+                    // Equal heights are valid: that's a shut door.
+                    if (sectorFloor.floor.height > sectorFloor.ceiling.height) {
                         spdlog::warn(
                             "LoadSectors: sector {} floor {} has invalid "
                             "heights [{}, {}] - skipping",

@@ -1,0 +1,277 @@
+{
+    "eventTags": [
+        13,
+        14,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29
+    ],
+    "eventVariables": [
+        {
+            "id": 2147483692,
+            "name": "TallySkip",
+            "value": 0.0
+        },
+        {
+            "id": 2147483691,
+            "name": "TallyDone",
+            "value": 0.0
+        },
+        {
+            "id": 2147483690,
+            "name": "TallySeconds",
+            "value": 0.0
+        },
+        {
+            "id": 2147483689,
+            "name": "TallyMinutes",
+            "value": 0.0
+        },
+        {
+            "id": 2147483688,
+            "name": "TallySecrets",
+            "value": 0.0
+        },
+        {
+            "id": 2147483687,
+            "name": "TallyItems",
+            "value": 0.0
+        },
+        {
+            "id": 2147483686,
+            "name": "TallyKills",
+            "value": 0.0
+        },
+        {
+            "id": 2147483685,
+            "name": "MenuState",
+            "value": 0.0
+        },
+        {
+            "id": 2147483684,
+            "name": "IncomingDamage",
+            "value": 0.0
+        },
+        {
+            "id": 2147483683,
+            "name": "CurrentAmmo",
+            "value": 0.0
+        },
+        {
+            "id": 2147483682,
+            "name": "Time",
+            "value": 0.0
+        },
+        {
+            "id": 2147483681,
+            "name": "TotalSecrets",
+            "value": 0.0
+        },
+        {
+            "id": 2147483680,
+            "name": "Secrets",
+            "value": 0.0
+        },
+        {
+            "id": 2147483679,
+            "name": "TotalItems",
+            "value": 0.0
+        },
+        {
+            "id": 2147483678,
+            "name": "Items",
+            "value": 0.0
+        },
+        {
+            "id": 2147483661,
+            "name": "HasFist",
+            "value": 1.0
+        },
+        {
+            "id": 2147483660,
+            "name": "HasBackpack",
+            "value": 0.0
+        },
+        {
+            "id": 2147483659,
+            "name": "MaxCells",
+            "value": 300.0
+        },
+        {
+            "id": 2147483658,
+            "name": "MaxRockets",
+            "value": 50.0
+        },
+        {
+            "id": 2147483657,
+            "name": "MaxShells",
+            "value": 50.0
+        },
+        {
+            "id": 2147483656,
+            "name": "MaxBullets",
+            "value": 200.0
+        },
+        {
+            "id": 2147483655,
+            "name": "Cells",
+            "value": 0.0
+        },
+        {
+            "id": 2147483654,
+            "name": "Rockets",
+            "value": 0.0
+        },
+        {
+            "id": 2147483653,
+            "name": "Shells",
+            "value": 0.0
+        },
+        {
+            "id": 2147483652,
+            "name": "Bullets",
+            "value": 50.0
+        },
+        {
+            "id": 2147483651,
+            "name": "ArmorType",
+            "value": 0.0
+        },
+        {
+            "id": 2147483650,
+            "name": "Armor",
+            "value": 0.0
+        },
+        {
+            "id": 2147483649,
+            "name": "Health",
+            "value": 100.0
+        },
+        {
+            "id": 2147483662,
+            "name": "HasPistol",
+            "value": 1.0
+        },
+        {
+            "id": 2147483663,
+            "name": "HasChainsaw",
+            "value": 0.0
+        },
+        {
+            "id": 2147483664,
+            "name": "HasShotgun",
+            "value": 0.0
+        },
+        {
+            "id": 2147483665,
+            "name": "HasSuperShotgun",
+            "value": 0.0
+        },
+        {
+            "id": 2147483666,
+            "name": "HasMinigun",
+            "value": 0.0
+        },
+        {
+            "id": 2147483667,
+            "name": "HasRocketLauncher",
+            "value": 0.0
+        },
+        {
+            "id": 2147483668,
+            "name": "HasPlasmaRifle",
+            "value": 0.0
+        },
+        {
+            "id": 2147483669,
+            "name": "HasSKAG",
+            "value": 0.0
+        },
+        {
+            "id": 2147483670,
+            "name": "HasRedKey",
+            "value": 0.0
+        },
+        {
+            "id": 2147483671,
+            "name": "HasBlueKey",
+            "value": 0.0
+        },
+        {
+            "id": 2147483672,
+            "name": "HasYellowKey",
+            "value": 0.0
+        },
+        {
+            "id": 2147483673,
+            "name": "Berserk",
+            "value": 0.0
+        },
+        {
+            "id": 2147483674,
+            "name": "Invulnerable",
+            "value": 0.0
+        },
+        {
+            "id": 2147483675,
+            "name": "RadSuit",
+            "value": 0.0
+        },
+        {
+            "id": 2147483676,
+            "name": "Kills",
+            "value": 0.0
+        },
+        {
+            "id": 2147483677,
+            "name": "TotalKills",
+            "value": 0.0
+        }
+    ],
+    "formatVersion": 1,
+    "nextEventVariableId": 45,
+    "nextTagId": 30,
+    "tagToId": {
+        "Bleeds": 3,
+        "BlueKey": 5,
+        "Boss Dead": 29,
+        "Death Screen": 9,
+        "Door Arena Door": 28,
+        "Door Blue Door": 21,
+        "Door Building Door": 24,
+        "Door Door 1": 16,
+        "Door Door 2": 17,
+        "Door Exit Door": 22,
+        "Door Red Door": 20,
+        "Door Secret Door": 23,
+        "Door West Door": 19,
+        "Door Yellow Door": 25,
+        "Enemy": 1,
+        "HUD": 7,
+        "Intermission": 10,
+        "Level List": 12,
+        "Lift Courtyard Lift": 26,
+        "Lift Lift": 18,
+        "Main Items": 15,
+        "Pause Menu": 8,
+        "Pickup": 2,
+        "Player": 0,
+        "RedKey": 4,
+        "Switch 1": 13,
+        "Trap": 27,
+        "Trigger 1": 14,
+        "Victory": 11,
+        "YellowKey": 6
+    }
+}

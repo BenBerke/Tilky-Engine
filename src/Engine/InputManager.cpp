@@ -388,6 +388,10 @@ namespace InputManager {
 
             mouseState = SDL_GetRelativeMouseState(&dx, &dy);
 
+            // A button let go just as the mouse is locked can stay held in SDL's
+            // state, so the game would keep seeing it down. Ask the system too.
+            mouseState &= SDL_GetGlobalMouseState(nullptr, nullptr);
+
             mouseDelta = {dx, dy};
         }
         else {

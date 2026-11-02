@@ -152,6 +152,12 @@ struct RendererSettings {
     // are lit this much brighter than their sector, walls along X this much
     // darker, and angled walls blend smoothly in between. 0 turns it off.
     float wallContrast = 16.0f;
+
+    // Surfaces darken with distance from the camera. Full light up to Start,
+    // fading to Darkest (a multiplier, 1 turns the fade off) at End. World units.
+    float distanceLightStart = 256.0f;
+    float distanceLightEnd = 1536.0f;
+    float distanceLightDarkest = 0.18f;
 };
 
 constexpr float MAX_WALL_CONTRAST = 64.0f;

@@ -13,9 +13,9 @@ namespace fs = std::filesystem;
 // Each engine version carries the templates made for it in
 // <engine>/LauncherAssets/Templates, three files per template sharing one id:
 //
-//   fps-starter.zip   project.tilky + Assets/ at the ZIP root
-//   fps-starter.json  { "name": "FPS Starter", "description": "..." }
-//   fps-starter.png   optional thumbnail
+//   fps-kit.zip   project.tilky + Assets/ at the ZIP root
+//   fps-kit.json  { "name": "Classic FPS Kit", "description": "..." }
+//   fps-kit.png   optional thumbnail
 //
 // The ZIPs are built from the editable folders under Templates/ in the
 // repository (see the "Project templates" section of CMakeLists.txt).
@@ -23,7 +23,7 @@ namespace fs = std::filesystem;
 // because save formats change between versions.
 namespace ProjectTemplates {
     struct TemplateInfo {
-        std::string id;          // file stem, e.g. "fps-starter"
+        std::string id;          // file stem, e.g. "fps-kit"
         std::string name;        // shown in the launcher; the id if the .json doesn't say
         std::string description;
         fs::path zipFile;

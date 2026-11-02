@@ -585,6 +585,10 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
 
             place(newID);
             LuaScriptRuntime::QueueEntityScriptsStart(newID);
+
+            // So its own dispatches can be reached, as with a Spawn Prefab dispatch.
+            EventSystem::CreateRegistry(level);
+
             return sol::make_object(state, ScriptEntity{&level, newID});
         }
 

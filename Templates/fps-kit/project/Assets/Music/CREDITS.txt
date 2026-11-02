@@ -1,0 +1,32 @@
+Music in this project. Every track is CC0 (public domain dedication): you can use, change and sell
+it with no credit required, though crediting the composers is a kind thing to do.
+
+Post Apocalyptic Wastelands
+  By: Juhani Junkala (SubspaceAudio)
+  From: https://opengameart.org/content/horror-atmosphere
+  Licence: CC0
+  Used in: Main Menu
+
+Rocky Musicloop
+  By: johndekale
+  From: https://opengameart.org/content/rocky-musicloop
+  Licence: CC0
+  Used in: Level 1, Blank Base Level
+
+Heavy Battle 2
+  By: MintoDog
+  From: https://opengameart.org/node/183145
+  Licence: CC0
+  Used in: Level 2
+
+Swordfight III
+  By: Kistol
+  From: https://opengameart.org/content/swordfight-iii
+  Licence: CC0
+  Used in: Level 3
+
+Boss Battle 10
+  By: nene
+  From: https://opengameart.org/content/boss-battle-10-metal
+  Licence: CC0
+  Used in: Level 4
