@@ -36,7 +36,7 @@ namespace {
     std::string currentLastOpenLevelName;
     float currentUIReferenceHeight = ProjectManager::DEFAULT_UI_REFERENCE_HEIGHT;
     float currentTexelsPerUnit = ProjectManager::DEFAULT_TEXELS_PER_UNIT;
-    std::string currentStartLevelName;
+    std::vector<std::string> currentLevelOrder;
 }
 
 namespace ProjectManager {
@@ -281,9 +281,11 @@ namespace ProjectManager {
         // Editor::currentMap use - no path or extension.
         currentLastOpenLevelName = projectData.value("lastOpenLevel", std::string());
 
-        // The level the standalone game opens first. Empty means the first
-        // level file found under Assets.
-        currentStartLevelName = projectData.value("startLevel", std::string());
+        // The order of the game's levels; the first is the one it opens.
+        currentLevelOrder.clear();
+        if (const auto levels = projectData.find("levels"); levels != projectData.end() && levels->is_array())
+            for (const json& level : *levels)
+                if (level.is_string()) currentLevelOrder.push_back(level.get<std::string>());
 
         currentUIReferenceHeight = (std::max)(1.0f, projectData.value("uiReferenceHeight", DEFAULT_UI_REFERENCE_HEIGHT));
 
@@ -536,13 +538,13 @@ namespace ProjectManager {
         return true;
     }
 
-    std::string GetStartLevelName() {
-        return currentStartLevelName;
+    const std::vector<std::string>& GetLevelOrder() {
+        return currentLevelOrder;
     }
 
-    bool SetStartLevelName(const std::string& levelName) {
+    bool SetLevelOrder(const std::vector<std::string>& levelNames) {
         if (currentProjectFile.empty()) {
-            spdlog::error("Cannot set start level - no project is currently loaded.");
+            spdlog::error("Cannot set level order - no project is currently loaded.");
             return false;
         }
 
@@ -551,31 +553,29 @@ namespace ProjectManager {
         {
             std::ifstream inFile(currentProjectFile);
             if (!inFile.is_open()) {
-                spdlog::error("Cannot set start level - failed to open project file: {}", currentProjectFile.string());
+                spdlog::error("Cannot set level order - failed to open project file: {}", currentProjectFile.string());
                 return false;
             }
 
             try { inFile >> projectData; }
             catch (const std::exception& e) {
-                spdlog::error("Cannot set start level - failed to parse project file '{}': {}", currentProjectFile.string(), e.what());
+                spdlog::error("Cannot set level order - failed to parse project file '{}': {}", currentProjectFile.string(), e.what());
                 return false;
             }
         }
 
-        projectData["startLevel"] = levelName;
+        projectData["levels"] = levelNames;
 
         std::ofstream outFile(currentProjectFile);
         if (!outFile.is_open()) {
-            spdlog::error("Cannot set start level - failed to open project file for writing: {}", currentProjectFile.string());
+            spdlog::error("Cannot set level order - failed to open project file for writing: {}", currentProjectFile.string());
             return false;
         }
 
         outFile << projectData.dump(4);
         outFile.close();
 
-        currentStartLevelName = levelName;
-
-        spdlog::info("Set start level for '{}' to '{}'", currentProjectName, levelName);
+        currentLevelOrder = levelNames;
 
         return true;
     }

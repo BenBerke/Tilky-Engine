@@ -2096,12 +2096,14 @@ namespace ImGuiDrawFunctions {
         Tooltip(Get(tooltipKey).c_str());
     }
 
-    // Property row: one of the project's levels, by name.
-    static void DrawLevelNameRow(std::string &levelName) {
+    // Property row: the next level in the project's order, or one by name.
+    static void DrawLevelNameRow(std::string &levelName, bool &nextLevel) {
         Property(Get("events.level").c_str());
 
-        const std::string preview = levelName.empty() ? Get("events.level_none") : levelName;
+        const std::string preview = nextLevel ? Get("events.level_next") : levelName.empty() ? Get("events.level_none") : levelName;
         if (ImGui::BeginCombo("##Level", preview.c_str())) {
+            if (ImGui::Selectable(Get("events.level_next").c_str(), nextLevel)) nextLevel = true;
+
             std::vector<std::string> names;
             for (const std::filesystem::path &file: LevelSerialization::ListLevelFiles())
                 names.push_back(file.stem().string());
@@ -2109,7 +2111,10 @@ namespace ImGuiDrawFunctions {
             names.erase(std::unique(names.begin(), names.end()), names.end());
 
             for (const std::string &name: names)
-                if (ImGui::Selectable(name.c_str(), name == levelName)) levelName = name;
+                if (ImGui::Selectable(name.c_str(), !nextLevel && name == levelName)) {
+                    levelName = name;
+                    nextLevel = false;
+                }
 
             if (names.empty()) ImGui::TextDisabled("%s", Get("events.level_none_available").c_str());
             ImGui::EndCombo();
@@ -3861,7 +3866,7 @@ namespace ImGuiDrawFunctions {
                                 Tooltip(Get("editor.tooltip.dispatches.reset_event").c_str());
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>) {
-                                DrawLevelNameRow(payload.levelName);
+                                DrawLevelNameRow(payload.levelName, payload.nextLevel);
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchMusic>) {
                                 Property(Get("events.music.action").c_str());

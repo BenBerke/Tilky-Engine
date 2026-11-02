@@ -20,6 +20,7 @@ namespace InputManager {
 
     void Initialize(SDL_Window* window); // Helps reduce the branch count, must be called once before the loop
     void BeginFrame(); // Must be called at the start of every frame
+    unsigned long long FrameNumber(); // How many times BeginFrame has run
 
     bool QuitRequested(); // Close button pressed
 

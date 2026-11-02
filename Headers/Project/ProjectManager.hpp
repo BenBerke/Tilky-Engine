@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -254,15 +255,14 @@ namespace ProjectManager {
     // loaded.
     bool SetLastOpenLevelName(const std::string &levelName);
 
-    // The level the standalone game opens first ("startLevel" in
-    // project.tilky), a plain level name like GetLastOpenLevelName(). Empty
-    // when none is chosen, in which case the first level file under Assets is
-    // used (see LevelManager::LoadStartLevel()).
-    std::string GetStartLevelName();
+    // The project's level order as saved ("levels" in project.tilky), plain
+    // level names like GetLastOpenLevelName(). It can name levels that no
+    // longer exist and miss new ones: use LevelManager::OrderedLevelNames().
+    const std::vector<std::string>& GetLevelOrder();
 
-    // Patches "startLevel" into the loaded project's project.tilky, the same
-    // one-field patch as SetLastOpenLevelName(). An empty name clears it.
-    bool SetStartLevelName(const std::string &levelName);
+    // Patches "levels" into the loaded project's project.tilky, the same
+    // one-field patch as SetLastOpenLevelName().
+    bool SetLevelOrder(const std::vector<std::string> &levelNames);
 
     // The window height UI Text Font Sizes are given at ("uiReferenceHeight"
     // in project.tilky, default DEFAULT_UI_REFERENCE_HEIGHT). Text is drawn at

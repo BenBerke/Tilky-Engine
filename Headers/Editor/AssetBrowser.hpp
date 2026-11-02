@@ -464,6 +464,17 @@ public:
     // Returns false without one, or if the handler didn't take it.
     bool RequestAssignToEditTarget(AssetKind kind, const std::filesystem::path& absolutePath);
 
+    // Copy / Cut / Paste within the browser, separate from the system clipboard.
+    // A copy keeps the original's references and gets the " (2)" naming of an
+    // import. Cut + Paste is a move, so references follow it like a drag.
+    void RequestCopy(const AssetEntry& entry);
+    void RequestCut(const AssetEntry& entry);
+    void RequestDuplicate(const std::filesystem::path& absolutePath);
+    void RequestPaste(const std::filesystem::path& destinationDirectory);
+    [[nodiscard]] bool CanPaste() const { return clipboard.has_value(); }
+    // Copy, Cut and Duplicate for one entry's context menu.
+    void DrawClipboardMenuItems(const AssetEntry& entry);
+
     // Extensible "Create File" submenu content, shared by DirectoryEntry's
     // context menu and the empty-space context menu. Add another
     // ImGui::MenuItem() + RequestCreateFile() pair here to register
@@ -588,6 +599,9 @@ private:
     // happen any earlier than that.
     void PerformPendingMove();
 
+    // Performs a Paste or Duplicate, after DrawEntries() for the same reason.
+    void PerformPendingCopy();
+
     // Called after a Texture/Sound/Script entry is successfully moved
     // (PerformPendingMove()) or renamed (DrawRenameModal()) to whichever
     // absolute path it's now at. Textures, sounds, and scripts are all
@@ -633,6 +647,19 @@ private:
     // only after DrawEntries() has returned. See HandleDroppedMove()'s
     // comment for why this can't be performed immediately.
     std::optional<AssetBrowserPendingMove> pendingMove;
+
+    struct Clipboard {
+        std::filesystem::path source;
+        AssetKind kind = AssetKind::Other; // what a Cut's move tells references, see pendingMove
+        bool cut = false;
+    };
+    std::optional<Clipboard> clipboard;
+
+    struct PendingCopy {
+        std::filesystem::path source;
+        std::filesystem::path destinationDirectory;
+    };
+    std::optional<PendingCopy> pendingCopy;
 
     // An entity dragged from a hierarchy or the canvas and dropped on the
     // browser: saved as a prefab into `destinationDirectory` by

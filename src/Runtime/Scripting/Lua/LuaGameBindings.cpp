@@ -335,6 +335,8 @@ namespace {
     void RegisterGameMetadata() {
         RegisterType(GlobalTable("Game", "Global game/level table.", {
             Prop("levelName", "string", true, "The current level's name, as passed to LoadLevel."),
+            Prop("nextLevelName", "string", true,
+                 "The level LoadNextLevel would switch to: the next one in Project Settings > Levels, the first after the last."),
             Prop("MessageBox", "Game.MessageBox", true, "The level's message box: show text in it and change how it looks."),
             Prop("Sky", "Game.Sky", true, "The level's sky: its image, rotation and colours."),
         }, {
@@ -342,6 +344,9 @@ namespace {
                    "Switches to the level `levelName` at the end of this frame. The level file can be in any "
                    "folder under Assets; levelName is its file name without .bson. "
                    "Raises an error if there is no such level, or more than one."),
+            Method("LoadNextLevel", {}, {},
+                   "Switches to the next level in Project Settings > Levels at the end of this frame. "
+                   "After the last level it goes back to the first."),
             Method("RestartLevel", {}, {},
                    "Loads the current level again from its saved file at the end of this frame, the same as Game.LoadLevel(Game.levelName)."),
             Method("Pause", {}, {},
@@ -475,6 +480,16 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         LevelSystem::RequestLevelLoad(levelName);
     });
 
+    game.set_function("LoadNextLevel", []() {
+        const std::string levelName = LevelManager::NextLevelName();
+
+        std::string errorMessage;
+        if (LevelSerialization::FindLevelPath(levelName, &errorMessage).empty())
+            throw sol::error("Game.LoadNextLevel: " + errorMessage);
+
+        LevelSystem::RequestLevelLoad(levelName);
+    });
+
     // Game.LoadLevel(Game.levelName), from its saved file.
     game.set_function("RestartLevel", []() {
         const std::string levelName = LevelManager::CurrentLevel().name;
@@ -506,12 +521,18 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         if (key.is<std::string>() && key.as<std::string>() == "levelName")
             return sol::make_object(state, LevelManager::CurrentLevel().name);
 
+        if (key.is<std::string>() && key.as<std::string>() == "nextLevelName")
+            return sol::make_object(state, LevelManager::NextLevelName());
+
         return sol::make_object(state, sol::nil);
     };
 
     gameMeta[sol::meta_function::new_index] = [](sol::table self, const sol::object& key, const sol::object& value) {
         if (key.is<std::string>() && key.as<std::string>() == "levelName")
             throw sol::error("Game.levelName is read-only");
+
+        if (key.is<std::string>() && key.as<std::string>() == "nextLevelName")
+            throw sol::error("Game.nextLevelName is read-only");
 
         self.raw_set(key, value);
     };

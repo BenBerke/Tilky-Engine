@@ -2,6 +2,9 @@
     "assetsFolder": "Assets",
     "engineVersion": "",
     "name": "FPS Starter",
-    "startLevel": "Level 1 - Outpost",
+    "levels": [
+        "Level 1 - Outpost",
+        "Level 2 - Depot"
+    ],
     "uiReferenceHeight": 1080.0
 }

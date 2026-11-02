@@ -1338,8 +1338,10 @@ namespace {
             }
         }
 
-        if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>)
+        if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>) {
             j["levelName"] = payload.levelName;
+            if (payload.nextLevel) j["nextLevel"] = true;
+        }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>) {
             j["text"] = payload.text;
@@ -1640,8 +1642,10 @@ namespace {
             if (j.contains("call")) payload.call = DirectCallFromJson(j.at("call"));
         }
 
-        if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>)
+        if constexpr (std::is_same_v<Payload, PayloadDispatchLoadLevel>) {
             ReadOptional(j, "levelName", payload.levelName);
+            ReadOptional(j, "nextLevel", payload.nextLevel);
+        }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSetUIText>) {
             ReadOptional(j, "text", payload.text);
@@ -3663,7 +3667,9 @@ namespace LevelSerialization {
 
         Level loadedLevel;
         loadedLevel.id = levelData.value("id", 0);
-        loadedLevel.name = levelData.value("name", cleanName);
+        // Always the file's name: that's what identifies a level, and the saved
+        // one is out of date once the file is copied or renamed.
+        loadedLevel.name = cleanName;
         loadedLevel.nextEntityID = levelData.value("nextEntityID", 1);
 
         try {

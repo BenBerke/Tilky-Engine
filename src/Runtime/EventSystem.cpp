@@ -6,6 +6,7 @@
 #include "Headers/Objects/Event.hpp"
 #include "Headers/Objects/EventFields.hpp"
 #include "Headers/Objects/Level.hpp"
+#include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Math/MathFunctions.hpp"
 #include "Headers/Engine/GameTime.hpp"
@@ -3430,7 +3431,10 @@ namespace EventSystem {
                 });
             },
             [&](const PayloadDispatchLoadLevel& load) {
-                if (!load.levelName.empty() && hooks.loadLevel) hooks.loadLevel(load.levelName);
+                if (!hooks.loadLevel) return;
+
+                const std::string levelName = load.nextLevel ? LevelManager::NextLevelName() : load.levelName;
+                if (!levelName.empty()) hooks.loadLevel(levelName);
             },
             [&](const PayloadDispatchPause&) {
                 if (hooks.pause) hooks.pause();

@@ -69,27 +69,56 @@ namespace LevelManager {
         return LoadLevelFromFile(levelPath);
     }
 
-    bool LoadStartLevel(LevelSerialization::LevelExtraData* outExtraData) {
-        if (const std::string startLevel = ProjectManager::GetStartLevelName(); !startLevel.empty()) {
-            std::string errorMessage;
-            const fs::path levelPath = LevelSerialization::FindLevelPath(startLevel, &errorMessage);
-
-            if (!levelPath.empty()) return LoadLevelFromFile(levelPath, outExtraData);
-
-            std::cerr << "Start level \"" << startLevel << "\" could not be found (" << errorMessage
-                      << "). Using the first level instead.\n";
+    std::vector<std::string> OrderedLevelNames() {
+        std::vector<std::string> onDisk;
+        for (const fs::path& levelFile : LevelSerialization::ListLevelFiles()) {
+            std::string name = levelFile.stem().string();
+            if (std::ranges::find(onDisk, name) == onDisk.end()) onDisk.push_back(std::move(name));
         }
 
-        const std::vector<fs::path> levelFiles = LevelSerialization::ListLevelFiles();
+        std::vector<std::string> ordered;
+        ordered.reserve(onDisk.size());
 
-        if (levelFiles.empty()) {
+        for (const std::string& name : ProjectManager::GetLevelOrder())
+            if (std::ranges::find(onDisk, name) != onDisk.end() && std::ranges::find(ordered, name) == ordered.end())
+                ordered.push_back(name);
+
+        for (std::string& name : onDisk)
+            if (std::ranges::find(ordered, name) == ordered.end()) ordered.push_back(std::move(name));
+
+        return ordered;
+    }
+
+    std::string NextLevelName() {
+        const std::vector<std::string> levels = OrderedLevelNames();
+        if (levels.empty()) return {};
+
+        // A level that isn't saved yet isn't in the list: start from the top.
+        const auto current = HasCurrentLevel() ? std::ranges::find(levels, CurrentLevel().name) : levels.end();
+        if (current == levels.end() || current + 1 == levels.end()) return levels.front();
+
+        return *(current + 1);
+    }
+
+    bool LoadStartLevel(LevelSerialization::LevelExtraData* outExtraData) {
+        const std::vector<std::string> levels = OrderedLevelNames();
+
+        if (levels.empty()) {
             std::cerr << "No .bson level files found in: "
                       << ProjectManager::GetAssetsPath().string()
                       << "\n";
             return false;
         }
 
-        return LoadLevelFromFile(levelFiles.front(), outExtraData);
+        std::string errorMessage;
+        const fs::path levelPath = LevelSerialization::FindLevelPath(levels.front(), &errorMessage);
+
+        if (levelPath.empty()) {
+            std::cerr << errorMessage << "\n";
+            return false;
+        }
+
+        return LoadLevelFromFile(levelPath, outExtraData);
     }
 
     // The reason its here is for legacy reasons

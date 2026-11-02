@@ -651,6 +651,94 @@ namespace {
         return true;
     }
 
+    // --- Copy --------------------------------------------------------------
+
+    // Where a copy of `source` goes in `directory`: its own name, or " (2)",
+    // " (3)", ... when that's taken. Level names must be free across the whole
+    // Assets folder, not just here.
+    fs::path FreeCopyPath(const fs::path& directory, const fs::path& source, const bool sourceIsDirectory) {
+        fs::path destination = directory / source.filename();
+
+        if (sourceIsDirectory) {
+            for (int suffix = 2; fs::exists(destination); ++suffix)
+                destination = directory / (source.filename().string() + " (" + std::to_string(suffix) + ")");
+
+            return destination;
+        }
+
+        const std::string stem = source.stem().string();
+        const std::string ext = source.extension().string();
+        const bool isLevel = ext == AssetBrowser::kLevelFileExtension;
+
+        const auto taken = [&] {
+            return fs::exists(destination) || (isLevel && !LevelSerialization::FindLevelFiles(destination.stem().string()).empty());
+        };
+
+        for (int suffix = 2; taken(); ++suffix)
+            destination = directory / (stem + " (" + std::to_string(suffix) + ")" + ext);
+
+        return destination;
+    }
+
+    // Copies `sourcePath` into `destinationDirectory`. A copied UI layout gets
+    // an ID of its own from UILayouts::Rescan().
+    bool TryCopyEntry(const fs::path& sourcePath, const bool sourceIsDirectory,
+                       const fs::path& destinationDirectory, fs::path& newPath, std::string& errorMessage) {
+        // The file, or a level inside the folder, may be one being auto saved.
+        Editor::WaitForAutoSave();
+
+        std::error_code ec;
+        if (!fs::exists(sourcePath, ec)) {
+            errorMessage = "This item no longer exists.";
+            return false;
+        }
+
+        if (!fs::is_directory(destinationDirectory, ec)) {
+            errorMessage = "Destination folder no longer exists.";
+            return false;
+        }
+
+        if (sourceIsDirectory) {
+            const fs::path rel = fs::weakly_canonical(destinationDirectory, ec).lexically_relative(fs::weakly_canonical(sourcePath, ec));
+            if (!rel.empty() && *rel.begin() != "..") {
+                errorMessage = "Can't paste a folder into itself.";
+                return false;
+            }
+        }
+
+        const fs::path destination = FreeCopyPath(destinationDirectory, sourcePath, sourceIsDirectory);
+
+        ec.clear();
+        if (sourceIsDirectory) fs::copy(sourcePath, destination, fs::copy_options::recursive, ec);
+        else fs::copy_file(sourcePath, destination, fs::copy_options::none, ec);
+
+        if (ec) {
+            errorMessage = "Could not copy: " + ec.message();
+            std::error_code ignored;
+            fs::remove_all(destination, ignored);
+            return false;
+        }
+
+        // Levels in a copied folder would share their names with the originals.
+        if (sourceIsDirectory) {
+            std::vector<fs::path> copiedLevels;
+            for (fs::recursive_directory_iterator it(destination, ec), end; !ec && it != end; it.increment(ec))
+                if (it->is_regular_file() && it->path().extension() == AssetBrowser::kLevelFileExtension)
+                    copiedLevels.push_back(it->path());
+
+            for (const fs::path& level : copiedLevels) {
+                if (LevelSerialization::FindLevelFiles(level.stem().string()).size() < 2) continue;
+
+                std::error_code renameEc;
+                fs::rename(level, FreeCopyPath(level.parent_path(), level, false), renameEc);
+                if (renameEc) spdlog::error("Asset browser: could not rename copied level {}: {}", level.string(), renameEc.message());
+            }
+        }
+
+        newPath = destination;
+        return true;
+    }
+
     // --- Create Level ------------------------------------------------------
 
     // Strips a trailing, case-insensitive occurrence of the level extension
@@ -1730,6 +1818,10 @@ void DirectoryEntry::OnDoubleClick(AssetBrowser& browser) {
 
 void DirectoryEntry::DrawContextMenu(AssetBrowser& browser) {
     if (ImGui::MenuItem("Open")) browser.RequestNavigate(GetPath());
+    ImGui::Separator();
+    browser.DrawClipboardMenuItems(*this);
+    if (ImGui::MenuItem("Paste Into Folder", nullptr, false, browser.CanPaste())) browser.RequestPaste(GetPath());
+    ImGui::Separator();
     if (ImGui::MenuItem("Rename")) browser.RequestRename(GetPath(), true);
     if (ImGui::MenuItem("Delete")) browser.RequestDelete(GetPath(), true);
 
@@ -1780,6 +1872,8 @@ void GenericFileEntry::OnCtrlLeftClick(AssetBrowser& browser) {
 }
 
 void GenericFileEntry::DrawRenameAndDeleteMenuItems(AssetBrowser& browser) const {
+    browser.DrawClipboardMenuItems(*this);
+    ImGui::Separator();
     if (ImGui::MenuItem("Rename")) browser.RequestRename(GetPath(), false);
     if (ImGui::MenuItem("Delete")) browser.RequestDelete(GetPath(), false);
 }
@@ -1930,6 +2024,9 @@ void AssetBrowser::Refresh() {
 
     // A UI layout may have been made, moved, renamed or deleted.
     UILayouts::Rescan();
+
+    // A level too: the project's level list and order follow.
+    MapEditorInternal::UpdateLevels();
 }
 
 bool AssetBrowser::IsPathWithinRoot(const std::filesystem::path& absolutePath) const {
@@ -2065,28 +2162,11 @@ bool AssetBrowser::ImportExternalFile(const std::filesystem::path& sourceAbsolut
     std::error_code isDirEc;
     const bool sourceIsDirectory = fs::is_directory(sourceAbsolutePath, isDirEc);
 
-    fs::path destination = currentDirectory / sourceAbsolutePath.filename();
-
     // Auto-uniquify on a name collision (matches the existing "(2)", "(3)",
     // ... convention rather than prompting to overwrite, since importing
     // happens from an asynchronous OS drop callback with no good place to
     // block for a confirmation dialog).
-    if (sourceIsDirectory)
-        for (int suffix = 2; fs::exists(destination); ++suffix)
-            destination = currentDirectory / (sourceAbsolutePath.filename().string() + " (" + std::to_string(suffix) + ")");
-    else {
-        const std::string stem = sourceAbsolutePath.stem().string();
-        const std::string ext = sourceAbsolutePath.extension().string();
-
-        // Level names must be free across the whole Assets folder, not just here.
-        const bool isLevel = ext == kLevelFileExtension;
-        const auto taken = [&] {
-            return fs::exists(destination) || (isLevel && !LevelSerialization::FindLevelFiles(destination.stem().string()).empty());
-        };
-
-        for (int suffix = 2; taken(); ++suffix)
-            destination = currentDirectory / (stem + " (" + std::to_string(suffix) + ")" + ext);
-    }
+    const fs::path destination = FreeCopyPath(currentDirectory, sourceAbsolutePath, sourceIsDirectory);
 
     std::error_code copyEc;
     if (sourceIsDirectory) {
@@ -2382,6 +2462,63 @@ void AssetBrowser::PerformPendingMove() {
     }
 }
 
+void AssetBrowser::PerformPendingCopy() {
+    if (!pendingCopy.has_value()) return;
+
+    const PendingCopy copy = *pendingCopy;
+    pendingCopy.reset();
+
+    std::error_code isDirEc;
+    const bool sourceIsDirectory = fs::is_directory(copy.source, isDirEc);
+
+    fs::path newPath;
+    std::string error;
+    if (!TryCopyEntry(copy.source, sourceIsDirectory, copy.destinationDirectory, newPath, error)) {
+        lastOperationError = error;
+        spdlog::warn("Asset browser: {}", error);
+        return;
+    }
+
+    lastOperationError.clear();
+
+    // A model's textures and side files, for a copy in another folder.
+    if (!sourceIsDirectory && ModelLoader::IsModelFile(copy.source))
+        ImportModelDependencies(copy.source, newPath);
+
+    if (copy.destinationDirectory == currentDirectory) selectedFile = newPath;
+
+    Refresh();
+    MapEditorInternal::RescanEntityPalette();
+}
+
+void AssetBrowser::RequestCopy(const AssetEntry& entry) {
+    clipboard = Clipboard{entry.GetPath(), entry.GetAssetKind(), false};
+}
+
+void AssetBrowser::RequestCut(const AssetEntry& entry) {
+    clipboard = Clipboard{entry.GetPath(), entry.GetAssetKind(), true};
+}
+
+void AssetBrowser::RequestDuplicate(const std::filesystem::path& absolutePath) {
+    pendingCopy = PendingCopy{absolutePath, absolutePath.parent_path()};
+}
+
+void AssetBrowser::RequestPaste(const std::filesystem::path& destinationDirectory) {
+    if (!clipboard.has_value()) return;
+
+    if (clipboard->cut) {
+        pendingMove = AssetBrowserPendingMove{clipboard->source, destinationDirectory, clipboard->kind};
+        clipboard.reset();
+    }
+    else pendingCopy = PendingCopy{clipboard->source, destinationDirectory};
+}
+
+void AssetBrowser::DrawClipboardMenuItems(const AssetEntry& entry) {
+    if (ImGui::MenuItem("Copy", "Ctrl+C")) RequestCopy(entry);
+    if (ImGui::MenuItem("Cut", "Ctrl+X")) RequestCut(entry);
+    if (ImGui::MenuItem("Duplicate", "Ctrl+D")) RequestDuplicate(entry.GetPath());
+}
+
 // See this function's declaration in AssetBrowser.hpp for the full
 // rationale. LevelManager::RenameTextureReference() /
 // RenameSoundReference() / RenameScriptReference() do not exist yet - this
@@ -2557,6 +2694,10 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
         }
     }
 
+    // Faded until the Paste that moves it.
+    if (clipboard.has_value() && clipboard->cut && clipboard->source == entry.GetPath())
+        drawList->AddRectFilled(topLeft, boxMax, IM_COL32(0, 0, 0, 130), 4.0f);
+
     if (isSelected)
         drawList->AddRect(topLeft, boxMax, ImGui::GetColorU32(ImGuiCol_CheckMark), 4.0f, 0, 2.5f);
 
@@ -2592,6 +2733,7 @@ void AssetBrowser::DrawEmptySpaceContextMenu() {
             ImGui::EndMenu();
         }
         ImGui::Separator();
+        if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanPaste())) RequestPaste(currentDirectory);
         if (ImGui::MenuItem("Refresh")) Refresh();
         ImGui::EndPopup();
     }
@@ -2934,13 +3076,23 @@ void AssetBrowser::HandleKeyboardShortcuts() {
     if (ImGui::GetIO().WantTextInput) return;
     if (activeModal.kind != AssetBrowserModalKind::None) return;
 
+    MapEditorInternal::AssetBrowserHasKeyboard();
+
     if (ImGui::IsKeyPressed(ImGuiKey_Backspace)) {
         NavigateToParent();
         return;
     }
 
-    if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_R)) {
+    const bool ctrl = ImGui::GetIO().KeyCtrl;
+
+    if (ctrl && ImGui::IsKeyPressed(ImGuiKey_R)) {
         Refresh();
+        return;
+    }
+
+    // No repeat: holding the keys makes one copy.
+    if (ctrl && ImGui::IsKeyPressed(ImGuiKey_V, false)) {
+        RequestPaste(currentDirectory);
         return;
     }
 
@@ -2949,7 +3101,10 @@ void AssetBrowser::HandleKeyboardShortcuts() {
     AssetEntry* selectedEntry = FindEntry(selectedFile);
     if (selectedEntry == nullptr) return; // stale selection (e.g. deleted externally) - nothing to act on
 
-    if (ImGui::IsKeyPressed(ImGuiKey_F2))
+    if (ctrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) RequestCopy(*selectedEntry);
+    else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_X, false)) RequestCut(*selectedEntry);
+    else if (ctrl && ImGui::IsKeyPressed(ImGuiKey_D, false)) RequestDuplicate(selectedEntry->GetPath());
+    else if (ImGui::IsKeyPressed(ImGuiKey_F2))
         RequestRename(selectedEntry->GetPath(), selectedEntry->GetType() == AssetEntryType::Directory);
     else if (ImGui::IsKeyPressed(ImGuiKey_Delete))
         RequestDelete(selectedEntry->GetPath(), selectedEntry->GetType() == AssetEntryType::Directory);
@@ -3011,6 +3166,7 @@ void AssetBrowser::Draw(const ThumbnailProvider& thumbnailProvider, const Assign
     // Only safe once DrawEntries() has fully returned - see
     // HandleDroppedMove()'s comment for why.
     PerformPendingMove();
+    PerformPendingCopy();
     PerformPendingPrefab();
 
     DrawCreateFolderModal();

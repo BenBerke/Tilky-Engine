@@ -28,6 +28,7 @@ end
 | [`GetVariable(name)`](#getvariable-and-setvariable) | number | The value of an event variable. |
 | [`SetVariable(name, value)`](#getvariable-and-setvariable) | | Changes an event variable. |
 | [`LoadLevel(levelName)`](#loadlevel) | | Switches to another level at the end of this frame. |
+| [`LoadNextLevel()`](#loadnextlevel) | | Switches to the next level in the project's order at the end of this frame. |
 | [`RestartLevel()`](#restartlevel) | | Loads the current level again at the end of this frame. |
 | [`Pause()`](#pause) | | Stops game time and frees the cursor, for a pause menu. |
 | [`Quit()`](#quit) | | Ends the game at the end of this frame. |
@@ -35,6 +36,7 @@ end
 | Property | Type | | |
 |---|---|---|---|
 | [`levelName`](#levelname) | string | read-only | The current level's name. |
+| [`nextLevelName`](#nextlevelname) | string | read-only | The level `LoadNextLevel` would switch to. |
 | [`MessageBox`](#messagebox) | table | read-only | The level's message box: show text in it, change how it looks. |
 | [`Sky`](#sky) | table | read-only | The level's sky: its image, rotation and colours. |
 
@@ -616,6 +618,30 @@ end
 
 ---
 
+## LoadNextLevel
+
+```lua
+Game.LoadNextLevel()
+```
+
+Switches to the level after the current one in **Project Settings > Levels**, the same way as
+[`Game.LoadLevel`](#loadlevel). After the last level it goes back to the first. In a project with
+one level, that restarts it. The **Load Level** dispatch does the same with its level set to
+**(Next Level)**.
+
+The list is the project's level order: drag a row to move it. The game opens the top level, new
+levels join the bottom, and renaming a level keeps its place. A level loaded by name carries on
+from wherever it is in the list.
+
+```lua
+-- Scripts/Flow/Exit.lua (trigger at the end of the level)
+function OnTriggerEnter(other)
+    if other.hasPlayerController then Game.LoadNextLevel() end
+end
+```
+
+---
+
 ## RestartLevel
 
 ```lua
@@ -706,6 +732,18 @@ Game.levelName   -- "Level2"
 
 The current level's name: its file name in the `Levels` folder, without `.bson`. It changes when
 the new level starts, not when `LoadLevel` is called. Assigning to it raises an error.
+
+---
+
+## nextLevelName
+
+```lua
+Game.nextLevelName   -- "Level3"
+```
+
+The level [`Game.LoadNextLevel`](#loadnextlevel) would switch to. On the last level that's the first
+one. It looks through the `Assets` folder each time, so read it when you need it, not every frame.
+Assigning to it raises an error.
 
 ---
 

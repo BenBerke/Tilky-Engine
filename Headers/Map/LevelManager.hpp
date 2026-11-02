@@ -39,8 +39,13 @@ namespace LevelManager {
     // such as the background texture.
     bool LoadLevelFromFile(const std::filesystem::path& levelFile, LevelSerialization::LevelExtraData* outExtraData = nullptr);
     bool LoadLevelByName(const std::string& levelName);
-    // The project's start level (ProjectManager::GetStartLevelName()), or the
-    // first level file under Assets when none is set or it can't be found.
+    // Every level in the project, in the project's order: the saved order
+    // without levels that no longer exist, then any level it doesn't list yet.
+    std::vector<std::string> OrderedLevelNames();
+    // The level after the current one in that order, the first level after
+    // the last. Empty when the project has no levels.
+    std::string NextLevelName();
+    // The first level in the project's order.
     bool LoadStartLevel(LevelSerialization::LevelExtraData* outExtraData = nullptr);
     void TriangulateCurrentLevelSectors();
 

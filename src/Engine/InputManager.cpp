@@ -18,6 +18,7 @@ namespace {
     Vector2 mousePosition{};
     Vector2 mouseDelta{};
 
+    unsigned long long frameNumber = 0;
     float mouseWheelScrollAmount = 0.0f;
 
     bool relativeMouseMode = false;
@@ -322,7 +323,12 @@ namespace InputManager {
 #endif
     }
 
+    unsigned long long FrameNumber() {
+        return frameNumber;
+    }
+
     void BeginFrame() {
+        ++frameNumber;
         mouseWheelScrollAmount = 0.0f;
         quitRequested = false;
 

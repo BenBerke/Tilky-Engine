@@ -580,18 +580,21 @@ namespace MapEditorInternal {
     }
 
     void UpdateLevels() {
-        Editor::maps.clear();
+        std::vector<std::string> seen;
 
         for (const fs::path& levelFile : LevelSerialization::ListLevelFiles()) {
-            const std::string levelName = levelFile.stem().string();
+            std::string levelName = levelFile.stem().string();
 
-            if (std::ranges::find(Editor::maps, levelName) != Editor::maps.end()) {
+            if (std::ranges::find(seen, levelName) != seen.end())
                 spdlog::error("More than one level is called \"{}\" (one is {}); rename all but one", levelName, levelFile.string());
-                continue;
-            }
-
-            Editor::maps.push_back(levelName);
+            else seen.push_back(std::move(levelName));
         }
+
+        Editor::maps = LevelManager::OrderedLevelNames();
+
+        // New levels join the bottom of the saved order, deleted ones leave it.
+        if (ProjectManager::HasProject() && Editor::maps != ProjectManager::GetLevelOrder())
+            ProjectManager::SetLevelOrder(Editor::maps);
     }
 
     bool Save(const std::string& saveTo) {
@@ -788,7 +791,11 @@ namespace Editor {
         }
 
         if (ProjectManager::GetLastOpenLevelName() == oldName) ProjectManager::SetLastOpenLevelName(newName);
-        if (ProjectManager::GetStartLevelName() == oldName) ProjectManager::SetStartLevelName(newName);
+
+        // Keeps its place in the project's order.
+        std::vector<std::string> levelOrder = ProjectManager::GetLevelOrder();
+        std::ranges::replace(levelOrder, oldName, newName);
+        if (levelOrder != ProjectManager::GetLevelOrder()) ProjectManager::SetLevelOrder(levelOrder);
 
         MapEditorInternal::UpdateLevels();
     }

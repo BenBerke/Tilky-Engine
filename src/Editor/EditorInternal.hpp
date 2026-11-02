@@ -1741,6 +1741,10 @@ namespace MapEditorInternal {
     // A set's first key held and its second pressed this frame.
     [[nodiscard]] bool GetComboDown(EditorCombo combo);
 
+    // The asset browser calls this every frame it has keyboard focus: its
+    // Ctrl+C/X/V/D are for its files, so no combo reacts to them.
+    void AssetBrowserHasKeyboard();
+
     // The command palette runs an action by pressing it: the next
     // GetKeyBindDown / GetComboDown asking for it is true once, as if its
     // keys had been pressed, whatever they are (none included). A press

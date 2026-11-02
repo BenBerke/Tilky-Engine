@@ -533,8 +533,22 @@ namespace MapEditorInternal {
         return false;
     }
 
+    static unsigned long long assetBrowserKeyboardFrame = 0;
+
+    void AssetBrowserHasKeyboard() {
+        assetBrowserKeyboardFrame = InputManager::FrameNumber();
+    }
+
     bool GetComboDown(const EditorCombo combo) {
         if (TakePress(pressedCombo, combo, COMBO_COUNT)) return true;
+
+        // Input can run before the browser is drawn, so last frame counts too.
+        if (assetBrowserKeyboardFrame != 0 && InputManager::FrameNumber() - assetBrowserKeyboardFrame <= 1 &&
+            (InputManager::GetKey(SDL_SCANCODE_LCTRL) || InputManager::GetKey(SDL_SCANCODE_RCTRL)) &&
+            (InputManager::GetKeyDown(SDL_SCANCODE_C) || InputManager::GetKeyDown(SDL_SCANCODE_X) ||
+             InputManager::GetKeyDown(SDL_SCANCODE_V) || InputManager::GetKeyDown(SDL_SCANCODE_D)))
+            return false;
+
         if (COMBO_INFO[combo].needsShift && !ShiftHeld()) return false;
 
         for (int set = 0; set < COMBO_SLOTS; set += 2) {

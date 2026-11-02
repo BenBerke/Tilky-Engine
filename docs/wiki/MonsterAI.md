@@ -1,4 +1,4 @@
-# Monster AI
+g# Monster AI
 
 **Inspector name:** Monster AI · **Lua:** `entity.monsterAI` · **Public field type:** `MonsterAI`
 

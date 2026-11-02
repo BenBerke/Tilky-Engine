@@ -1363,6 +1363,8 @@ struct PayloadDispatchLoadLevel {
     bool operator==(const PayloadDispatchLoadLevel&) const = default;
 
     std::string levelName;
+    // Ignores levelName: the next level in the project's order, like Game.LoadNextLevel.
+    bool nextLevel = false;
 };
 
 // Like Game.Pause: game time stops (timeScale 0) and the cursor is unlocked

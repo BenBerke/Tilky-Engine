@@ -16,6 +16,7 @@
 #include "imgui_internal.h"
 
 #include <algorithm>
+#include <format>
 #include <cctype>
 #include <array>
 #include <cstdio>
@@ -1497,46 +1498,13 @@ namespace {
     //  Settings panel so it doesn't spawn its own floating window.
     // =========================================================================
 
-    // Which level the standalone game opens first. Saved to project.tilky as
-    // soon as it is picked.
-    void DrawStartLevelCombo() {
-        const std::string startLevel = ProjectManager::GetStartLevelName();
-        const bool missing = !startLevel.empty() && std::ranges::find(Editor::maps, startLevel) == Editor::maps.end();
-
-        const std::string preview = startLevel.empty()
-            ? Get("editor.project.start_level.first_found")
-            : missing ? startLevel + " " + Get("editor.project.start_level.missing") : startLevel;
-
-        const auto pick = [](const std::string& levelName) {
-            if (!ProjectManager::SetStartLevelName(levelName))
-                ShowNotification(Get("editor.project.start_level_failed").c_str(), /*isError=*/true);
-        };
-
-        if (missing) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.30f, 1.00f));
-
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-        const bool comboOpen = ImGui::BeginCombo("##StartLevel", preview.c_str());
-
-        if (missing) ImGui::PopStyleColor();
-
-        if (comboOpen) {
-            if (ImGui::Selectable(Get("editor.project.start_level.first_found").c_str(), startLevel.empty()) && !startLevel.empty())
-                pick("");
-
-            for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
-                ImGui::PushID(i);
-                const std::string& name = Editor::maps[i];
-                if (ImGui::Selectable(name.c_str(), name == startLevel) && name != startLevel) pick(name);
-                ImGui::PopID();
-            }
-
-            ImGui::EndCombo();
-        }
-
-        HoverTooltip(Get(missing ? "editor.tooltip.project.start_level_missing" : "editor.tooltip.project.start_level").c_str());
-    }
-
+    // The game's levels in order: it opens the top one, Load Next Level goes
+    // down the list. Dragging a row moves it; saved when it's let go.
     void DrawLevelsChildPanel() {
+        static bool levelOrderChanged = false;
+        int draggedRow = -1;
+        int draggedToRow = -1;
+
         const float childHeight = std::min(
             static_cast<float>(Editor::maps.size()) * ImGui::GetFrameHeightWithSpacing() +
             ImGui::GetStyle().WindowPadding.y * 2.0f,
@@ -1563,9 +1531,10 @@ namespace {
                                     buttonWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x);
 
             for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
-                ImGui::PushID(i);
-
+                // By name, not row: the row being dragged stays the active item as it moves.
                 const std::string &name = Editor::maps[i];
+                ImGui::PushID(name.c_str());
+
                 const bool isCurrent = (Editor::currentMap == name);
 
                 ImGui::TableNextRow();
@@ -1575,9 +1544,24 @@ namespace {
                 if (isCurrent) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
 
                 ImGui::AlignTextToFramePadding();
-                ImGui::Text("%s%s", isCurrent ? "* " : "  ", name.c_str());
+                ImGui::Selectable(std::format("{}{}. {}###Row", isCurrent ? "* " : "  ", i + 1, name).c_str());
 
                 if (isCurrent) ImGui::PopStyleColor();
+
+                if (ImGui::IsItemActive()) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+
+                    // Half a row from its centre: the row is shorter than its
+                    // spacing, so its edges would swap it back and forth in the gap.
+                    const float offset = ImGui::GetIO().MousePos.y - (ImGui::GetItemRectMin().y + ImGui::GetItemRectMax().y) * 0.5f;
+                    const float halfRow = ImGui::GetFrameHeightWithSpacing() * 0.5f;
+                    const int step = offset < -halfRow ? -1 : offset > halfRow ? 1 : 0;
+
+                    if (step != 0 && i + step >= 0 && i + step < static_cast<int>(Editor::maps.size())) {
+                        draggedRow = i;
+                        draggedToRow = i + step;
+                    }
+                }
 
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) ImGui::SetTooltip("%s", name.c_str());
 
@@ -1608,6 +1592,18 @@ namespace {
 
         ImGui::EndChild();
         ImGui::PopStyleColor();
+
+        if (draggedRow >= 0) {
+            std::swap(Editor::maps[draggedRow], Editor::maps[draggedToRow]);
+            levelOrderChanged = true;
+        }
+
+        if (levelOrderChanged && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+            levelOrderChanged = false;
+
+            if (!ProjectManager::SetLevelOrder(Editor::maps))
+                ShowNotification(Get("editor.project.level_order_failed").c_str(), /*isError=*/true);
+        }
 
         // Delete confirmation modal
         if (deleteLevelConfirmOpen) {
@@ -2510,21 +2506,14 @@ namespace {
             ImGui::Separator();
             ImGui::Spacing();
 
-            // ---- Start level ----------------------------------------------------
-            SectionHeader(Get("editor.project.start_level").c_str());
-            ImGui::Separator();
-            ImGui::Spacing();
-
-            DrawStartLevelCombo();
-
-            ImGui::Spacing();
-            ImGui::Separator();
-            ImGui::Spacing();
-
             // ---- Level list ---------------------------------------------------
-            SectionHeader(Get("editor.project.all_levels").c_str());
+            SectionHeader(Get("editor.project.levels").c_str());
             ImGui::Separator();
             ImGui::Spacing();
+
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("%s", Get("editor.project.levels_hint").c_str());
+            ImGui::PopTextWrapPos();
 
             DrawLevelsChildPanel();
 
