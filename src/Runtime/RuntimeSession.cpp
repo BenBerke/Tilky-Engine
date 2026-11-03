@@ -47,6 +47,7 @@
 #ifndef TILKY_STANDALONE
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 #include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
+#include "Headers/Runtime/Gameplay/ParticleSystem.hpp"
 #endif
 
 namespace {
@@ -659,6 +660,7 @@ namespace {
         // Texture animations play in the 3D editor view too (game time is
         // stopped here, so real time drives them).
         level.UpdateSurfaceAnimations(GameTime::unscaledDeltaTime);
+        ParticleSystem::UpdatePreview(level, GameTime::unscaledDeltaTime);
 
         {
             ZoneScopedN("Renderer");
@@ -757,6 +759,7 @@ namespace {
     }
 
     void ShutdownEditor(Level& level) {
+        ParticleSystem::Stop();
         RuntimeEditor::Shutdown(level);
     }
 

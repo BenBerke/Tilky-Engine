@@ -2498,6 +2498,7 @@ namespace RuntimeEditorUi {
 
             MapEditorInternal::BeginInspectorEdit(level, entityInspectorEdit, primaryID);
 
+            entityInspectorState.allowParticlePreview = true;
             const bool deleteRequested =
                 ImGuiDrawFunctions::DrawEntityEditor(*entityToEdit,entityInspectorState, &editingEntity, DRAGGABLE);
 

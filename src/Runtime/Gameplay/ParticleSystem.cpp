@@ -4,6 +4,7 @@
 #include <cmath>
 #include <deque>
 #include <random>
+#include <unordered_map>
 
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Math/Quaternion/QuaternionMath.hpp"
@@ -11,7 +12,6 @@
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/RayHit.hpp"
 #include "Headers/Objects/Sector.hpp"
-#include "Headers/TagRegistry.hpp"
 #include "Headers/Objects/Wall.hpp"
 #include "Headers/Runtime/Gameplay/GameFunctions.hpp"
 
@@ -24,10 +24,13 @@ namespace {
     // Slower than this after a bounce off a floor, it stays there.
     constexpr float REST_SPEED = 12.0f;
     constexpr float SURFACE_GAP = 0.05f;
+    // A looping cycle is at least this long, so Duration 0 can't burst every frame.
+    constexpr float SHORTEST_LOOP = 0.05f;
 
     std::vector<ParticleSystem::Particle> particles;
     std::vector<ParticleSystem::Stain> stains; // oldest first
     std::size_t stainsEverMade = 0;
+    std::unordered_map<ComponentInstanceID, ParticleEmitterClock> previews;
 
     std::mt19937& Rng() {
         static std::mt19937 rng{std::random_device{}()};
@@ -100,10 +103,8 @@ namespace {
         return &level.sectors[found->second];
     }
 
-    bool SectorHasTag(const Sector& sector, const std::string& tag) {
-        if (tag.empty()) return false;
-        const auto id = TagRegistry::Find(tag);
-        return id.has_value() && std::ranges::find(sector.tagIds, *id) != sector.tagIds.end();
+    bool SectorHasTag(const Sector& sector, const TagId tag) {
+        return tag != NO_TAG && std::ranges::find(sector.tagIds, tag) != sector.tagIds.end();
     }
 
     // Which interval of a sector a height belongs to, the nearest if it's in none.
@@ -160,7 +161,8 @@ namespace {
     }
 
     bool PlaceStain(Level& level, const RayHit& hit, const std::string& texture, float size, const Vector4& color,
-                    const float lifetime, const std::string& noStainTag) {
+                    const float lifetime, const TagId noStainTag,
+                    const ComponentInstanceID previewOwner = INVALID_COMPONENT_INSTANCE_ID) {
         if (texture.empty() || size <= 0.0f) return false;
 
         ParticleSystem::Stain stain;
@@ -238,6 +240,7 @@ namespace {
         stain.color = color;
         stain.size = size;
         stain.lifetime = lifetime;
+        stain.previewOwner = previewOwner;
         stain.followedHeight = FollowedHeight(level, stain, centre.y, 0.0f);
 
         // The cap removes the oldest first.
@@ -254,7 +257,7 @@ namespace {
 
         const std::string& texture = style.stainTextures[RandomInt(0, static_cast<int>(style.stainTextures.size()) - 1)];
         PlaceStain(level, hit, texture, Random(style.stainSizeMin, style.stainSizeMax), style.stainColor,
-                   style.stainLifetime, style.noStainTag);
+                   style.stainLifetime, style.noStainTag, style.previewOwner);
     }
 
     // Moves one particle along its path. False when it should go away.
@@ -310,18 +313,89 @@ namespace {
     }
 }
 
-namespace ParticleSystem {
-    void Start() {
-        particles.clear();
-        stains.clear();
+namespace {
+    int EmitBurst(Level& level, const ComponentParticleEmitter& emitter, const Vector3& position, const Vector3& direction,
+                  int count, float scale, ComponentInstanceID previewOwner);
+
+    int EmitFromOwner(Level& level, const ComponentParticleEmitter& emitter, const int count, const ComponentInstanceID previewOwner) {
+        const ComponentTransform* transform = level.transforms.Get(emitter.ownerID);
+        if (transform == nullptr) return 0;
+        return EmitBurst(level, emitter, transform->LocalToWorld(emitter.offset), {0.0f, 0.0f, 0.0f}, count, 1.0f, previewOwner);
     }
 
-    void Stop() {
-        Start();
+    // One step of an emitter's cycle: the burst that starts it, the stream, and
+    // what happens at its end. The game and the editor's preview share this.
+    void RunCycle(Level& level, const ComponentParticleEmitter& emitter, ParticleEmitterClock& clock, const float deltaTime,
+                  const ComponentInstanceID previewOwner) {
+        if (!clock.playing) return;
+
+        if (clock.burstDue) {
+            clock.burstDue = false;
+            clock.cycleTime = 0.0f;
+            EmitFromOwner(level, emitter, -1, previewOwner);
+        }
+        if (deltaTime <= 0.0f) return;
+
+        if (emitter.rate > 0.0f) {
+            clock.spawnDebt += emitter.rate * deltaTime;
+            const int due = static_cast<int>(clock.spawnDebt);
+            if (due > 0) {
+                clock.spawnDebt -= static_cast<float>(due);
+                EmitFromOwner(level, emitter, due, previewOwner);
+            }
+        }
+
+        clock.cycleTime += deltaTime;
+        if (clock.cycleTime < (emitter.loop ? std::max(emitter.duration, SHORTEST_LOOP) : emitter.duration)) return;
+
+        if (emitter.loop) clock.burstDue = true;
+        else {
+            clock.playing = false;
+            clock.spawnDebt = 0.0f;
+        }
     }
 
-    int Emit(Level& level, const ComponentParticleEmitter& emitter, const Vector3& position, const Vector3& direction,
-             int count, const float scale) {
+    // Moves what's alive. Landing can add stains and erases nothing else, so a
+    // plain compact is safe.
+    void UpdateLive(Level& level, const float deltaTime) {
+        std::size_t kept = 0;
+        for (std::size_t i = 0; i < particles.size(); ++i) {
+            ParticleSystem::Particle& particle = particles[i];
+            particle.age += deltaTime;
+            if (particle.age >= particle.lifetime) continue;
+            if (!MoveParticle(level, particle, deltaTime)) continue;
+
+            if (kept != i) particles[kept] = std::move(particle);
+            ++kept;
+        }
+        particles.resize(kept);
+
+        kept = 0;
+        for (std::size_t i = 0; i < stains.size(); ++i) {
+            ParticleSystem::Stain& stain = stains[i];
+            stain.age += deltaTime;
+            if (stain.lifetime > 0.0f && stain.age >= stain.lifetime) continue;
+
+            if (stain.follows != ParticleSystem::Stain::Follows::NOTHING) {
+                const float height = FollowedHeight(level, stain, stain.bottomCentre.y, stain.followedHeight);
+                stain.bottomCentre.y += height - stain.followedHeight;
+                stain.followedHeight = height;
+            }
+
+            if (kept != i) stains[kept] = std::move(stain);
+            ++kept;
+        }
+        stains.resize(kept);
+    }
+
+    void RemovePreviewOutput(const ComponentInstanceID emitter) {
+        std::erase_if(particles, [emitter](const ParticleSystem::Particle& particle) { return particle.style->previewOwner == emitter; });
+        std::erase_if(stains, [emitter](const ParticleSystem::Stain& stain) { return stain.previewOwner == emitter; });
+    }
+
+    int EmitBurst(Level& level, const ComponentParticleEmitter& emitter, const Vector3& position, const Vector3& direction,
+                  int count, const float scale, const ComponentInstanceID previewOwner) {
+        using namespace ParticleSystem;
         if (emitter.textures.empty()) return 0;
 
         if (count < 0) {
@@ -357,6 +431,7 @@ namespace ParticleSystem {
         style->stainLifetime = emitter.stainLifetime;
         style->stainColor = emitter.stainColor;
         style->noStainTag = emitter.noStainTag;
+        style->previewOwner = previewOwner;
 
         const std::size_t cap = static_cast<std::size_t>(std::max(level.rendererSettings.maxParticles, 0));
         const int startSector = MapQueries::FindSectorContainingPoint(level.sectors, {position.x, position.z});
@@ -380,16 +455,80 @@ namespace ParticleSystem {
         }
         return made;
     }
+}
+
+namespace ParticleSystem {
+    void Start() {
+        particles.clear();
+        stains.clear();
+        previews.clear();
+    }
+
+    void Stop() {
+        Start();
+    }
+
+    int Emit(Level& level, const ComponentParticleEmitter& emitter, const Vector3& position, const Vector3& direction,
+             const int count, const float scale) {
+        return EmitBurst(level, emitter, position, direction, count, scale, INVALID_COMPONENT_INSTANCE_ID);
+    }
 
     int EmitAtOwner(Level& level, const ComponentParticleEmitter& emitter, const int count) {
-        const ComponentTransform* transform = level.transforms.Get(emitter.ownerID);
-        if (transform == nullptr) return 0;
-        return Emit(level, emitter, transform->LocalToWorld(emitter.offset), {0.0f, 0.0f, 0.0f}, count);
+        return EmitFromOwner(level, emitter, count, INVALID_COMPONENT_INSTANCE_ID);
+    }
+
+    void PlayEmitter(ComponentParticleEmitter& emitter) {
+        emitter.clock = {};
+        emitter.clock.playing = true;
+        emitter.clock.burstDue = true;
+    }
+
+    void StopEmitter(ComponentParticleEmitter& emitter) {
+        emitter.clock = {};
+    }
+
+    void PreviewPlay(const ComponentParticleEmitter& emitter) {
+        RemovePreviewOutput(emitter.instanceID);
+        ParticleEmitterClock clock;
+        clock.playing = true;
+        clock.burstDue = true;
+        previews[emitter.instanceID] = clock;
+    }
+
+    void PreviewStop(const ComponentInstanceID emitter) {
+        previews.erase(emitter);
+        RemovePreviewOutput(emitter);
+    }
+
+    bool IsPreviewing(const ComponentInstanceID emitter) {
+        return previews.contains(emitter);
+    }
+
+    void UpdatePreview(Level& level, const float deltaTime) {
+        if (previews.empty()) return;
+
+        // The level can be edited under a preview: a deleted sector must not leave
+        // an index that's past the end.
+        for (Particle& particle : particles)
+            if (particle.sectorIndex >= static_cast<int>(level.sectors.size())) particle.sectorIndex = -1;
+
+        for (auto it = previews.begin(); it != previews.end();) {
+            const ComponentParticleEmitter* emitter = level.particleEmitters.GetInstance(it->first);
+            if (emitter == nullptr) {
+                RemovePreviewOutput(it->first);
+                it = previews.erase(it);
+                continue;
+            }
+            RunCycle(level, *emitter, it->second, deltaTime, it->first);
+            ++it;
+        }
+
+        if (deltaTime > 0.0f) UpdateLive(level, deltaTime);
     }
 
     bool StainSurface(Level& level, const Vector3& origin, const Vector3& direction, const float length,
                       const std::string& texture, const float size, const Vector4& color, const float lifetime,
-                      const std::string& noStainTag) {
+                      const TagId noStainTag) {
         const std::optional<RayHit> hit = GameFunctions::RaycastGeometry(level, origin, direction, length);
         if (!hit.has_value()) return false;
         return PlaceStain(level, *hit, texture, size, color, lifetime, noStainTag);
@@ -400,59 +539,17 @@ namespace ParticleSystem {
     }
 
     void Update(Level& level, const float deltaTime) {
-        // Emitters: Play On Start's first burst, and the steady stream of a playing one.
         for (ComponentParticleEmitter& emitter : level.particleEmitters.components) {
             if (!emitter.isActive || !emitter.ownerEnabled) continue;
 
             if (!emitter.started) {
                 emitter.started = true;
-                if (emitter.playOnStart) {
-                    EmitAtOwner(level, emitter);
-                    emitter.playing = true;
-                }
+                if (emitter.playOnStart) PlayEmitter(emitter);
             }
-
-            if (emitter.playing && emitter.rate > 0.0f && deltaTime > 0.0f) {
-                emitter.spawnDebt += emitter.rate * deltaTime;
-                const int due = static_cast<int>(emitter.spawnDebt);
-                if (due > 0) {
-                    emitter.spawnDebt -= static_cast<float>(due);
-                    EmitAtOwner(level, emitter, due);
-                }
-            }
+            RunCycle(level, emitter, emitter.clock, deltaTime, INVALID_COMPONENT_INSTANCE_ID);
         }
 
-        if (deltaTime <= 0.0f) return;
-
-        // Landing can add stains and erases nothing else, so a plain compact is safe.
-        std::size_t kept = 0;
-        for (std::size_t i = 0; i < particles.size(); ++i) {
-            Particle& particle = particles[i];
-            particle.age += deltaTime;
-            if (particle.age >= particle.lifetime) continue;
-            if (!MoveParticle(level, particle, deltaTime)) continue;
-
-            if (kept != i) particles[kept] = std::move(particle);
-            ++kept;
-        }
-        particles.resize(kept);
-
-        kept = 0;
-        for (std::size_t i = 0; i < stains.size(); ++i) {
-            Stain& stain = stains[i];
-            stain.age += deltaTime;
-            if (stain.lifetime > 0.0f && stain.age >= stain.lifetime) continue;
-
-            if (stain.follows != Stain::Follows::NOTHING) {
-                const float height = FollowedHeight(level, stain, stain.bottomCentre.y, stain.followedHeight);
-                stain.bottomCentre.y += height - stain.followedHeight;
-                stain.followedHeight = height;
-            }
-
-            if (kept != i) stains[kept] = std::move(stain);
-            ++kept;
-        }
-        stains.resize(kept);
+        if (deltaTime > 0.0f) UpdateLive(level, deltaTime);
     }
 
     const std::vector<Particle>& Particles() { return particles; }

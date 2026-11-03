@@ -18,6 +18,7 @@
 #include "src/Runtime/RuntimeSession.cpp"
 
 #include "Headers/Editor/Editor.hpp"
+#include "Headers/Editor/ImGuiDrawFunctions.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
@@ -212,6 +213,151 @@ static int RoundTrip(const fs::path& assets) {
     return failures;
 }
 
+// The runtime editor's Play and Stop, and looping in the game's own update.
+// usage: playtest <project.tilky> <level> <outDir> 0 --preview
+static void CheckEmitters() {
+    Level& level = LevelManager::CurrentLevel();
+    const ID hostID = level.CreateEntity(false);
+    Entity& host = *level.GetEntity(hostID);
+    host.name = "Emitter Test";
+    auto* hostTransform = level.transforms.Get(hostID);
+
+    const auto tick = [](const int frames) {
+        for (int i = 0; i < frames; ++i) {
+            InputManager::BeginFrame();
+            RuntimeSession::Update();
+        }
+    };
+    const auto ownedBy = [](const ComponentInstanceID id) {
+        size_t count = 0;
+        for (const auto& particle : ParticleSystem::Particles()) if (particle.style->previewOwner == id) ++count;
+        return count;
+    };
+
+    auto editorView = renderer->GetEditorCameraTransform();
+    auto editorCamera = renderer->GetEditorCamera();
+    editorView->position = {0.0f, 30.0f, 400.0f};
+    editorCamera->yaw = 0.0f;
+    editorCamera->pitch = -15.0f;
+    hostTransform->position = {0.0f, 30.0f, 450.0f};
+
+    auto* looping = host.AddComponent<ComponentParticleEmitter>();
+    looping->textures = {"Sprites/FX/Debris/Spark.png"};
+    looping->burstMin = looping->burstMax = 5;
+    looping->speedMin = looping->speedMax = 12.0f;
+    looping->spread = 180.0f;
+    looping->gravity = 0.0f;
+    looping->lifetimeMin = looping->lifetimeMax = 30.0f;
+    looping->sizeMin = looping->sizeMax = 2.0f;
+    looping->loop = true;
+    looping->duration = 0.5f;
+    const ComponentInstanceID loopID = looping->instanceID;
+
+    ParticleSystem::PreviewPlay(*looping);
+    tick(126);
+    std::printf("[preview] loop: %zu particles after 2.1 s, want 25 (5 bursts of 5)\n", ownedBy(loopID));
+    pendingCapture = "preview_loop";
+    tick(2);
+
+    auto* oneShot = host.AddComponent<ComponentParticleEmitter>();
+    oneShot->textures = {"Sprites/FX/Blood/Drop 1.png"};
+    oneShot->burstMin = oneShot->burstMax = 3;
+    oneShot->rate = 20.0f;
+    oneShot->duration = 1.0f;
+    oneShot->speedMin = oneShot->speedMax = 8.0f;
+    oneShot->gravity = 300.0f;
+    oneShot->lifetimeMin = oneShot->lifetimeMax = 30.0f;
+    oneShot->collision = ParticleCollision::DIE;
+    oneShot->stainTextures = {"Sprites/FX/Blood/Small Stain 1.png"};
+    oneShot->stainSizeMin = oneShot->stainSizeMax = 4.0f;
+    const ComponentInstanceID shotID = oneShot->instanceID;
+    looping = host.GetComponentInstance<ComponentParticleEmitter>(loopID);
+
+    ParticleSystem::PreviewPlay(*oneShot);
+    tick(180);
+    pendingCapture = "preview_stains";
+    tick(2);
+    const size_t stainsSeen = ParticleSystem::Stains().size();
+    std::printf("[preview] one shot: %zu stains, want 23 (3 + 20), %zu of its particles still flying, previewing %d\n",
+                stainsSeen, ownedBy(shotID), ParticleSystem::IsPreviewing(shotID));
+    const size_t loopBefore = ownedBy(loopID);
+    ParticleSystem::PreviewStop(shotID);
+    std::printf("[preview] stop one shot: stains %zu, want 0; loop's particles %zu -> %zu, want no drop\n",
+                ParticleSystem::Stains().size(), loopBefore, ownedBy(loopID));
+    ParticleSystem::PreviewStop(loopID);
+    std::printf("[preview] stop loop: particles %zu, want 0, previewing %d\n", ParticleSystem::Particles().size(), ParticleSystem::IsPreviewing(loopID));
+    std::printf("[preview] level untouched: clocks playing %d %d, want 0 0\n",
+                host.GetComponentInstance<ComponentParticleEmitter>(loopID)->clock.playing,
+                host.GetComponentInstance<ComponentParticleEmitter>(shotID)->clock.playing);
+
+    // The game's update: Play On Start, then a loop and a one-shot.
+    constexpr float DT = 1.0f / 60.0f;
+    looping = host.GetComponentInstance<ComponentParticleEmitter>(loopID);
+    oneShot = host.GetComponentInstance<ComponentParticleEmitter>(shotID);
+    oneShot->isActive = false;
+    looping->playOnStart = true;
+    looping->started = false;
+    for (int i = 0; i < 126; ++i) ParticleSystem::Update(level, DT);
+    std::printf("[game] loop with Play On Start: %zu particles, want 25\n", ParticleSystem::Particles().size());
+    ParticleSystem::StopEmitter(*looping);
+    const size_t afterStop = ParticleSystem::Particles().size();
+    for (int i = 0; i < 60; ++i) ParticleSystem::Update(level, DT);
+    std::printf("[game] after Stop: %zu -> %zu, want no change, playing %d\n", afterStop, ParticleSystem::Particles().size(), looping->clock.playing);
+    ParticleSystem::Start();
+
+    looping->isActive = false;
+    oneShot->isActive = true;
+    oneShot->collision = ParticleCollision::NONE;
+    ParticleSystem::PlayEmitter(*oneShot);
+    for (int i = 0; i < 62; ++i) ParticleSystem::Update(level, DT);
+    const bool playingAtEnd = oneShot->clock.playing;
+    const size_t atEnd = ParticleSystem::Particles().size();
+    for (int i = 0; i < 60; ++i) ParticleSystem::Update(level, DT);
+    std::printf("[game] one cycle: %zu made, want 23, playing %d want 0, then %zu, want the same\n", atEnd, playingAtEnd, ParticleSystem::Particles().size());
+    ParticleSystem::Start();
+
+    // The inspector itself: the buttons, drawn and clicked for real. Click at
+    // PREVIEW_CLICK=x,y in window pixels.
+    looping->isActive = true;
+    ImGuiDrawFunctions::EntityInspectorState state;
+    state.allowParticlePreview = true;
+    bool open = true;
+    float clickX = -1.0f, clickY = -1.0f;
+    if (const char* click = std::getenv("PREVIEW_CLICK")) std::sscanf(click, "%f,%f", &clickX, &clickY);
+    for (int frame = 0; frame < 12; ++frame) {
+        renderer->BeginFrame();
+        renderer->Update(false, false);
+        renderer->BeginImGuiFrame();
+        ImGuiIO& io = ImGui::GetIO();
+        if (clickX >= 0.0f) {
+            io.AddMousePosEvent(clickX, clickY);
+            if (frame == 6) io.AddMouseButtonEvent(0, true);
+            if (frame == 8) io.AddMouseButtonEvent(0, false);
+        }
+        ImGuiDrawFunctions::DrawEntityEditor(host, state, &open, true);
+        renderer->EndImGuiFrame();
+        if (frame == 11) pendingCapture = "preview_inspector";
+        renderer->EndFrame();
+    }
+    // Scrolled down to the second emitter's tag picker.
+    oneShot->collision = ParticleCollision::DIE;
+    if (auto id = TagRegistry::Find("Liquid")) oneShot->noStainTag = *id;
+    for (int frame = 0; frame < 8; ++frame) {
+        renderer->BeginFrame();
+        renderer->Update(false, false);
+        renderer->BeginImGuiFrame();
+        ImGuiIO& io = ImGui::GetIO();
+        io.AddMousePosEvent(230.0f, 400.0f);
+        if (frame == 3) io.AddMouseWheelEvent(0.0f, -500.0f);
+        ImGuiDrawFunctions::DrawEntityEditor(host, state, &open, true);
+        renderer->EndImGuiFrame();
+        if (frame == 7) pendingCapture = "preview_tag";
+        renderer->EndFrame();
+    }
+    std::printf("[preview] inspector: clicked %.0f,%.0f, first emitter previewing %d\n", clickX, clickY, ParticleSystem::IsPreviewing(loopID));
+    std::fflush(stdout);
+}
+
 int main(int argc, char** argv) {
     if (argc == 3 && std::strcmp(argv[2], "--roundtrip") == 0) {
         if (!ProjectManager::LoadProjectMetaData(argv[1])) return 2;
@@ -241,9 +387,20 @@ int main(int argc, char** argv) {
     Editor::PrepareLevelForRuntime();
     InputManager::Initialize(Editor::GetWindow());
 
-    if (!RuntimeSession::Start(RuntimeSession::PLAY)) return 7;
+    const bool checkEmitters = argc > 5 && std::strcmp(argv[5], "--preview") == 0;
+    if (!RuntimeSession::Start(checkEmitters ? RuntimeSession::EDITOR : RuntimeSession::PLAY)) return 7;
     SDL_SetWindowSize(renderer->GetWindow(), 1280, 720);
     SDL_SyncWindow(renderer->GetWindow());
+
+    if (checkEmitters) {
+        CheckEmitters();
+        RuntimeSession::Shutdown();
+        std::printf("[preview] after leaving: particles %zu, stains %zu, want 0 0\n", ParticleSystem::Particles().size(), ParticleSystem::Stains().size());
+        std::fflush(stdout);
+        RuntimeSession::Destroy();
+        Editor::Destroy();
+        return 0;
+    }
 
     int frame = 0;
     for (; frame < maxFrames; ++frame) {

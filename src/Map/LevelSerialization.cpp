@@ -3102,7 +3102,7 @@ namespace LevelSerialization {
     json ComponentOwnFieldsToJson(const ComponentParticleEmitter& c) {
         const auto color = [](const Vector4& v) { return json::array({v.x, v.y, v.z, v.w}); };
         return {
-            {"isActive", c.isActive}, {"playOnStart", c.playOnStart}, {"rate", c.rate},
+            {"isActive", c.isActive}, {"playOnStart", c.playOnStart}, {"loop", c.loop}, {"duration", c.duration}, {"rate", c.rate},
             {"burstMin", c.burstMin}, {"burstMax", c.burstMax},
             {"textures", c.textures}, {"animate", c.animate},
             {"offset", Vec3Json(c.offset)}, {"direction", Vec3Json(c.direction)}, {"spread", c.spread},
@@ -3126,6 +3126,8 @@ namespace LevelSerialization {
         };
         c.isActive = j.value("isActive", d.isActive);
         c.playOnStart = j.value("playOnStart", d.playOnStart);
+        c.loop = j.value("loop", d.loop);
+        c.duration = j.value("duration", d.duration);
         c.rate = j.value("rate", d.rate);
         c.burstMin = j.value("burstMin", d.burstMin);
         c.burstMax = j.value("burstMax", d.burstMax);

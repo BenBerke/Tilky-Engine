@@ -80,17 +80,18 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
         "ParticleEmitter",
 
         "isValid", sol::property(&ScriptParticleEmitter::IsValid),
-        "isPlaying", sol::property([](const ScriptParticleEmitter& self) { const auto* c = self.GetComponent(); return c != nullptr && c->playing; }),
+        "isPlaying", sol::property([](const ScriptParticleEmitter& self) { const auto* c = self.GetComponent(); return c != nullptr && c->clock.playing; }),
 
         TILKY_EMITTER_FIELD(isActive), TILKY_EMITTER_FIELD(rate), TILKY_EMITTER_FIELD(burstMin), TILKY_EMITTER_FIELD(burstMax),
         TILKY_EMITTER_FIELD(offset), TILKY_EMITTER_FIELD(direction), TILKY_EMITTER_FIELD(spread),
         TILKY_EMITTER_FIELD(speedMin), TILKY_EMITTER_FIELD(speedMax), TILKY_EMITTER_FIELD(gravity), TILKY_EMITTER_FIELD(drag),
+        TILKY_EMITTER_FIELD(loop), TILKY_EMITTER_FIELD(duration),
         TILKY_EMITTER_FIELD(lifetimeMin), TILKY_EMITTER_FIELD(lifetimeMax),
         TILKY_EMITTER_FIELD(sizeMin), TILKY_EMITTER_FIELD(sizeMax), TILKY_EMITTER_FIELD(sizeEnd),
         TILKY_EMITTER_FIELD(colorStart), TILKY_EMITTER_FIELD(colorEnd), TILKY_EMITTER_FIELD(bounciness),
 
-        "Play", [](const ScriptParticleEmitter& self) { if (auto* c = self.GetComponent()) c->playing = true; },
-        "Stop", [](const ScriptParticleEmitter& self) { if (auto* c = self.GetComponent()) { c->playing = false; c->spawnDebt = 0.0f; } },
+        "Play", [](const ScriptParticleEmitter& self) { if (auto* c = self.GetComponent()) ParticleSystem::PlayEmitter(*c); },
+        "Stop", [](const ScriptParticleEmitter& self) { if (auto* c = self.GetComponent()) ParticleSystem::StopEmitter(*c); },
         "Emit", [](const ScriptParticleEmitter& self, const sol::optional<int> count, const sol::optional<Vector3> position, const sol::optional<Vector3> direction) -> int {
             const ComponentParticleEmitter* c = self.GetComponent();
             if (c == nullptr || !c->isActive) return 0;

@@ -75,9 +75,11 @@ namespace {
 
         RegisterType(Type("ParticleEmitter", "Throws out particles: small images that aren't entities, can bounce and can leave stains on walls and floors.", {
             Prop("isValid", "boolean", true),
-            Prop("isPlaying", "boolean", true, "True while the steady stream (rate) is on."),
+            Prop("isPlaying", "boolean", true, "True from Play until its cycle ends or Stop. Always true once a looping one is playing, until Stop."),
             Prop("isActive", "boolean"),
-            Prop("rate", "number", false, "Particles per second while playing. 0 = bursts only."),
+            Prop("loop", "boolean", false, "Repeats its cycle until stopped. Off: one cycle, then it ends."),
+            Prop("duration", "number", false, "Seconds in one cycle: a burst, then rate for this long."),
+            Prop("rate", "number", false, "Particles per second during a cycle. 0 = bursts only."),
             Prop("burstMin", "integer"), Prop("burstMax", "integer"),
             Prop("offset", "Vector3"), Prop("direction", "Vector3", false, "Which way particles go, turned with the entity's rotation."),
             Prop("spread", "number", false, "Degrees either side of direction."),
@@ -87,8 +89,8 @@ namespace {
             Prop("sizeMin", "number"), Prop("sizeMax", "number"), Prop("sizeEnd", "number", false, "Size at the end of its life, times its start size."),
             Prop("colorStart", "Vector4"), Prop("colorEnd", "Vector4"), Prop("bounciness", "number"),
         }, {
-            Method("Play", {}, {}, "Turns the steady stream on."),
-            Method("Stop", {}, {}, "Turns the steady stream off. Live particles carry on."),
+            Method("Play", {}, {}, "Starts its cycle over: a burst, then rate for duration, repeating if it loops."),
+            Method("Stop", {}, {}, "Ends the cycle. Live particles carry on."),
             Method("Emit", {Param("count", "integer?"), Param("position", "Vector3?"), Param("direction", "Vector3?")}, "integer",
                    "Fires one burst now and returns how many it made. Left out: the emitter's burst numbers, its own place, its own direction."),
         }));

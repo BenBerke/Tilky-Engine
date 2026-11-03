@@ -42,6 +42,7 @@
 #include "Headers/TagRegistry.hpp"
 #include "Headers/GlobalEventVariables.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/Gameplay/ParticleSystem.hpp"
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
 #include "Headers/Runtime/Sound/SoundManager.hpp"
 #include "Headers/Objects/FlipbookAsset.hpp"
@@ -115,6 +116,9 @@ namespace {
     static bool MoveInStorage(Storage &storage, const std::uint64_t instanceID, const size_t newIndex) {
         return storage.MoveOnOwner(instanceID, newIndex);
     }
+
+    // Set from EntityInspectorState each time the entity inspector draws.
+    static bool particlePreviewAllowed = false;
 
     static void MoveComponentInstance(const int componentType, const std::uint64_t instanceID, const size_t newIndex) {
         Level &level = LevelManager::CurrentLevel();
@@ -5187,6 +5191,7 @@ namespace ImGuiDrawFunctions {
     //  Entity Editor
     // ─────────────────────────────────────────────────────────────────────────
     bool DrawEntityEditor(Entity &entity, EntityInspectorState &state, bool *open, const bool draggable) {
+        particlePreviewAllowed = state.allowParticlePreview;
         bool deleteRequested = false;
 
         ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
@@ -6565,8 +6570,22 @@ namespace ImGuiDrawFunctions {
                     ImGui::PopID();
                 };
 
+                if (particlePreviewAllowed) {
+                    ImGui::PushID("ParticlePreview");
+                    if (ImGui::Button(Get("component.particle_emitter.preview_play").c_str())) ParticleSystem::PreviewPlay(*c);
+                    Tooltip(Get("editor.tooltip.component.particle_emitter.preview_play").c_str());
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled(!ParticleSystem::IsPreviewing(c->instanceID));
+                    if (ImGui::Button(Get("component.particle_emitter.preview_stop").c_str())) ParticleSystem::PreviewStop(c->instanceID);
+                    ImGui::EndDisabled();
+                    Tooltip(Get("editor.tooltip.component.particle_emitter.preview_stop").c_str());
+                    ImGui::PopID();
+                }
+
                 BeginSection(Get("component.particle_emitter.emission").c_str());
                 flag("playOnStart", "play_on_start", &c->playOnStart);
+                flag("loop", "loop", &c->loop);
+                number("duration", "duration", &c->duration);
                 number("rate", "rate", &c->rate);
                 whole("burstMin", "burst_min", &c->burstMin);
                 whole("burstMax", "burst_max", &c->burstMax);
@@ -6638,7 +6657,10 @@ namespace ImGuiDrawFunctions {
                         {
                             PrefabField prefabField("noStainTag");
                             FieldWidth(160.0f);
-                            ImGui::InputText(Get("component.particle_emitter.no_stain_tag").c_str(), &c->noStainTag);
+                            bool useTag = c->noStainTag != NO_TAG;
+                            TagId tag = useTag ? c->noStainTag : TagId{0};
+                            if (DrawTagCombo(Get("component.particle_emitter.no_stain_tag").c_str(), tag, TagRegistry::TagKind::NORMAL, &useTag))
+                                c->noStainTag = useTag ? tag : NO_TAG;
                             Tooltip(Get("editor.tooltip.component.particle_emitter.no_stain_tag").c_str());
                         }
                     }

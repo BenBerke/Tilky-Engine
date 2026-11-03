@@ -29,6 +29,8 @@ namespace ImGuiDrawFunctions {
         // only sets snapToFloorRequested; the caller does the snapping and
         // clears it.
         bool allowSnapToFloor = true;
+        // Play and Stop on Particle Emitters. Only where the view can show them.
+        bool allowParticlePreview = false;
         bool snapToFloorRequested = false;
 
         // Snap to Wall (Headers/Editor/WallSnap.hpp), shown with Snap to Floor.

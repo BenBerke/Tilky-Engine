@@ -13,6 +13,7 @@ using LevelID = ID;
 using UIElementID = ID;
 
 using TagId = uint16_t;
+constexpr TagId NO_TAG = std::numeric_limits<TagId>::max(); // a tag field set to nothing
 using EventId = TagId;
 using DispatchId = EventId;
 using EventVariableID = ID;

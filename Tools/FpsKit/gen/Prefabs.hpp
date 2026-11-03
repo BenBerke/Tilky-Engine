@@ -104,7 +104,7 @@ inline void MakeParticleEffects() {
         drops->stainSizeMin = 3.0f;
         drops->stainSizeMax = 7.0f;
         drops->stainColor = {1.0f, 1.0f, 1.0f, kStainBlood};
-        drops->noStainTag = "Liquid";
+        drops->noStainTag = Tag("Liquid");
     });
 
     MakeParticleEffect("Blood Burst", [](Entity& e) {
@@ -126,7 +126,7 @@ inline void MakeParticleEffects() {
         drops->stainSizeMin = 5.0f;
         drops->stainSizeMax = 13.0f;
         drops->stainColor = {1.0f, 1.0f, 1.0f, kStainBlood};
-        drops->noStainTag = "Liquid";
+        drops->noStainTag = Tag("Liquid");
     });
 
     MakeParticleEffect("Gib Chunks", [](Entity& e) {
@@ -149,7 +149,7 @@ inline void MakeParticleEffects() {
         chunks->stainSizeMin = 3.0f;
         chunks->stainSizeMax = 6.0f;
         chunks->stainColor = {1.0f, 1.0f, 1.0f, kStainBlood};
-        chunks->noStainTag = "Liquid";
+        chunks->noStainTag = Tag("Liquid");
     });
 
     MakeParticleEffect("Puff", [](Entity& e) {

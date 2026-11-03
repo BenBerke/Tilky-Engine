@@ -24,7 +24,32 @@ To make a burst whenever something happens, without spawning anything:
 The prefab is only a list of settings. Nothing is ever spawned from it, so a hundred shots cost almost nothing.
 
 For something that keeps going, such as a smoking chimney, put the emitter on an entity in your level,
-set **Rate** above 0 and tick **Play On Start**.
+set **Rate** above 0, and tick **Loop** and **Play On Start**.
+
+## How it plays
+
+An emitter plays in **cycles**. One cycle is a burst, then **Rate** particles per second for **Duration** seconds.
+With **Loop** on it repeats until something stops it. With it off, it plays one cycle and ends.
+
+```
+Duration 2, Burst 8, Rate 20
+
+Loop on:   burst, 2 s of stream, burst, 2 s of stream...
+Loop off:  burst, 2 s of stream, ends
+```
+
+**Game.EmitParticles** and the **Emit Particles** dispatch don't use cycles. They only fire a burst.
+
+## Previewing it
+
+In the runtime editor, select the entity. Each Particle Emitter in the inspector has **Play** and **Stop** buttons. The game
+isn't running there, so this runs just that emitter, exactly as the game would, with its collisions and stains.
+
+**Play** starts it from the beginning, and you can change its settings while it plays. Later particles use them. **Stop**
+removes everything that emitter made. Nothing a preview does is saved, and leaving the runtime editor ends every preview.
+
+A preview keeps going while you select something else, so reselect the entity to stop it. The buttons work on an emitter in
+a level, so to preview one of your effect prefabs, drag it into a level first.
 
 ## Settings
 
@@ -32,8 +57,10 @@ set **Rate** above 0 and tick **Play On Start**.
 
 | Setting | What it does |
 |---|---|
-| **Play On Start** | Fires one burst when the entity starts, then keeps going if **Rate** is above 0 |
-| **Rate** | Particles per second while playing. 0 means bursts only. |
+| **Play On Start** | Starts its first cycle when the entity starts |
+| **Loop** | Repeats its cycle until something stops it. Off, it plays one cycle and ends. |
+| **Duration** | Seconds in one cycle. A looping one is at least 0.05. |
+| **Rate** | Particles per second during a cycle. 0 means bursts only. |
 | **Burst Min**, **Burst Max** | How many particles one burst throws, picked at random in between |
 
 ### Motion
@@ -69,7 +96,7 @@ set **Rate** above 0 and tick **Play On Start**.
 | **Stain Size Min**, **Stain Size Max** | How big a stain is, in world units |
 | **Stain Lifetime** | Seconds until it fades. 0 keeps it until **Max Stains** removes it. |
 | **Stain Color** | Multiplied with the stain image |
-| **No Stain Tag** | No stains on the floor or ceiling of sectors with this tag, such as liquids |
+| **No Stain Tag** | Pick a tag: no stains on the floor or ceiling of sectors with it, such as liquids |
 
 Pass Through is the cheapest. The other two check every particle against the level each frame.
 
@@ -84,8 +111,9 @@ are removed to make room.
 |---|---|---|
 | `isValid` | boolean, read-only | |
 | `isActive` | boolean | Off, it fires nothing. Live particles carry on. |
-| `isPlaying` | boolean, read-only | True while the steady stream (**Rate**) is on |
-| `rate` | number | |
+| `isPlaying` | boolean, read-only | True from `Play` until its cycle ends or `Stop` |
+| `loop` | boolean | |
+| `duration`, `rate` | number | |
 | `burstMin`, `burstMax` | integer | |
 | `offset`, `direction` | `Vector3` | |
 | `spread`, `speedMin`, `speedMax`, `gravity`, `drag` | number | |
@@ -94,8 +122,8 @@ are removed to make room.
 
 | Method | Description |
 |---|---|
-| `Play()` | Turns the steady stream on |
-| `Stop()` | Turns the steady stream off. Live particles carry on. |
+| `Play()` | Starts its cycle over: a burst, then **Rate** for **Duration**, repeating if it loops |
+| `Stop()` | Ends the cycle. Live particles carry on. |
 | `Emit([count], [position], [direction])` | Fires a burst. Left out, these use the emitter's own numbers and the entity's place. |
 
 To fire a prefab's emitters or leave a mark without an emitter of your own, see

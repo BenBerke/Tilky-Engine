@@ -2615,8 +2615,9 @@ namespace {
                 if (!c) return false;
 
                 if (field == "isActive") { Access(c->isActive, read, write); return true; }
+                if (field == "loop") { Access(c->loop, read, write); return true; }
                 const std::pair<const char*, float*> floats[] = {
-                    {"rate", &c->rate}, {"spread", &c->spread}, {"speedMin", &c->speedMin},
+                    {"duration", &c->duration}, {"rate", &c->rate}, {"spread", &c->spread}, {"speedMin", &c->speedMin},
                     {"speedMax", &c->speedMax}, {"gravity", &c->gravity},
                 };
                 for (const auto& [name, value] : floats) {

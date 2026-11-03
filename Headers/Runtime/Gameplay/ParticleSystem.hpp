@@ -34,7 +34,9 @@ namespace ParticleSystem {
         float stainSizeMax = 0.0f;
         float stainLifetime = 0.0f;
         Vector4 stainColor;
-        std::string noStainTag;
+        TagId noStainTag = NO_TAG;
+        // Whose editor preview fired it, so that preview's Stop can remove it.
+        ComponentInstanceID previewOwner = INVALID_COMPONENT_INSTANCE_ID;
     };
 
     struct Particle {
@@ -64,15 +66,32 @@ namespace ParticleSystem {
         ID sectorA = INVALID_ID;
         ID sectorB = INVALID_ID;
         float followedHeight = 0.0f;
+
+        ComponentInstanceID previewOwner = INVALID_COMPONENT_INSTANCE_ID;
     };
 
-    // Forgets everything from the last level.
+    // Forgets everything from the last level, previews included.
     void Start();
     void Stop();
 
     // Scaled time, so all of it holds while timeScale is 0. After scripts, so
     // what they emit this frame moves this frame.
     void Update(Level& level, float deltaTime);
+
+    // Starts its cycle over: a burst, then Rate for Duration, repeating if it
+    // loops. Stopping leaves live particles alone.
+    void PlayEmitter(ComponentParticleEmitter& emitter);
+    void StopEmitter(ComponentParticleEmitter& emitter);
+
+    // The runtime editor's Play and Stop. The game isn't running there, so
+    // UpdatePreview does the work, in real time. A preview changes nothing in the
+    // level, so nothing about it can be saved. It lasts until PreviewStop, even
+    // after a one-shot has finished, so that what it left stays to look at.
+    // Stop removes what that emitter's preview made, and only that.
+    void PreviewPlay(const ComponentParticleEmitter& emitter);
+    void PreviewStop(ComponentInstanceID emitter);
+    [[nodiscard]] bool IsPreviewing(ComponentInstanceID emitter);
+    void UpdatePreview(Level& level, float deltaTime);
 
     // Fires one burst. `count` below 0 uses the emitter's burst numbers, which
     // `scale` then multiplies. `direction` zero uses the emitter's own, turned
@@ -89,7 +108,7 @@ namespace ParticleSystem {
     // `noStainTag`. Entities don't stop the line.
     bool StainSurface(Level& level, const Vector3& origin, const Vector3& direction, float length,
                       const std::string& texture, float size, const Vector4& color, float lifetime = 0.0f,
-                      const std::string& noStainTag = {});
+                      TagId noStainTag = NO_TAG);
 
     void ClearStains();
 

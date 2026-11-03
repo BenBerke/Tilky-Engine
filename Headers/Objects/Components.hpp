@@ -920,6 +920,15 @@ enum class ParticleCollision : int {
 // Throws out particles: small sprites that aren't entities (see ParticleSystem).
 // It doesn't need to stay alive for them, so an effect can be a prefab that's
 // never spawned: Game.EmitParticles fires a prefab's emitters directly.
+// Where an emitter is in its cycle: a burst, then Rate for Duration seconds.
+// Runtime only. The editor's preview keeps its own, so it never touches the level.
+struct ParticleEmitterClock {
+    bool playing = false;
+    bool burstDue = false;  // the next update starts a cycle with a burst
+    float cycleTime = 0.0f;
+    float spawnDebt = 0.0f;
+};
+
 struct ComponentParticleEmitter {
     ID ownerID = static_cast<ID>(-1);
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
@@ -928,8 +937,10 @@ struct ComponentParticleEmitter {
     bool takeFromLevelCopy = false;
 
     bool isActive = true;
-    bool playOnStart = false;   // one burst when the entity starts, then the stream
-    float rate = 0.0f;          // particles per second while playing, 0 = bursts only
+    bool playOnStart = false;   // starts its first cycle when the entity starts
+    bool loop = false;          // repeats its cycle until stopped, off = one cycle
+    float duration = 1.0f;      // seconds in one cycle
+    float rate = 0.0f;          // particles per second during a cycle, 0 = bursts only
     int burstMin = 8;
     int burstMax = 12;
 
@@ -964,12 +975,11 @@ struct ComponentParticleEmitter {
     float stainSizeMax = 4.0f;
     float stainLifetime = 0.0f; // seconds, 0 = until the World Settings cap removes it
     Vector4 stainColor = {1.0f, 1.0f, 1.0f, 1.0f};
-    std::string noStainTag;     // no stain on the floor or ceiling of sectors with this tag
+    TagId noStainTag = NO_TAG;  // no stain on the floor or ceiling of sectors with this tag
 
     // Runtime only, not saved.
     bool started = false;
-    bool playing = false;
-    float spawnDebt = 0.0f;
+    ParticleEmitterClock clock;
 
     bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 };

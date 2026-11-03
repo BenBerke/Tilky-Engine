@@ -169,8 +169,8 @@ namespace {
     }
 
     void ResetCopiedRuntimeState(ComponentParticleEmitter& emitter) {
-        emitter.started = emitter.playing = false;
-        emitter.spawnDebt = 0.0f;
+        emitter.started = false;
+        emitter.clock = {};
     }
 
     // The owner's component instance IDs (script instance IDs for scripts), in order.

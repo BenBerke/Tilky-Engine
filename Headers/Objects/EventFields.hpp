@@ -110,6 +110,8 @@ inline constexpr EventFieldInfo EVENT_FIELDS[] = {
     {FieldComponent::PATHFINDER, "stuckTime", "component.pathfinder.stuck_time", FieldValueKind::FLOAT},
 
     {FieldComponent::PARTICLE_EMITTER, "isActive", "events.field.is_active", FieldValueKind::BOOL},
+    {FieldComponent::PARTICLE_EMITTER, "loop", "component.particle_emitter.loop", FieldValueKind::BOOL},
+    {FieldComponent::PARTICLE_EMITTER, "duration", "component.particle_emitter.duration", FieldValueKind::FLOAT},
     {FieldComponent::PARTICLE_EMITTER, "rate", "component.particle_emitter.rate", FieldValueKind::FLOAT},
     {FieldComponent::PARTICLE_EMITTER, "spread", "component.particle_emitter.spread", FieldValueKind::FLOAT},
     {FieldComponent::PARTICLE_EMITTER, "speedMin", "component.particle_emitter.speed_min", FieldValueKind::FLOAT},

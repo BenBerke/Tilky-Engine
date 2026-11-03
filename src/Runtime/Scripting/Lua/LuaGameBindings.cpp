@@ -3,6 +3,7 @@
 //
 
 #include "Headers/Objects/Prefab.hpp"
+#include "Headers/TagRegistry.hpp"
 #include "Headers/Runtime/EventSystem.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
 #include "Headers/Map/MapQueries.hpp"
@@ -891,7 +892,8 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
     game.set_function("StainSurface", [](const Vector3& origin, const Vector3& direction, const float length, const std::string& texture, const float size,
                                          const sol::optional<Vector4> color, const sol::optional<float> lifetime, const sol::optional<std::string> noStainTag) {
         return ParticleSystem::StainSurface(LevelManager::CurrentLevel(), origin, direction, length, texture, size,
-                                            color.value_or(Vector4{1.0f, 1.0f, 1.0f, 1.0f}), lifetime.value_or(0.0f), noStainTag.value_or(std::string{}));
+                                            color.value_or(Vector4{1.0f, 1.0f, 1.0f, 1.0f}), lifetime.value_or(0.0f),
+                                            noStainTag.has_value() ? TagRegistry::Find(*noStainTag).value_or(NO_TAG) : NO_TAG);
     });
 
     game.set_function("ClearStains", [] { ParticleSystem::ClearStains(); });
