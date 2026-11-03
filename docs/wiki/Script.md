@@ -204,6 +204,7 @@ Rules for public functions, all reported like a syntax error:
   `a:b()`, and not a [callback](CallbackFunctions.md) or other engine name.
 - It can only be **called** by name, not used as a value: `pcall(TakeDamage, 5)` or
   `onHit = TakeDamage` are errors. Wrap it instead: `onHit = function(...) TakeDamage(...) end`.
+  The exception is the first argument of an [Invoke function](Invoke.md): `Invoke(TakeDamage, 1, 5)`.
 - No `local`, parameter or loop variable with the same name, and no second definition.
 
 A function without `public` can still be called through a reference, but it then gets the handle

@@ -38,7 +38,15 @@
 // A public function can only be called by name: using it as a value
 // (`pcall(TakeDamage, 5)`, `cb = TakeDamage`), redefining it or shadowing it
 // with a local, parameter or loop variable is a compile error, since those
-// would skip the rewrite.
+// would skip the rewrite. The first argument of an Invoke function is the one
+// exception, see below.
+//
+// Invoked functions. The Invoke functions need a function value, and neither
+// `ref:Fn` nor a public function is one, so as the first argument they get
+// wrapped:
+//
+//     Invoke(ref:Fn, 1, a)      ->  Invoke(function(...) ref:Fn(...) end, 1, a)
+//     Invoke(TakeDamage, 1, a)  ->  Invoke(function(...) TakeDamage(nil, ...) end, 1, a)
 //
 // Vector write-through. Vector properties (transform.position, ...) return
 // copies, so `a.b.position.y = 50` would set .y on a temporary. That exact

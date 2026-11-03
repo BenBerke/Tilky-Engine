@@ -453,6 +453,7 @@ namespace {
             }
 
             CompilePublicFunctionUses(context);
+            CompileInvokedMethods();
             CompileVectorAssignments();
 
             result.luaSource = ApplyEdits();
@@ -751,8 +752,8 @@ namespace {
         // -- function declaration calls ----------------------------------------
 
         // Every call of a declared function by name passes nil for its hidden
-        // parameter. Any other use of the name would bypass that, so it's an
-        // error.
+        // parameter, and so does the wrapper an Invoke function's first argument
+        // gets. Any other use of the name would bypass that, so it's an error.
         void CompilePublicFunctionUses(CompileContext& context) {
             if (declaredFunctions.empty()) return;
 
@@ -800,9 +801,56 @@ namespace {
                     continue;
                 }
 
+                // `Invoke(name, 1, a)` -> `Invoke(function(...) name(nil, ...) end, 1, a)`
+                if (i > 0 && IsInvokeCallOpen(i - 1) && (IsSymbol(i + 1, ",") || i + 1 == match[i - 1])) {
+                    edits.push_back({tokens[i].begin, tokens[i].begin, "function(...) "});
+                    edits.push_back({tokens[i].end, tokens[i].end, "(nil, ...) end"});
+                    continue;
+                }
+
                 context.Error(line, fmt::format(
                     "public function '{}' can only be called, not used as a value - wrap it instead: function(...) {}(...) end", name, name));
             }
+        }
+
+        // -- invoked methods ---------------------------------------------------
+
+        // `Invoke(ref:Fn, 1, a)` -> `Invoke(function(...) ref:Fn(...) end, 1, a)`.
+        // `ref:Fn` without a call isn't valid Lua, so this can't change the
+        // meaning of a script that already compiled.
+        void CompileInvokedMethods() {
+            for (std::size_t open = 0; open < tokens.size(); ++open) {
+                if (!IsInvokeCallOpen(open)) continue;
+
+                // An inline function's body can hold commas of its own.
+                const std::size_t first = open + 1;
+                if (IsWord(first, "function")) continue;
+
+                // The first argument ends at the first comma outside brackets.
+                std::size_t end = first;
+                while (end < match[open] && !IsSymbol(end, ",")) {
+                    if (IsOpenBracket(end) && match[end] != npos) end = match[end];
+                    ++end;
+                }
+
+                // Needs something before the colon: `ref:Fn`.
+                if (end < first + 3 || !IsPlainName(end - 1) || !IsSymbol(end - 2, ":")) continue;
+
+                edits.push_back({tokens[first].begin, tokens[first].begin, "function(...) "});
+                edits.push_back({tokens[end - 1].end, tokens[end - 1].end, "(...) end"});
+            }
+        }
+
+        // `open` is the `(` of a call to one of the Invoke functions.
+        [[nodiscard]] bool IsInvokeCallOpen(const std::size_t open) const {
+            if (open == 0 || !IsSymbol(open, "(") || match[open] == npos) return false;
+
+            const std::size_t name = open - 1;
+            if (tokens[name].kind != TokenKind::Name) return false;
+            const std::string_view text = Text(name);
+            if (text != "Invoke" && text != "InvokeReal" && text != "InvokeFrame" && text != "InvokeRepeating") return false;
+
+            return name == 0 || !(IsSymbol(name - 1, ".") || IsSymbol(name - 1, ":") || IsWord(name - 1, "function"));
         }
 
         // Marks the parameter names of every function definition.

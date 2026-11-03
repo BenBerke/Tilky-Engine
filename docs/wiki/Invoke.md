@@ -28,7 +28,7 @@ Invoke(fn, delay, ...)   -- handle
 
 | Parameter | Type | |
 |---|---|---|
-| `fn` | function | What to call: one of the script's own functions or an inline `function() ... end`. For a `public function`, see [below](#which-script-an-invoke-belongs-to). |
+| `fn` | function | What to call: one of the script's own functions, an inline `function() ... end`, or another script's public function as `ref:Function`. See [below](#which-script-an-invoke-belongs-to). |
 | `delay` | number | Seconds of game time to wait. Negative counts as `0`. |
 | `...` | anything, optional | Passed on to `fn` when it is called. Any number of them. |
 
@@ -209,19 +209,25 @@ end
 An invoke belongs to the script that **called** the Invoke function, even when `fn` calls into
 another script.
 
-A [`public function`](Script.md) can't be passed to an Invoke function directly, neither your
-own (the script won't compile: public functions can't be used as values) nor another script's
-(`guard.Alert` would be called without the hidden reference it needs). Wrap the call in an inline
-function instead:
+To invoke another script's [`public function`](Script.md), write `ref:Function` without `()`, in
+any Invoke function. Its arguments go after the delay, as usual:
 
 ```lua
 -- On a switch: alert the guard in 1 second.
 public Behaviour guard = nil
 
 function OnTriggerEnter(other)
-    Invoke(function() guard:Alert() end, 1)
+    Invoke(guard:Alert, 1)
+    Invoke(guard:TakeDamage, 2, 10)   -- guard:TakeDamage(10) in 2 seconds
 end
 ```
+
+The script compiles this to `function(...) guard:Alert(...) end`, so `guard` is read when the invoke
+runs, not when it's scheduled. If `guard` has changed by then, the new value is used.
+
+Your own public functions are passed by name, like any other function: `Invoke(Alert, 1)`. This only
+works directly in an Invoke function's first argument. Elsewhere, public functions can't be used as
+values, so `local later = Alert` won't compile.
 
 This invoke belongs to the switch's script, so it follows the switch's lifetime.
 
