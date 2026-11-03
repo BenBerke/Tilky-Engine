@@ -275,6 +275,8 @@ namespace {
         Editor::Update();
 
         if (InputManager::QuitRequested() || Editor::ShutdownRequested()) {
+            if (Editor::HoldShutdownForExport()) return true;
+
             StopCurrentMode(false);
             return false;
         }

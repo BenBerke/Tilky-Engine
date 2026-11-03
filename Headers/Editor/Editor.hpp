@@ -31,6 +31,9 @@ namespace Editor {
     void Destroy();
 
     bool ShutdownRequested();
+    // Call before acting on a shutdown. True while a game export is running:
+    // the editor has asked the user what to do, so don't close yet.
+    bool HoldShutdownForExport();
     bool QuitRequested();
     bool PlayRequested();
     bool SwitchToRuntimeEditorRequested();

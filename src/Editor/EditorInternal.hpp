@@ -1005,6 +1005,13 @@ namespace MapEditorInternal {
     // anything that sizes itself to the viewport's work area.
     void DrawEditorMenuBar();
 
+    // Stops a quit while a game export runs and asks what to do instead.
+    // Returns true if the quit was held back.
+    bool HoldQuitForGameExport();
+    // Last resort at engine exit: stops any export still running and waits
+    // for its thread.
+    void StopGameExportForExit();
+
     // The UI Editor's undo / redo (Ctrl+Z / Ctrl+Y there and its toolbar
     // buttons): the shared history, ending any drag first.
     void UIEditorUndo();

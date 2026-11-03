@@ -10,7 +10,13 @@
 #include "Headers/Editor/ObjExport.hpp"
 #include "Headers/Editor/CommandPalette.hpp"
 
+#include <atomic>
+#include <cstdlib>
+#include <iostream>
+#include <memory>
 #include <mutex>
+#include <string_view>
+#include <thread>
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -53,6 +59,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <csignal>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -195,7 +202,275 @@ namespace {
 } // namespace
 
 // =============================================================================
-//  RunExporter - exports the game into `exportFolder`, with toast feedback
+//  Game export - the exporter process, waited on by a background thread so the
+//  editor keeps running. Its output comes back through a pipe, which moves the
+//  bar. Everything touching ImGui or notifications stays on the main thread.
+// =============================================================================
+
+namespace {
+    struct GameExportJob {
+        std::thread thread;
+        std::atomic<bool> finished{false};
+        std::atomic<float> progress{0.0f};
+
+        // Written by the thread before `finished`, read after it.
+        const char* failureKey = nullptr;
+        const char* failureLog = nullptr;
+
+        fs::path folder;
+
+        // Guards the process handle: the thread closes it, Cancel uses it.
+        std::mutex processMutex;
+        bool cancelled = false;
+#ifdef _WIN32
+        HANDLE process = nullptr;
+#else
+        pid_t process = -1;
+#endif
+    };
+
+    std::unique_ptr<GameExportJob> gameExportJob;
+
+    // Set when a quit was held back for the running export.
+    bool exitAfterGameExport = false;
+    bool exportQuitPopupRequested = false;
+
+    void CancelGameExport(GameExportJob& job) {
+        std::lock_guard lock(job.processMutex);
+        job.cancelled = true;
+#ifdef _WIN32
+        if (job.process != nullptr) TerminateProcess(job.process, 1);
+#else
+        if (job.process > 0) kill(job.process, SIGKILL);
+#endif
+    }
+
+    // Splits the exporter's output into lines. "@progress <0-100>" moves the
+    // bar; anything else goes on to the editor's console.
+    class ExporterOutputReader {
+    public:
+        explicit ExporterOutputReader(GameExportJob& job) : job(job) {}
+
+        void Feed(const char* data, const size_t size) {
+            pending.append(data, size);
+
+            size_t lineEnd;
+            while ((lineEnd = pending.find('\n')) != std::string::npos) {
+                HandleLine(pending.substr(0, lineEnd));
+                pending.erase(0, lineEnd + 1);
+            }
+        }
+
+        void Finish() {
+            if (!pending.empty()) HandleLine(pending);
+            pending.clear();
+        }
+
+    private:
+        void HandleLine(std::string line) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+
+            static constexpr std::string_view marker = "@progress ";
+            if (line.starts_with(marker)) {
+                job.progress = static_cast<float>(std::atoi(line.c_str() + marker.size())) / 100.0f;
+                return;
+            }
+
+            std::cout << line << std::endl;
+        }
+
+        GameExportJob& job;
+        std::string pending;
+    };
+
+    void SetExportFailure(GameExportJob& job, const char* logMessage, const char* notificationKey) {
+        job.failureLog = logMessage;
+        job.failureKey = notificationKey;
+    }
+
+    // Runs on the export thread.
+    void RunExporterProcess(GameExportJob& job, const fs::path& exporterExe, const fs::path& standaloneExe,
+                            const fs::path& projectMetadata, const fs::path& exportFolder, const fs::path& engineBasePath) {
+        ExporterOutputReader output(job);
+        char buffer[4096];
+
+#ifdef _WIN32
+        std::wstring commandLine =
+                L"\"" + exporterExe.wstring() + L"\" " +
+                L"\"" + projectMetadata.wstring() + L"\" " +
+                L"\"" + exportFolder.wstring() + L"\" " +
+                L"\"" + standaloneExe.wstring() + L"\"";
+
+        SECURITY_ATTRIBUTES pipeAttributes{};
+        pipeAttributes.nLength = sizeof(pipeAttributes);
+        pipeAttributes.bInheritHandle = TRUE;
+
+        HANDLE pipeRead = nullptr;
+        HANDLE pipeWrite = nullptr;
+        if (!CreatePipe(&pipeRead, &pipeWrite, &pipeAttributes, 0)) {
+            SetExportFailure(job, "Export failed: could not launch process.", "editor.notification.export_failed_launch_process");
+            return;
+        }
+        SetHandleInformation(pipeRead, HANDLE_FLAG_INHERIT, 0);
+
+        STARTUPINFOW startupInfo{};
+        startupInfo.cb = sizeof(startupInfo);
+        startupInfo.dwFlags = STARTF_USESTDHANDLES;
+        startupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        startupInfo.hStdOutput = pipeWrite;
+        startupInfo.hStdError = pipeWrite;
+        PROCESS_INFORMATION processInfo{};
+
+        const BOOL started = CreateProcessW(exporterExe.wstring().c_str(), commandLine.data(),
+                                            nullptr, nullptr, TRUE, 0, nullptr,
+                                            engineBasePath.wstring().c_str(),
+                                            &startupInfo, &processInfo);
+
+        // The child has its own copy; holding ours would keep the pipe open
+        // after the child exits, and the read below would never end.
+        CloseHandle(pipeWrite);
+
+        if (!started) {
+            CloseHandle(pipeRead);
+            SetExportFailure(job, "Export failed: could not launch process.", "editor.notification.export_failed_launch_process");
+            return;
+        }
+
+        {
+            std::lock_guard lock(job.processMutex);
+            job.process = processInfo.hProcess;
+            if (job.cancelled) TerminateProcess(processInfo.hProcess, 1);
+        }
+
+        DWORD bytesRead = 0;
+        while (ReadFile(pipeRead, buffer, sizeof(buffer), &bytesRead, nullptr) && bytesRead > 0)
+            output.Feed(buffer, bytesRead);
+        output.Finish();
+        CloseHandle(pipeRead);
+
+        WaitForSingleObject(processInfo.hProcess, INFINITE);
+
+        DWORD exitCode = 1;
+        GetExitCodeProcess(processInfo.hProcess, &exitCode);
+
+        {
+            std::lock_guard lock(job.processMutex);
+            job.process = nullptr;
+        }
+        CloseHandle(processInfo.hProcess);
+        CloseHandle(processInfo.hThread);
+
+        if (exitCode != 0)
+            SetExportFailure(job, "Export failed. Check logs.", "editor.notification.export_failed_check_logs");
+#else
+        int pipeEnds[2];
+        if (pipe(pipeEnds) != 0) {
+            SetExportFailure(job, "Export failed: fork error.", "editor.notification.export_failed_fork_error");
+            return;
+        }
+
+        const pid_t pid = fork();
+        if (pid < 0) {
+            close(pipeEnds[0]);
+            close(pipeEnds[1]);
+            SetExportFailure(job, "Export failed: fork error.", "editor.notification.export_failed_fork_error");
+            return;
+        }
+
+        if (pid == 0) {
+            dup2(pipeEnds[1], STDOUT_FILENO);
+            dup2(pipeEnds[1], STDERR_FILENO);
+            close(pipeEnds[0]);
+            close(pipeEnds[1]);
+
+            execl(exporterExe.c_str(), exporterExe.c_str(),
+                  projectMetadata.c_str(), exportFolder.c_str(),
+                  standaloneExe.c_str(), static_cast<char *>(nullptr));
+            _exit(127);
+        }
+
+        close(pipeEnds[1]);
+
+        {
+            std::lock_guard lock(job.processMutex);
+            job.process = pid;
+            if (job.cancelled) kill(pid, SIGKILL);
+        }
+
+        ssize_t bytesRead;
+        while ((bytesRead = read(pipeEnds[0], buffer, sizeof(buffer))) > 0)
+            output.Feed(buffer, static_cast<size_t>(bytesRead));
+        output.Finish();
+        close(pipeEnds[0]);
+
+        int status = 0;
+        const pid_t waited = waitpid(pid, &status, 0);
+
+        {
+            std::lock_guard lock(job.processMutex);
+            job.process = -1;
+        }
+
+        if (waited < 0)
+            SetExportFailure(job, "Export failed: wait error.", "editor.notification.export_failed_wait_error");
+        else if (!WIFEXITED(status))
+            SetExportFailure(job, "Export failed: abnormal exit.", "editor.notification.export_failed_abnormal_exit");
+        else if (WEXITSTATUS(status) != 0)
+            SetExportFailure(job, "Export failed. Check logs.", "editor.notification.export_failed_check_logs");
+#endif
+    }
+
+    // Reports a finished export. Called every frame from the menu bar.
+    void PollGameExport() {
+        if (!gameExportJob || !gameExportJob->finished) return;
+
+        gameExportJob->thread.join();
+        const std::unique_ptr<GameExportJob> job = std::move(gameExportJob);
+
+        const bool exitNow = exitAfterGameExport && (job->cancelled || job->failureKey == nullptr);
+        exitAfterGameExport = false;
+
+        if (job->cancelled) {
+            spdlog::info("Export cancelled: {}", job->folder.string());
+            ShowNotification(Localisation::Get("editor.notification.export_cancelled").c_str());
+        } else if (job->failureKey != nullptr) {
+            // The editor stays open even if it was waiting to close, so the
+            // failure gets seen.
+            spdlog::error("{}", job->failureLog);
+            ShowNotification(Localisation::Get(job->failureKey).c_str(), /*isError=*/true);
+        } else {
+            spdlog::info("Export completed successfully to {}", job->folder.string());
+            ShowNotification(Localisation::Get("editor.notification.export_complete").c_str());
+        }
+
+        if (exitNow) {
+            MapEditorInternal::shutdown = true;
+            MapEditorInternal::quit = true;
+        }
+    }
+
+    void DrawGameExportBar(const float width) {
+        if (!gameExportJob) return;
+
+        const float progress = gameExportJob->progress;
+
+        char label[64];
+        std::snprintf(label, sizeof(label), Localisation::Get("editor.export.progress").c_str(),
+                      static_cast<int>(progress * 100.0f));
+
+        ImGui::ProgressBar(progress, ImVec2(width, ImGui::GetTextLineHeightWithSpacing()), label);
+    }
+
+    // Width that fits the bar's text, or the Export Game item it replaces.
+    float GameExportBarWidth() {
+        const float exportLabelWidth = ImGui::CalcTextSize(Localisation::Get("editor.export").c_str()).x;
+        return std::max(exportLabelWidth, 130.0f);
+    }
+}
+
+// =============================================================================
+//  RunExporter - starts exporting the game into `exportFolder`. Toasts come from
+//  here if it can't start, and from PollGameExport once it ends.
 // =============================================================================
 
 static bool RunExporter(const fs::path& exportFolder) {
@@ -232,64 +507,17 @@ static bool RunExporter(const fs::path& exportFolder) {
                     Localisation::Get("editor.notification.export_failed_create_output_folder").c_str(), e.what());
     }
 
-#ifdef _WIN32
-    std::wstring commandLine =
-            L"\"" + exporterExe.wstring() + L"\" " +
-            L"\"" + projectMetadata.wstring() + L"\" " +
-            L"\"" + exportFolder.wstring() + L"\" " +
-            L"\"" + standaloneExe.wstring() + L"\"";
-
-    STARTUPINFOW startupInfo{};
-    startupInfo.cb = sizeof(startupInfo);
-    PROCESS_INFORMATION processInfo{};
-
     spdlog::info("Running exporter to {}", exportFolder.string());
 
-    if (!CreateProcessW(exporterExe.wstring().c_str(), commandLine.data(),
-                        nullptr, nullptr, FALSE, 0, nullptr,
-                        engineBasePath.wstring().c_str(),
-                        &startupInfo, &processInfo))
-        return fail("Export failed: could not launch process.",
-                    Localisation::Get("editor.notification.export_failed_launch_process").c_str());
+    gameExportJob = std::make_unique<GameExportJob>();
+    gameExportJob->folder = exportFolder;
 
-    WaitForSingleObject(processInfo.hProcess, INFINITE);
+    GameExportJob& job = *gameExportJob;
+    job.thread = std::thread([&job, exporterExe, standaloneExe, projectMetadata, exportFolder, engineBasePath] {
+        RunExporterProcess(job, exporterExe, standaloneExe, projectMetadata, exportFolder, engineBasePath);
+        job.finished = true;
+    });
 
-    DWORD exitCode = 1;
-    GetExitCodeProcess(processInfo.hProcess, &exitCode);
-    CloseHandle(processInfo.hProcess);
-    CloseHandle(processInfo.hThread);
-
-    if (exitCode != 0) return fail("Export failed. Check logs.",
-                                   Localisation::Get("editor.notification.export_failed_check_logs").c_str());
-
-#else
-    spdlog::info("Running exporter to {}", exportFolder.string());
-
-    const pid_t pid = fork();
-    if (pid < 0) return fail("Export failed: fork error.",
-                             Localisation::Get("editor.notification.export_failed_fork_error").c_str());
-
-    if (pid == 0) {
-        execl(exporterExe.c_str(), exporterExe.c_str(),
-              projectMetadata.c_str(), exportFolder.c_str(),
-              standaloneExe.c_str(), static_cast<char *>(nullptr));
-        _exit(127);
-    }
-
-    int status = 0;
-    if (waitpid(pid, &status, 0) < 0) return fail("Export failed: wait error.",
-                                                  Localisation::Get("editor.notification.export_failed_wait_error").
-                                                  c_str());
-    if (!WIFEXITED(status)) return fail("Export failed: abnormal exit.",
-                                        Localisation::Get("editor.notification.export_failed_abnormal_exit").c_str());
-
-    const int exitCode = WEXITSTATUS(status);
-    if (exitCode != 0) return fail("Export failed. Check logs.",
-                                   Localisation::Get("editor.notification.export_failed_check_logs").c_str());
-#endif
-
-    spdlog::info("Export completed successfully to {}", exportFolder.string());
-    ShowNotification(Localisation::Get("editor.notification.export_complete").c_str());
     return true;
 }
 
@@ -2876,6 +3104,12 @@ namespace {
 
         if (!picked.has_value()) return;
 
+        // A folder dialog opened before the running export started.
+        if (gameExportJob) {
+            ShowNotification(Get("editor.notification.export_already_running").c_str(), true);
+            return;
+        }
+
         fs::path destination = *picked;
 
         if (!IsEmptyOrPreviousExport(destination)) {
@@ -2938,12 +3172,59 @@ namespace {
         ShowNotification(message);
     }
 
+    // Shown when the editor is asked to close during a game export. It closes
+    // by itself when the export ends, unless one of the buttons changes that.
+    void DrawExportQuitModal() {
+        if (exportQuitPopupRequested) {
+            ImGui::OpenPopup("##ExportQuit");
+            exportQuitPopupRequested = false;
+        }
+
+        if (ImGui::BeginPopupModal("##ExportQuit", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (!gameExportJob) {
+                ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+                return;
+            }
+
+            ImGui::Text("%s", Get("editor.export.quit_message").c_str());
+
+            if (hasUnsavedChanges) {
+                ImGui::Spacing();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.30f, 1.00f));
+                ImGui::Text("%s", Get("editor.unsaved_changes_warning").c_str());
+                ImGui::PopStyleColor();
+            }
+
+            ImGui::Spacing();
+            DrawGameExportBar(ImGui::GetContentRegionAvail().x);
+            ImGui::Spacing();
+
+            PushDangerStyle();
+            if (ImGui::Button(Get("editor.export.cancel_and_exit").c_str())) {
+                exitAfterGameExport = true;
+                CancelGameExport(*gameExportJob);
+            }
+            PopDangerStyle();
+
+            ImGui::SameLine();
+
+            if (ImGui::Button(Get("editor.export.keep_working").c_str())) {
+                exitAfterGameExport = false;
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+    }
+
     void DrawMainMenuBar() {
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu(Get("editor.menu.project").c_str())) {
                 if (ImGui::MenuItem(Get("editor.save").c_str())) SaveLevelFromEditor();
                 if (ImGui::MenuItem(Get("editor.save_and_quit").c_str())) SaveAndQuitFromEditor();
-                if (ImGui::MenuItem(Get("editor.export").c_str())) ShowGameExportDialog();
+                if (gameExportJob) DrawGameExportBar(GameExportBarWidth());
+                else if (ImGui::MenuItem(Get("editor.export").c_str())) ShowGameExportDialog();
                 if (ImGui::MenuItem(Get("editor.obj_export").c_str())) ShowObjExportDialog();
                 HoverTooltip(Get("editor.tooltip.obj_export").c_str());
 
@@ -2969,6 +3250,12 @@ namespace {
             if (ImGui::MenuItem(Get("editor.menu.engine_settings").c_str(), nullptr, engineSettingsOpen))
                 engineSettingsOpen = !engineSettingsOpen;
 
+            // The Project menu is usually closed, so progress shows here too.
+            if (gameExportJob) {
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetStyle().ItemSpacing.x);
+                DrawGameExportBar(GameExportBarWidth());
+            }
+
             ImGui::EndMainMenuBar();
         }
 
@@ -2979,6 +3266,7 @@ namespace {
         if (engineSettingsOpen) DrawEngineSettingsWindow();
 
         DrawShutdownConfirmModal();
+        DrawExportQuitModal();
     }
 
     // Bottom bar styled like the main menu bar, showing the mouse position in
@@ -3138,9 +3426,33 @@ namespace MapEditorInternal {
     }
 
     void DrawEditorMenuBar() {
+        PollGameExport();
         DrawMainMenuBar();
         ProcessPendingGameExport();
         ProcessPendingObjExport();
+    }
+
+    bool HoldQuitForGameExport() {
+        if (!gameExportJob) return false;
+
+        shutdown = false;
+        quit = false;
+
+        // Already asked: a second close click changes nothing.
+        if (!exitAfterGameExport) {
+            exitAfterGameExport = true;
+            exportQuitPopupRequested = true;
+        }
+
+        return true;
+    }
+
+    void StopGameExportForExit() {
+        if (!gameExportJob) return;
+
+        CancelGameExport(*gameExportJob);
+        gameExportJob->thread.join();
+        gameExportJob.reset();
     }
 
     void SaveLevel() {

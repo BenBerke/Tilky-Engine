@@ -17,8 +17,13 @@
  * bytecode of the LuaScriptCompiler output) plus <id>.fields.json (its public
  * fields), and the source is not shipped. A script that doesn't compile fails
  * the export.
+ *
+ * Progress goes to stdout as "@progress <0-100>" lines, which the editor reads
+ * to fill its export bar.
  */
 
+#include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -38,6 +43,54 @@
 #include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
 
 namespace fs = std::filesystem;
+
+// ---------------------------------------------------------------------------
+// Progress
+// ---------------------------------------------------------------------------
+
+// Work is measured in bytes copied. A level, prefab, script or model is parsed
+// rather than copied, so it counts as this many bytes. It's only a rough match
+// for how long those take, so the bar is an estimate, not a clock.
+static constexpr std::uint64_t kParsedFileWork = 8 * 1024 * 1024;
+
+static std::uint64_t progressTotal = 1;
+static std::uint64_t progressDone = 0;
+static int progressReported = -1;
+
+static void ReportProgress() {
+    const int percent = static_cast<int>(std::min<std::uint64_t>(progressDone * 100 / progressTotal, 100));
+
+    // Never backwards: the total can still grow once the models are known.
+    if (percent <= progressReported) return;
+    progressReported = percent;
+
+    // Flushed, because stdout is a pipe when the editor runs the exporter.
+    std::cout << "@progress " << percent << std::endl;
+}
+
+static void AddProgress(const std::uint64_t work) {
+    progressDone += work;
+    ReportProgress();
+}
+
+// Everything the export will do: all files under each folder, plus the parsing
+// of levels, prefabs and scripts in Assets.
+static void MeasureFolderWork(const fs::path& folder, const bool isAssets) {
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
+        std::error_code entryEc;
+        if (!it->is_regular_file(entryEc)) continue;
+
+        const std::uintmax_t size = it->file_size(entryEc);
+        if (!entryEc) progressTotal += size;
+
+        if (!isAssets) continue;
+
+        const fs::path extension = it->path().extension();
+        if (extension == ".bson") progressTotal += 2 * kParsedFileWork; // stripped, then checked for models
+        else if (extension == Prefab::kExtension || extension == ".lua") progressTotal += kParsedFileWork;
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,6 +139,10 @@ static bool CopyFileChecked(const fs::path &from, const fs::path &to) {
         std::cerr << "Failed to copy file from " << from << " to " << to << " — " << ec.message() << "\n";
         return false;
     }
+
+    const std::uintmax_t size = fs::file_size(to, ec);
+    if (!ec) AddProgress(size);
+
     return true;
 }
 
@@ -180,6 +237,8 @@ static std::map<std::string, std::set<std::string>> CollectLevelModels(const fs:
             ? LevelSerialization::LoadPrefabFromFile(it->path(), level, &errorMessage)
             : LevelSerialization::LoadLevelFromFile(it->path(), level, nullptr, &errorMessage);
 
+        AddProgress(kParsedFileWork);
+
         if (!loaded) {
             problems.push_back(std::string("Could not read ") + (isPrefab ? "prefab " : "level ") + it->path().string() +
                                " to check its models: " + errorMessage);
@@ -210,7 +269,11 @@ static std::string JoinNames(const std::set<std::string>& names) {
 static bool ExportModelDependencies(const fs::path& assetsSrc, const fs::path& assetsDest, std::vector<std::string>& problems) {
     const auto usersByModel = CollectLevelModels(assetsSrc, problems);
 
+    progressTotal += usersByModel.size() * kParsedFileWork;
+
     for (const auto& [reference, levels] : usersByModel) {
+        AddProgress(kParsedFileWork);
+
         const fs::path modelSrc = (assetsSrc / fs::path(std::u8string(reference.begin(), reference.end()))).lexically_normal();
         const std::string usedBy = " (used by " + JoinNames(levels) + ")";
 
@@ -292,6 +355,8 @@ static bool PrecompileScripts(const fs::path& assetsDest, std::vector<std::strin
     const std::size_t problemsBefore = problems.size();
 
     for (const fs::path& script : scripts) {
+        AddProgress(kParsedFileWork);
+
         fs::path idPath = script.lexically_relative(assetsDest);
         const std::string assetId = idPath.replace_extension().generic_string();
         const std::string chunkName = assetId + ".lua";
@@ -356,6 +421,8 @@ static bool StripEditorDataFromLevels(const fs::path& assetsDest, std::vector<st
         bool removed = false;
         std::string errorMessage;
 
+        AddProgress(kParsedFileWork);
+
         if (!LevelSerialization::StripEditorData(it->path(), &removed, &errorMessage))
             problems.push_back("Failed to strip editor data from " + it->path().string() + ": " + errorMessage);
         else if (removed)
@@ -384,6 +451,22 @@ int main(int argc, char** argv) {
 
     const fs::path projectDir   = metadataPath.parent_path();
     const fs::path standaloneDir = standaloneExePath.parent_path();
+
+    MeasureFolderWork(projectDir / "Assets", true);
+    MeasureFolderWork(standaloneDir / "EngineAssets", false);
+    MeasureFolderWork(standaloneDir / "Shaders", false);
+    {
+        std::error_code ec;
+        for (const auto& entry : fs::directory_iterator(standaloneDir, ec)) {
+            std::error_code entryEc;
+            const fs::path extension = entry.path().extension();
+            if (extension != ".dll" && extension != ".DLL" && entry.path() != standaloneExePath) continue;
+
+            const std::uintmax_t size = entry.file_size(entryEc);
+            if (!entryEc) progressTotal += size;
+        }
+    }
+    ReportProgress();
 
     if (!RecreateExportDirectory(destinationPath)) return 1;
 
@@ -447,6 +530,9 @@ int main(int argc, char** argv) {
     if (!CopyFileChecked(standaloneExePath, standaloneDest)) return 1;
     std::cout << "Copied standalone executable from " << standaloneExePath
               << " to " << standaloneDest << "\n";
+
+    progressDone = progressTotal;
+    ReportProgress();
 
     if (!modelProblems.empty()) {
         std::cerr << "\nExport completed, but " << modelProblems.size()

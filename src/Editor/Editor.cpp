@@ -408,6 +408,10 @@ namespace Editor {
         return MapEditorInternal::shutdown || InputManager::QuitRequested();
     }
 
+    bool HoldShutdownForExport() {
+        return MapEditorInternal::HoldQuitForGameExport();
+    }
+
     bool SwitchToRuntimeEditorRequested() {
         return MapEditorInternal::switchToRuntime;
     }
@@ -416,6 +420,7 @@ namespace Editor {
         using namespace MapEditorInternal;
 
         WaitForAutoSave();
+        StopGameExportForExit();
 
         if (imguiContext == nullptr) return;
 
