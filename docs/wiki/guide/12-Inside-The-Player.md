@@ -177,7 +177,7 @@ drop faster.
 ## Kicking and grenades
 
 Both work with any gun in your hands, through the **QuickActions** script. They draw on the HUD's **Action View**
-picture, over the weapon.
+picture. The weapon's picture hides until they're over, and you can't fire until then.
 
 **F kicks.** It's weak but pushes hard, so it's for making space. Berserk multiplies its damage. It hurts anything
 but a thing tagged `Kickable`, which it sets moving instead: that's how you send an Explosive Barrel into a crowd.

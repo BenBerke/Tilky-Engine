@@ -181,7 +181,8 @@ function Update()
     kickBack = math.max(0, kickBack - dt * 7)
     if shotTimer >= 0 then
         shotTimer = shotTimer - dt
-        if shotTimer < 0 and owner ~= nil then Shoot() end
+        -- A kick or a throw that started first cancels the shot: no bullet, no ammo used.
+        if shotTimer < 0 and owner ~= nil and not Global.FiringBlocked then Shoot() end
     end
 
     -- Only the weapon that's up touches the picture. WeaponHolder lowers one

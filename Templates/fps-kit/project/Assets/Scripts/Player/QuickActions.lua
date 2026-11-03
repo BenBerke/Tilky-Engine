@@ -1,7 +1,8 @@
 -- Scripts/Player/QuickActions.lua
 --
 -- ONE JOB: the two things you can do whatever gun you're holding: kick and throw a
--- grenade. They're drawn on the HUD's own Action View picture, over the weapon.
+-- grenade. They're drawn on the HUD's own Action View picture, and the weapon's picture
+-- hides until they're over. You can't fire until then either.
 --
 -- Why this is a script: no dispatch can aim where the player is looking, or vary the
 -- damage from one kick to the next.
@@ -45,6 +46,7 @@ local kickWait = 0
 local kickLands = -1
 local throwWait = 0
 local throwLeaves = -1
+local actionLeft = 0
 
 local function ViewDirection(yawOffset, pitchOffset)
     local yaw = mathT.DegToRad(entity.camera.yaw + yawOffset)
@@ -53,10 +55,18 @@ local function ViewDirection(yawOffset, pitchOffset)
 end
 
 local function ShowAction(flipbook, seconds)
+    actionLeft = seconds
+    Global.FiringBlocked = true
+
     local view = Global.ActionView
     if view == nil or not view.isValid or flipbook == nil then return end
     local script = view:GetScript("ActionView")
     if script.isValid then script:Play(flipbook, seconds) end
+
+    local weaponView = Global.WeaponView
+    if weaponView == nil or not weaponView.isValid then return end
+    local weaponScript = weaponView:GetScript("WeaponView")
+    if weaponScript.isValid then weaponScript:HideFor(seconds) end
 end
 
 -- Straight ahead first, then a little to each side and lower, because a kick is wider
@@ -146,6 +156,8 @@ function Update()
     local dt = GameTime.deltaTime
     kickWait = kickWait - dt
     throwWait = throwWait - dt
+    actionLeft = actionLeft - dt
+    Global.FiringBlocked = actionLeft > 0
 
     -- What's already under way finishes, unless you've died.
     local alive = Game.GetVariable("Health") > 0

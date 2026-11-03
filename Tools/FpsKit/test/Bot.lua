@@ -112,6 +112,11 @@ local ROUTES = {
         { hold = "LCtrl", seconds = 0.7 }, { shot = "fx_blood" }, { call = function() FxReport("bullets") end }, { wait = 0.8 }, { shot = "fx_stains" },
         { call = function() local t = Global.fxTarget; log("target health", t.monsterAI.health, "state", t.monsterAI.state) end },
 
+        -- No firing during a kick: the trigger is held all the way through.
+        { wait = 0.8 }, { call = function() Global.fxBullets = V("Bullets") end }, { hold = "F", seconds = 0.05 }, { hold = "LCtrl", seconds = 0.25 },
+        { call = function() log("FIRE BLOCKED during kick: bullets", Global.fxBullets, "->", V("Bullets"), "blocked", Global.FiringBlocked) end },
+        { hold = "LCtrl", seconds = 0.6 }, { call = function() log("FIRE RESUMED after kick: bullets", V("Bullets"), "blocked", Global.FiringBlocked) end },
+
         -- Kicking a monster: damage and a shove.
         { call = function() local t = NearestEnemy(); t.monsterAI.isActive = true; Global.fxKicked = t; log("kicking", t.name, "health", t.monsterAI.health, "at", t.transform.position.x, t.transform.position.z, "body", t.rigidbody ~= nil) end },
         { aim = function() return Global.fxKicked end }, { go = function() local p = Global.fxKicked.transform.position; return { p.x, p.z + 14 } end }, { wait = 0.5 },

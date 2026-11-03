@@ -148,7 +148,7 @@ The easiest way is to duplicate the closest one.
 
 | Script | What it does |
 |---|---|
-| **ActionView** | Shows the boot or the throwing hand over the weapon, when **QuickActions** on the player asks |
+| **ActionView** | Shows the boot or the throwing hand, with the weapon hidden, when **QuickActions** on the player asks |
 | **ScreenBlood** | Shows and fades the blood on your view. **Most Shown** is how solid it can get. |
 | **GoreSetting** | The Options menu's Gore row, above |
 | **IntermissionTally** | Counts up the kills, items, secrets and time, using the `Tally...` variables |

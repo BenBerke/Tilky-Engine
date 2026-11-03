@@ -1,9 +1,11 @@
 """Draws the Classic FPS Kit's effect art and sounds with code: blood, stains, chunks,
-casings, scorch marks, the grenade, the kick and throw pictures, screen blood, and
-the Options menu's words. Freedoom has none of these. All of it is original to this
-tool, so it carries no licence terms beyond the repo's. Same seed, same pictures.
+casings, scorch marks, the grenade, screen blood, and the Options menu's words. Freedoom
+has none of these, so they are original to this tool and carry no licence terms beyond
+the repo's. The exceptions are the kick and the throw: the leg is cut from Freedoom's
+player sprite and the arm is its fist (BSD-3-Clause, see Assets/Freedoom/COPYING.txt),
+with the grenade and the open fingers drawn on. Same seed, same pictures.
 
-usage: python fx_art.py <Assets folder> <art_manifest.json>
+usage: python fx_art.py <Assets folder> <art_manifest.json> <freedoom2.wad>
 Run it after extract.py, which rewrites the manifest. Needs Pillow.
 Writes to Assets/Sprites/FX, Assets/UI/Actions, Assets/UI/Words and Assets/Sounds/FX.
 """
@@ -19,6 +21,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from letters import draw_word  # noqa: E402
+from wad import Wad  # noqa: E402
 
 rng = random.Random(1993)
 
@@ -27,8 +30,11 @@ BLOOD = [(120, 0, 0), (160, 8, 8), (196, 20, 16)]
 BLOOD_DARK = [(70, 0, 0), (96, 0, 0), (120, 4, 4)]
 FLESH = [(150, 70, 60), (120, 40, 36), (176, 96, 80), (90, 20, 20)]
 STEEL = [(40, 44, 40), (64, 70, 60), (92, 98, 84), (124, 130, 112)]
-BOOT = [(26, 22, 18), (44, 36, 28), (66, 54, 40), (92, 76, 56), (120, 102, 76)]
-SKIN = [(92, 52, 36), (132, 80, 56), (168, 112, 80), (196, 144, 108)]
+# The player sprite's trousers, and a worn dark boot.
+TROUSERS = [(16, 30, 10), (28, 52, 18), (42, 78, 26), (60, 104, 36), (84, 134, 52), (112, 164, 72)]
+BOOT_LEATHER = [(14, 12, 10), (28, 24, 20), (44, 38, 32), (62, 54, 44), (84, 72, 58), (110, 96, 78)]
+BOOT_SOLE = [(8, 8, 8), (16, 16, 16), (26, 26, 24), (38, 38, 34)]
+LACES = [(150, 136, 104), (118, 106, 80)]
 ARMOUR = [(28, 44, 20), (44, 64, 28), (64, 88, 40), (88, 112, 56)]
 
 
@@ -177,95 +183,138 @@ def grenade_box():
     return img
 
 
-def shade_polygon(img, points, ramp, light=(-0.6, -0.8)):
-    """Fills a polygon, shading each pixel across the shape toward `light`, with
-    Doom-like ordered dither so that it reads as painted pixels, not a gradient."""
-    mask = Image.new("L", img.size, 0)
-    ImageDraw.Draw(mask).polygon(points, fill=255)
-    box = mask.getbbox()
-    if box is None:
-        return
-    px, m = img.load(), mask.load()
-    x0, y0, x1, y1 = box
-    bayer = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
-    for y in range(y0, y1):
-        for x in range(x0, x1):
-            if not m[x, y]:
+def lump_image(wad, name):
+    w, h, _, _, pixels = wad.picture(name)
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    for i, p in enumerate(pixels):
+        if p >= 0:
+            img.putpixel((i % w, i // w), tuple(wad.palette[p][:3]) + (255,))
+    return img
+
+
+def boot_from_fist(wad):
+    """Freedoom's close fist as the player's boot, seen from above as the kick goes out. It
+    keeps the fist's outline and broad shading, with the knuckles softened. Below the wrist's
+    crease is the trouser leg, a dark band on the leading edge is the sole, and the laces
+    are drawn on. Mirrored, because the throw uses the same fist on the other side."""
+    fist = lump_image(wad, "PUNGC0")
+    source = fist.copy().load()
+    # On black the blur would darken the edges, so the shape is filled out first.
+    soft = Image.new("RGB", fist.size, (150, 100, 70))
+    soft.paste(fist, (0, 0), fist)
+    soft = soft.filter(ImageFilter.GaussianBlur(2.2)).load()
+    px = fist.load()
+    values = [sum(source[x, y][:3]) for x in range(fist.width) for y in range(fist.height) if source[x, y][3]]
+    low, high = min(values), max(values)
+
+    def empty(x, y):
+        return not (0 <= x < fist.width and 0 <= y < fist.height) or not source[x, y][3]
+
+    for y in range(fist.height):
+        for x in range(fist.width):
+            if not source[x, y][3]:
                 continue
-            u = (x - x0) / max(1, x1 - x0) - 0.5
-            v = (y - y0) / max(1, y1 - y0) - 0.5
-            t = 0.5 + (u * light[0] + v * light[1])
-            t = min(0.999, max(0, t + (bayer[y % 4][x % 4] / 16 - 0.5) * 0.28))
-            px[x, y] = ramp[int(t * len(ramp))] + (255,)
+            t = (sum(source[x, y][:3]) - low) / (high - low)
+            smooth = (sum(soft[x, y]) - low) / (high - low)
+            # The crease runs from (53, 70) to (100, 54) on the picture.
+            leg = (100 - 53) * (y - 70) - (54 - 70) * (x - 53) > 0
+            if leg:
+                ramp = TROUSERS
+            elif empty(x - 7, y - 3) or empty(x - 4, y - 7):
+                ramp = BOOT_SOLE
+            else:
+                ramp = BOOT_LEATHER
+                t = smooth
+            px[x, y] = ramp[min(len(ramp) - 1, int(t * len(ramp)))] + (255,)
+
+    # Laces, from the top of the boot towards the toe.
+    d = ImageDraw.Draw(fist)
+    top, toe = (74, 60), (44, 26)
+    d.line(top + toe, fill=BOOT_LEATHER[0] + (255,), width=5)
+    for i in range(5):
+        f = (i + 0.5) / 5
+        cx, cy = top[0] + (toe[0] - top[0]) * f, top[1] + (toe[1] - top[1]) * f
+        half = 9 - i
+        for sign in (1, -1):
+            d.line((cx - half * 0.75, cy + half * 0.66 * sign, cx + half * 0.75, cy - half * 0.66 * sign), fill=LACES[i % 2] + (255,), width=2)
+
+    return fist.transpose(Image.FLIP_LEFT_RIGHT).resize((fist.width * 8 // 5, fist.height * 8 // 5), Image.NEAREST)
 
 
-def boot(img, foot, lift):
-    """The player's leg, thigh to boot, coming up from the bottom of a 320 x 168
-    picture. `foot` is the toe's centre, `lift` 0 to 1 how far the leg is out: more
-    lift, more of the sole is seen and the bigger it gets."""
-    fx, fy = foot
-    s = 0.7 + lift * 0.75
-    knee = (fx + 30 * s, fy + 66 * s)
-    hip = (fx + 56, 190)
-
-    # Trouser leg.
-    shade_polygon(img, [(hip[0] - 48 * s, 190), (knee[0] - 30 * s, knee[1]), (knee[0] + 26 * s, knee[1] - 6 * s), (hip[0] + 52 * s, 190)], ARMOUR)
-    # Shin.
-    shade_polygon(img, [(knee[0] - 26 * s, knee[1] + 10), (fx - 16 * s, fy + 22 * s), (fx + 22 * s, fy + 14 * s), (knee[0] + 24 * s, knee[1] - 2)], ARMOUR)
-    # Boot shaft.
-    shade_polygon(img, [(fx - 22 * s, fy + 28 * s), (fx - 24 * s, fy + 2 * s), (fx + 26 * s, fy - 6 * s), (fx + 28 * s, fy + 22 * s)], BOOT)
-    # The sole, facing us: the foot pointing at whatever it's about to hit.
-    sole = [(fx - 30 * s, fy + 4 * s), (fx - 34 * s, fy - 26 * s), (fx - 18 * s, fy - 46 * s), (fx + 14 * s, fy - 50 * s),
-            (fx + 34 * s, fy - 32 * s), (fx + 32 * s, fy - 2 * s), (fx + 10 * s, fy + 8 * s)]
-    shade_polygon(img, sole, BOOT)
-
-    d = ImageDraw.Draw(img)
-    d.line(sole + [sole[0]], fill=BOOT[0] + (255,), width=max(1, int(2 * s)))
-    # Heel plate and treads.
-    d.line((fx - 24 * s, fy - 10 * s, fx + 24 * s, fy - 12 * s), fill=BOOT[0] + (255,), width=max(1, int(3 * s)))
-    for i in range(4):
-        y = fy - 20 * s - i * 6.5 * s
-        half = (26 - abs(i - 1) * 3) * s
-        d.line((fx - half, y, fx + half, y - 1), fill=BOOT[0] + (255,), width=max(1, int(1.5 * s)))
-    for i in range(2):
-        y = fy + (-3 - i * 4) * s
-        d.line((fx - 16 * s, y, fx + 14 * s, y), fill=BOOT[4] + (255,))
-
-
-def kick_frames():
+def kick_frames(wad):
+    boot = boot_from_fist(wad)
     frames = []
-    # Up from below, out, and back down.
-    for lift, foot in [(0.05, (178, 160)), (0.35, (172, 128)), (0.72, (166, 96)), (1.0, (160, 78)), (0.6, (168, 108)), (0.2, (176, 146))]:
+    # Up from below, out, and back down. The bottom edge stays below the picture.
+    for x, y in [(118, 150), (108, 112), (98, 78), (94, 60), (102, 90), (114, 140)]:
         img = Image.new("RGBA", (320, 168), (0, 0, 0, 0))
-        boot(img, foot, lift)
+        layer = Image.new("RGBA", (320, 168), (0, 0, 0, 0))
+        layer.paste(boot, (x, y))
+        img.alpha_composite(layer)
         frames.append(img)
     return frames
 
 
-def forearm(img, hand, spread):
-    """A bare forearm coming in from the bottom right, ending in a hand at `hand`."""
-    hx, hy = hand
-    shade_polygon(img, [(hx + 2, hy + 16), (hx + 30, hy + 2), (316, 150), (316, 190), (262, 190)], SKIN)
-    # Glove: a fist, its fingers opening as it lets go.
-    shade_polygon(img, [(hx - 12, hy + 10), (hx - 18, hy - 8), (hx + 8, hy - 18), (hx + 30, hy - 6), (hx + 32, hy + 12), (hx + 6, hy + 24)], BOOT)
+def held_grenade():
+    """The grenade at the size it is in the hand, with enough detail to sit by Freedoom's fist."""
+    size = 38
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    px = img.load()
+    cx, cy, rx, ry = 18.5, 23.5, 12.5, 14.5
+    for y in range(size):
+        for x in range(size):
+            u, v = (x - cx) / rx, (y - cy) / ry
+            if u * u + v * v > 1:
+                continue
+            t = 0.62 - u * 0.34 - v * 0.34 + (((x ^ y) & 1) - 0.5) * 0.08
+            # The grooves of a pineapple grenade.
+            if (x - 6) % 6 == 0 or (y - 11) % 6 == 0:
+                t -= 0.3
+            px[x, y] = STEEL[int(max(0.0, min(0.999, t)) * len(STEEL))] + (255,)
     d = ImageDraw.Draw(img)
-    for i in range(4):
-        x = hx - 12 + i * 8
-        d.line((x, hy - 8 - i, x - spread * 2, hy - 18 - i - spread * 3), fill=BOOT[2] + (255,), width=4)
-        d.line((x + 1, hy - 8 - i, x - spread * 2 + 1, hy - 18 - i - spread * 3), fill=BOOT[3] + (255,), width=1)
+    d.ellipse((6, 9, 31, 37), outline=STEEL[0] + (255,))
+    d.rectangle((14, 3, 23, 9), fill=STEEL[2] + (255,), outline=STEEL[0] + (255,))
+    d.line((23, 4, 33, 13), fill=(176, 150, 60, 255), width=2)
+    return img
 
 
-def throw_frames():
+def open_fingers(img, x, y):
+    """Short, jointed fingers spreading from the fist at (x, y), in the skin colours of
+    Freedoom's arm. They go behind the arm, so that the fist hides where they start."""
+    dark, shade, mid, light = (70, 38, 20, 255), (122, 72, 40, 255), (168, 108, 64, 255), (204, 142, 92, 255)
+    d = ImageDraw.Draw(img)
+    # root, knuckle, tip, thickness: thumb first, then the fingers from the outside in.
+    fingers = [((10, 30), (-8, 26), (-20, 16), 11),
+               ((12, 16), (0, 2), (-8, -14), 10), ((24, 12), (17, -6), (13, -24), 11),
+               ((36, 12), (34, -8), (34, -26), 11), ((48, 16), (50, -2), (54, -18), 9)]
+    def stroke(points, colour, width):
+        d.line(points, fill=colour, width=width, joint="curve")
+        for px, py in (points[0], points[1], points[2]):
+            d.ellipse((px - width / 2, py - width / 2, px + width / 2, py + width / 2), fill=colour)
+    for root, knuckle, tip, width in fingers:
+        points = [(x + root[0], y + root[1]), (x + knuckle[0], y + knuckle[1]), (x + tip[0], y + tip[1])]
+        stroke(points, dark, width + 2)
+        stroke(points, shade, width)
+        stroke([(p[0] - 1, p[1]) for p in points], mid, max(1, width - 4))
+        stroke([(p[0] - 2, p[1] - 1) for p in points], light, max(1, width // 4))
+
+
+def throw_frames(wad):
+    close, far = lump_image(wad, "PUNGC0"), lump_image(wad, "PUNGD0")
+    ball = held_grenade()
     frames = []
-    # Hand up with the grenade, forward, then open and empty.
-    for hand, spread, holding in [((236, 150), 0, True), ((214, 104), 0, True), ((186, 70), 1, True), ((170, 62), 3, False), ((206, 104), 2, False), ((244, 156), 1, False)]:
+    # The bottom edge of each arm stays below the picture, or its cut end would show.
+    # arm, where, where the grenade sits on it (None once it has gone), fingers open
+    for arm, at, held, spread in [(close, (214, 116), (20, -24), False), (close, (186, 97), (20, -24), False),
+                                  (far, (116, 78), (6, -18), False), (far, (94, 72), None, True),
+                                  (far, (130, 100), None, False), (close, (222, 128), None, False)]:
         img = Image.new("RGBA", (320, 168), (0, 0, 0, 0))
-        forearm(img, hand, spread)
-        if holding:
-            g = grenade(0).resize((48, 48), Image.NEAREST)
-            img.alpha_composite(g, (hand[0] - 28, hand[1] - 56))
-            # The fingers go in front of it.
-            forearm(img, hand, spread)
+        if held is not None:
+            img.alpha_composite(ball, (at[0] + held[0], at[1] + held[1]))
+        if spread:
+            open_fingers(img, at[0], at[1])
+        layer = Image.new("RGBA", (320, 168), (0, 0, 0, 0))
+        layer.paste(arm, at)
+        img.alpha_composite(layer)
         frames.append(img)
     return frames
 
@@ -375,6 +424,7 @@ def write_sounds(assets):
 
 def main():
     assets, manifest_path = sys.argv[1], sys.argv[2]
+    freedoom = Wad(sys.argv[3])
 
     for i in range(4):
         save(blob(8, BLOOD), assets, "Sprites", "FX", "Blood", f"Drop {i + 1}.png")
@@ -410,9 +460,9 @@ def main():
     save(grenade_box(), assets, "Sprites", "FX", "Grenade", "Box.png")
     save(grenade(0).crop((1, 0, 15, 16)), assets, "UI", "Actions", "Grenade Icon.png")
 
-    for i, frame in enumerate(kick_frames()):
+    for i, frame in enumerate(kick_frames(freedoom)):
         save(frame, assets, "UI", "Actions", f"Kick {i + 1}.png")
-    for i, frame in enumerate(throw_frames()):
+    for i, frame in enumerate(throw_frames(freedoom)):
         save(frame, assets, "UI", "Actions", f"Throw {i + 1}.png")
     for i in range(4):
         save(screen_blood(i), assets, "UI", "Actions", f"Screen Blood {i + 1}.png")

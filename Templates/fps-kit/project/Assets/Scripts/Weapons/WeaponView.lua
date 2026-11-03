@@ -7,6 +7,7 @@
 -- Fill When Empty off, so it draws nothing until a weapon gives it a picture.
 
 local restingPosition = nil
+local hiddenFor = 0
 
 -- ── Used by Weapon.lua ──────────────────────────────────────────────────────
 
@@ -16,8 +17,15 @@ end
 
 -- Shows the picture, `offset` pixels from where the UI Editor put it.
 public function ShowAt(offset)
-    entity.uiSprite.isActive = true
+    entity.uiSprite.isActive = hiddenFor <= 0
     entity.uiTransform.position = restingPosition + offset
+end
+
+-- Keeps the picture away for a while: QuickActions.lua, during a kick or a throw.
+-- The weapon shows itself again on the next ShowAt after that.
+public function HideFor(seconds)
+    hiddenFor = seconds
+    Hide()
 end
 
 public function GetSize()
@@ -39,7 +47,12 @@ function Start()
     Global.WeaponView = entity
 end
 
+function Update()
+    if hiddenFor > 0 then hiddenFor = hiddenFor - GameTime.deltaTime end
+end
+
 -- The HUD came along from the last level, but its weapons didn't.
 function OnLevelLoaded()
+    hiddenFor = 0
     Hide()
 end

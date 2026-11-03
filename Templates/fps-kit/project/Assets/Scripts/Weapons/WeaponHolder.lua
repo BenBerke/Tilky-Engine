@@ -153,7 +153,7 @@ function Update()
     -- Hold to keep firing. Out of ammo: change to something that has some.
     local triggerHeld = Input.GetMouseButton(Input.MouseLeft) or Input.GetKey(alternateFireKey)
     if not triggerHeld then waitForRelease = false end
-    if triggerHeld and not waitForRelease and pending == nil then
+    if triggerHeld and not waitForRelease and pending == nil and not Global.FiringBlocked then
         if current:HasAmmo() then
             current:TryFire()
         elseif current:IsReady() then

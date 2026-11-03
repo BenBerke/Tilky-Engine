@@ -171,7 +171,7 @@ inline void AddWeaponView(LayoutB& h) {
     AddLua(e, "Scripts/Weapons/WeaponView");
 }
 
-// The boot or the throwing hand, over the weapon: same place, same empty start.
+// The boot or the throwing hand, while the weapon hides: same place, same empty start.
 inline void AddActionView(LayoutB& h) {
     const ID entityID = h.Image("Action View", {0.125f, 0.0f}, {0.875f, 0.84f}, "");
     Entity& e = h.At(entityID);

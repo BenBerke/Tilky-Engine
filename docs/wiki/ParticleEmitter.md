@@ -1,4 +1,4 @@
-# Particle Emitter
+   # Particle Emitter
 
 **Inspector name:** Particle Emitter · **Lua:** `entity.particleEmitter` · **Public field type:** `ParticleEmitter`
 
