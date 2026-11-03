@@ -14,7 +14,9 @@ icons, a logo. It fills the rectangle of the entity's [UI Transform](UITransform
 - It isn't affected by any sector's light. The texture's own transparency is kept.
 - **Color** multiplies the texture. Its alpha makes the whole image see-through: `0.5` is half
   transparent, `0` hides it.
-- With no texture, the Image is a solid rectangle of its **Color**: panels, bars, fades.
+- With no texture, the Image is a solid rectangle of its **Color**: panels, bars, fades. Turn
+  **Fill When Empty** off and it draws nothing until it has a texture, for an image a script fills
+  in later. The UI Editor shows it only as an outline, when hovered or selected.
 - **Draw Order** decides which image is on top: higher draws over lower, across all UI, whichever
   UI layout each image is in. With equal numbers, UI layouts draw in their World Settings order and
   the level's own UI is on top. Images spawned from a script count as the level's own UI, so give
@@ -31,7 +33,8 @@ In the **UI Editor**, the component shows up as **Sprite** (**Add Sprite Compone
 
 | Field | Lua | Notes |
 |---|---|---|
-| **Texture** | `textureIndex` | Image path relative to `Assets`, with the extension. The editor warns if the file can't be found. Empty = a solid rectangle of **Color**. |
+| **Texture** | `textureIndex` | Image path relative to `Assets`, with the extension. The editor warns if the file can't be found. Empty = a solid rectangle of **Color**, unless **Fill When Empty** is off. |
+| **Fill When Empty** | `fillWhenEmpty` | On by default. Off = nothing is drawn while there's no texture. |
 | **Color** | `color` | RGBA, `0..1`, default `1, 1, 1, 1`. Multiplied with the texture; alpha below `1` makes it see-through. |
 | **Is Active** | `isActive` | On by default. Off = not drawn in the game. |
 | **Draw Order** | `drawOrder` | Whole number, default `0`. Higher draws on top of lower. Negative numbers are fine. |
@@ -48,6 +51,7 @@ stretch it).
 | `isActive` | boolean | read/write | `false` hides the image. |
 | `color` | Vector4 | read/write | RGBA, each `0..1`. `color.w` is the alpha. A colour read from `color` is a copy, so change it and assign it back. |
 | `drawOrder` | integer | read/write | Higher draws on top of lower, across all UI. Takes effect on the next frame. |
+| `fillWhenEmpty` | boolean | read/write | `false` draws nothing while there's no texture. |
 
 Switching images from a script works like any other texture change: any image in `Assets` can be
 used (see the note on the [Sprite](Sprite.md) page).

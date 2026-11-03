@@ -74,7 +74,11 @@ full health, and that its Collider has **Is Trigger** on.
 Triggers ignore floors, so a pickup can't have a moving Rigidbody. Remove the Rigidbody.
 
 **The weapon draws over the HUD, or under it.**
-Check **Draw Order** on its **UI Sprite**. In-hand weapons use -1. See [page 15](15-Change-The-UI.md).
+Check **Draw Order** on the **UI Sprite** of **Weapon View** in the HUD layout. It uses -1. See [page 15](15-Change-The-UI.md).
+
+**No weapon shows, but it still fires.**
+The level needs the HUD layout in **World Settings > UI Layouts**, and the HUD needs its **Weapon View** with the
+`WeaponView` script.
 
 ## Events and dispatches
 

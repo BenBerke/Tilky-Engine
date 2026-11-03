@@ -136,12 +136,15 @@ struct ComponentUISprite {
     // entity with the same persistence key, this component takes its values.
     bool takeFromLevelCopy = false;
 
-    // Empty = a solid rectangle of `color`.
+    // Empty = a solid rectangle of `color`, or nothing if !fillWhenEmpty.
     std::string texture;
 
     // RGBA, each 0..1, multiplied with the texture. Alpha below 1 makes the
     // image see-through.
     Vector4 color = {1.0f, 1.0f, 1.0f, 1.0f};
+
+    // false = nothing is drawn while there's no texture to show.
+    bool fillWhenEmpty = true;
 
     bool isActive = true; // false = not drawn
     bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled

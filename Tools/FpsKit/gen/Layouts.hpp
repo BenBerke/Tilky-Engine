@@ -155,7 +155,25 @@ inline void BuildLayout(const Str& fileName, uint64_t& outID, const std::functio
 
 // ── HUD ─────────────────────────────────────────────────────────────────────
 
+// The one picture of the weapon in the player's hands, above the status bar. Empty
+// until a weapon gives it a flipbook. Below 0 puts it under the rest of the HUD, the
+// screen flashes and the menus.
+inline void AddWeaponView(LayoutB& h) {
+    const ID entityID = h.Image("Weapon View", {0.125f, 0.0f}, {0.875f, 0.84f}, "");
+    Entity& e = h.At(entityID);
+    e.GetComponent<ComponentUITransform>()->pivot = {0.5f, 0.5f};
+
+    auto* sprite = e.GetComponent<ComponentUISprite>();
+    sprite->fillWhenEmpty = false;
+    sprite->drawOrder = -1;
+
+    e.AddComponent<ComponentFlipbook>();
+    AddLua(e, "Scripts/Weapons/WeaponView");
+}
+
 inline void BuildHud(LayoutB& h) {
+    AddWeaponView(h);
+
     h.Image("Crosshair", {0.5f, 0.5f}, {0.5f, 0.5f}, "", {1, 1, 1, 0.7f});
     {
         auto* ui = h.At(h.level->entities.back().id).GetComponent<ComponentUITransform>();

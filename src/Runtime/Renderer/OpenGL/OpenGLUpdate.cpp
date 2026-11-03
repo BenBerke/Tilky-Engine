@@ -551,6 +551,9 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
                 if (!sprite.isActive || !sprite.ownerEnabled || color.w <= 0.0f) return;
                 if (level.IsUIHidden(sprite.ownerID)) return;
 
+                const std::string& texture = sprite.buttonTexture.empty() ? sprite.texture : sprite.buttonTexture;
+                if (texture.empty() && !sprite.fillWhenEmpty) return;
+
                 const ComponentUITransform* transform = level.ui_transforms.Get(sprite.ownerID);
 
                 if (transform == nullptr) [[unlikely]] {
@@ -570,7 +573,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
                     transform->resolvedSize,
                     {color.x * 255.0f, color.y * 255.0f, color.z * 255.0f, color.w * 255.0f},
                     transform->rotation,
-                    sprite.buttonTexture.empty() ? sprite.texture : sprite.buttonTexture
+                    texture
                 );
             },
             [&](const ComponentUIText& text) {

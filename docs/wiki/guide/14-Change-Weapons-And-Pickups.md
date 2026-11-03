@@ -15,6 +15,9 @@ Each weapon is two prefabs, which never touch each other. They're connected by a
 The `WeaponHolder` script on the player holds a list of all the in-hand weapons. It handles switching, and it picks up
 the new weapon when an **Owned Variable** becomes non-zero.
 
+In-hand prefabs hold no picture. The weapon that's up plays its flipbooks on the HUD's **Weapon View**, so every weapon
+appears in the same place. To move them all, move Weapon View in the UI Editor ([page 15](15-Change-The-UI.md)).
+
 ## Changing a weapon
 
 Double-click a prefab in `Prefabs/Weapons/In Hand` and look at its **Weapon** script.

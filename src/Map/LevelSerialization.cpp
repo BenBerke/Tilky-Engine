@@ -2832,7 +2832,8 @@ namespace LevelSerialization {
             {"texture", c.texture},
             {"color", {c.color.x, c.color.y, c.color.z, c.color.w}},
             {"isActive", c.isActive},
-            {"drawOrder", c.drawOrder}
+            {"drawOrder", c.drawOrder},
+            {"fillWhenEmpty", c.fillWhenEmpty}
         };
     }
 
@@ -2840,6 +2841,7 @@ namespace LevelSerialization {
         c.texture = j.value("texture", "");
         c.isActive = j.value("isActive", true);
         c.drawOrder = j.value("drawOrder", 0);
+        c.fillWhenEmpty = j.value("fillWhenEmpty", true);
 
         if (j.contains("color") && j["color"].is_array() && j["color"].size() == 4) {
             const json& colorJson = j["color"];

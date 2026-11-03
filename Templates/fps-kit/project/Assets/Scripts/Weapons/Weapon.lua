@@ -1,13 +1,14 @@
 -- Scripts/Weapons/Weapon.lua
 --
--- ONE JOB: one weapon, on screen and firing. Every prefab in
+-- ONE JOB: one weapon, firing and moving. Every prefab in
 -- Prefabs/Weapons/In Hand runs this same script with different numbers, so a new
 -- weapon is a duplicated prefab with new values in the inspector, not new code.
 --
 -- Why this is a script: no dispatch can fire a ray with random spread.
 --
 -- WeaponHolder.lua (on the player) decides when this weapon is up and when to
--- fire. This script does the rest:
+-- fire. The picture is the HUD's one Weapon View image (WeaponView.lua), which
+-- shows whichever weapon is up. This script does the rest:
 --   TryFire  -> plays Fire Flipbook, and after Shot Delay fires the shot.
 --   The shot -> takes ammo, then rays (Bullets, Melee) or a spawned Projectile.
 
@@ -49,6 +50,16 @@ local wanted = 0        -- which way it's heading
 local cooldown = 0
 local shotTimer = -1    -- seconds until the queued shot, below 0 when there's none
 local bobTime = 0
+local showing = false   -- is this the weapon on the Weapon View?
+
+-- The HUD's Weapon View script. Nil if this level has no HUD: the weapon still
+-- works, it just can't be seen.
+local function FindView()
+    local viewEntity = Global.WeaponView
+    if viewEntity == nil or not viewEntity.isValid then return nil end
+    local view = viewEntity:GetScript("WeaponView")
+    return view.isValid and view or nil
+end
 
 -- ── Used by WeaponHolder.lua ────────────────────────────────────────────────
 
@@ -70,7 +81,9 @@ public function TryFire()
     cooldown = fireTime
     shotTimer = shotDelay
     if triggerSound ~= "" then Audio.Play2D(triggerSound) end
-    if fireFlipbook ~= "" then entity.flipbook:Play(fireFlipbook, true) end
+
+    local view = FindView()
+    if view ~= nil and fireFlipbook ~= "" then view:PlayFlipbook(fireFlipbook) end
 end
 
 -- ── The shot ────────────────────────────────────────────────────────────────
@@ -141,10 +154,9 @@ end
 function Update()
     local dt = GameTime.deltaTime
 
-    -- Up and down: a menu or a lowered weapon means nothing is drawn.
+    -- Up and down.
     local step = raiseTime > 0 and dt / raiseTime or 1
     holder = wanted > holder and math.min(wanted, holder + step) or math.max(wanted, holder - step)
-    entity.uiSprite.isActive = holder > 0 and GameTime.timeScale > 0
 
     cooldown = cooldown - dt
     if shotTimer >= 0 then
@@ -152,14 +164,30 @@ function Update()
         if shotTimer < 0 and owner ~= nil then Shoot() end
     end
 
-    -- Back to the resting frame once the firing frames are done.
-    if cooldown <= 0 and readyFlipbook ~= "" and entity.flipbook.flipbookFileName ~= readyFlipbook then
-        entity.flipbook:Play(readyFlipbook, true)
+    -- Only the weapon that's up touches the picture. WeaponHolder lowers one
+    -- completely before it raises the next, so they never overlap.
+    local isUp = holder > 0
+    if not isUp and not showing then return end
+    showing = isUp
+
+    local view = FindView()
+    if view == nil then return end
+
+    -- A menu or a lowered weapon means nothing is drawn.
+    if not isUp or GameTime.timeScale <= 0 then
+        view:Hide()
+        return
+    end
+
+    -- Back to the resting frame once the firing frames are done. This is also
+    -- what puts this weapon's picture up as it starts to rise.
+    if cooldown <= 0 and readyFlipbook ~= "" and not view:IsShowingFlipbook(readyFlipbook) then
+        view:PlayFlipbook(readyFlipbook)
     end
 
     -- Sink while lowered, sway while walking. UI positions are in pixels, so
-    -- everything is measured against the size the weapon currently has.
-    local size = entity.uiTransform.resolvedSize
+    -- everything is measured against the size the picture currently has.
+    local size = view:GetSize()
     local offset = Vector2(0, (1 - holder) * size.y)
     if owner ~= nil and owner.rigidbody ~= nil then
         local velocity = owner.rigidbody.velocity
@@ -168,5 +196,5 @@ function Update()
         local amount = bobAmount * size.y * math.min(speed / 80, 1)
         offset = offset + Vector2(math.cos(bobTime) * amount, math.abs(math.sin(bobTime)) * amount)
     end
-    entity.uiTransform.position = offset
+    view:ShowAt(offset)
 end

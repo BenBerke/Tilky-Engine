@@ -261,10 +261,11 @@ namespace {
 
         RegisterType(Type("UISprite", "A UI element's texture.", {
             Prop("isValid", "boolean", true),
-            Prop("textureIndex", "string", false, "The image's path relative to Assets, with extension (e.g. \"Textures/UI/icon.png\"). \"\" = a solid rectangle of color."),
+            Prop("textureIndex", "string", false, "The image's path relative to Assets, with extension (e.g. \"Textures/UI/icon.png\"). \"\" = a solid rectangle of color, or nothing if fillWhenEmpty is false."),
             Prop("color", "Vector4", false, "RGBA, each 0..1, multiplied with the texture. Alpha below 1 makes the image see-through."),
             Prop("isActive", "boolean", false, "false = not drawn."),
             Prop("drawOrder", "integer", false, "Higher draws on top of lower, across all UI. Text is always on top of every image."),
+            Prop("fillWhenEmpty", "boolean", false, "false = nothing is drawn while there's no texture."),
         }));
 
         RegisterType(Type("UIButton", "Makes a UI element clickable. Each state tints the Entity's first UISprite and can swap its texture.", {

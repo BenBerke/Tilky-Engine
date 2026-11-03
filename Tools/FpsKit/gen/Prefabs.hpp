@@ -298,7 +298,9 @@ inline void MakeEnemies() {
      s.death = "Monsters/large spider death"; s.attackSound = "Weapons/shotgun"; MakeEnemy(s);}
 }
 
-// ── Weapons in the player's hands (UI entities) ─────────────────────────────
+// ── Weapons in the player's hands ───────────────────────────────────────────
+// UI entities with no picture of their own: a UI entity has no box in the world
+// for rays to hit. They all show on the HUD's Weapon View (see AddWeaponView).
 
 struct WeaponSpec {
     Str name;
@@ -332,20 +334,6 @@ inline Str MakeWeaponView(const WeaponSpec& s) {
     const Str fireBook = Book("Animations/Weapons/" + s.name + " Fire.fpk", fire, FlipbookLoopMode::Once);
 
     return MakePrefab("Prefabs/Weapons/In Hand/" + s.name + ".prefab", true, [&](Level&, Entity& e) {
-        auto* ui = e.GetComponent<ComponentUITransform>();
-        ui->anchorMin = {0.125f, 0.0f};
-        ui->anchorMax = {0.875f, 0.84f};
-        ui->pivot = {0.5f, 0.5f};
-
-        auto* sprite = e.AddComponent<ComponentUISprite>();
-        sprite->texture = ready[0].textures[0];
-        sprite->isActive = false;
-        // Spawned from a script, so it counts as the level's own UI, on top of every
-        // layout. Below 0 puts it under the HUD, the screen flashes and the menus.
-        sprite->drawOrder = -1;
-
-        e.AddComponent<ComponentFlipbook>()->flipbookFileName = readyBook;
-
         ComponentScript& w = AddLua(e, "Scripts/Weapons/Weapon");
         auto& v = w.publicValues;
         v["attackType"] = s.attackType;

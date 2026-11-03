@@ -1753,6 +1753,15 @@ struct ScriptUISprite {
         if (ComponentUISprite* sprite = GetComponent()) sprite->drawOrder = drawOrder;
     }
 
+    [[nodiscard]] bool GetFillWhenEmpty() const {
+        const ComponentUISprite* sprite = GetComponent();
+        return sprite == nullptr || sprite->fillWhenEmpty;
+    }
+
+    void SetFillWhenEmpty(const bool fill) const {
+        if (ComponentUISprite* sprite = GetComponent()) sprite->fillWhenEmpty = fill;
+    }
+
     [[nodiscard]] Vector4 GetColor() const {
         const ComponentUISprite* sprite = GetComponent();
         if (sprite == nullptr) return {1.0f, 1.0f, 1.0f, 1.0f};

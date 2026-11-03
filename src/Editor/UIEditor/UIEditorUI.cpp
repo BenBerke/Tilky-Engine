@@ -692,9 +692,10 @@ namespace {
         if (preview != nullptr) SDL_GetTextureSize(preview, &texW, &texH);
 
         if (sprite.texture.empty()) {
-            // No texture: the game draws a solid rectangle of the colour.
-            drawList->AddRectFilled(ImVec2(cursor.x + 8.0f, cursor.y + 8.0f),
-                                    ImVec2(cursor.x + previewSize - 8.0f, cursor.y + previewSize - 8.0f), tint);
+            // No texture: the game draws a solid rectangle of the colour, or nothing.
+            if (sprite.fillWhenEmpty)
+                drawList->AddRectFilled(ImVec2(cursor.x + 8.0f, cursor.y + 8.0f),
+                                        ImVec2(cursor.x + previewSize - 8.0f, cursor.y + previewSize - 8.0f), tint);
         }
         else if (preview != nullptr) {
             float drawW = previewSize, drawH = previewSize;
@@ -731,7 +732,14 @@ namespace {
                 changed = true;
         }
 
-        if (sprite.texture.empty()) ImGuiDrawFunctions::SmallMetaText("%s", Get("editor.ui.sprite.no_texture").c_str());
+        if (sprite.texture.empty())
+            ImGuiDrawFunctions::SmallMetaText("%s", Get(sprite.fillWhenEmpty ? "editor.ui.sprite.no_texture" : "editor.ui.sprite.no_texture_no_fill").c_str());
+
+        {
+            ImGuiDrawFunctions::PrefabField prefabField("fillWhenEmpty");
+            if (ImGui::Checkbox(Get("editor.ui.sprite.fill_when_empty").c_str(), &sprite.fillWhenEmpty)) changed = true;
+            HoverTooltip(Get("editor.tooltip.ui.sprite.fill_when_empty").c_str());
+        }
 
         {
             ImGuiDrawFunctions::PrefabField prefabField("color");

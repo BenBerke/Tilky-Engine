@@ -11,8 +11,8 @@ Double-click **UI Layouts/HUD** to follow along. Click things in the UI Editor a
 - Pictures draw in order of their **Draw Order**, from lowest to highest. It's a number on the **UI Sprite**.
 - This is across all layouts. A picture on the HUD and a picture on the Pause Menu use the same order.
 
-The weapon in your hands is a picture, with **Draw Order** -1. That keeps it under the status bar and every other picture.
-See [UI Sprite](../UISprite.md).
+The weapon in your hands is the HUD's **Weapon View** picture, with **Draw Order** -1. That keeps it under the status bar
+and every other picture. See [UI Sprite](../UISprite.md).
 
 ## How the HUD works
 
@@ -20,6 +20,7 @@ Almost nothing in the HUD runs by itself. Each piece watches a variable.
 
 | Piece | How it works |
 |---|---|
+| **Weapon View** | An empty picture with **Fill When Empty** off. The weapon that's up plays its flipbooks on it. Move or resize it to change where every weapon appears. |
 | **Crosshair** | Just a picture |
 | **Ammo**, **Health**, **Armor** numbers | `PictureNumber` scripts watching `CurrentAmmo`, `Health` and `Armor` |
 | **Arm 2** to **Arm 7** | **Condition Met** on `HasPistol` etc. calls **Own** or **Lost**, which **Set Field** the texture |

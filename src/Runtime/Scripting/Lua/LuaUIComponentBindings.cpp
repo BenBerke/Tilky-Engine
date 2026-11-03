@@ -112,6 +112,11 @@ void LuaScriptSystem::RegisterUIComponentBindings(sol::state& lua) {
         "drawOrder", sol::property(
             &ScriptUISprite::GetDrawOrder,
             &ScriptUISprite::SetDrawOrder
+        ),
+
+        "fillWhenEmpty", sol::property(
+            &ScriptUISprite::GetFillWhenEmpty,
+            &ScriptUISprite::SetFillWhenEmpty
         )
     );
 

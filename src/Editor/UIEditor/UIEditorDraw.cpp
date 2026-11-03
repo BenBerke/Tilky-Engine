@@ -7,7 +7,6 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "src/Editor/EditorInternal.hpp"
 #include "Headers/UISystem.hpp"
-#include "Headers/Objects/UILayouts.hpp"
 #include "Headers/Objects/Entity.hpp"
 // ASSUMPTION: same as UIEditorUI.cpp - adjust to wherever ComponentUIText /
 // ComponentUISprite / ComponentUITransform actually live in your project.
@@ -558,12 +557,9 @@ namespace {
 namespace {
     using namespace MapEditorInternal;
 
-    // How strongly the UI drawn behind the edited one shows.
-    constexpr float UI_CONTEXT_ALPHA = 0.3f;
-
-    // Every UI Sprite and Text of `level`, `alpha` times as opaque. Returns
-    // each UI entity's transform, by owner.
-    std::unordered_map<ID, const ComponentUITransform *> DrawUIContent(const Level& level, const float alpha) {
+    // Every UI Sprite and Text of `level`. Returns each UI entity's transform,
+    // by owner.
+    std::unordered_map<ID, const ComponentUITransform *> DrawUIContent(const Level& level) {
         std::unordered_map<ID, const ComponentUITransform *> transformsByOwner;
         transformsByOwner.reserve(level.ui_transforms.components.size());
 
@@ -588,6 +584,8 @@ namespace {
                     textureName = &stateTexture;
             }
 
+            if (textureName->empty() && !sprite.fillWhenEmpty) return;
+
             SDL_Texture *texture = textureName->empty() ? nullptr : GetEditorTexture(*textureName);
             if (!textureName->empty() && texture == nullptr) return;
 
@@ -596,7 +594,7 @@ namespace {
             // Inactive sprites aren't drawn in game; show them faded so they can still be found.
             const SDL_FColor tint = {
                 std::clamp(color.x, 0.0f, 1.0f), std::clamp(color.y, 0.0f, 1.0f),
-                std::clamp(color.z, 0.0f, 1.0f), std::clamp(color.w, 0.0f, 1.0f) * (sprite.isActive ? 1.0f : 0.25f) * alpha
+                std::clamp(color.z, 0.0f, 1.0f), std::clamp(color.w, 0.0f, 1.0f) * (sprite.isActive ? 1.0f : 0.25f)
             };
             DrawUISpriteQuad(quad, texture, tint);
         });
@@ -608,9 +606,7 @@ namespace {
 
             if (transformIt == transformsByOwner.end()) continue;
 
-            ComponentUIText shown = text;
-            shown.color.w *= alpha;
-            DrawUITextEntity(shown, level.ShownUIText(text), *transformIt->second);
+            DrawUITextEntity(text, level.ShownUIText(text), *transformIt->second);
         }
 
         return transformsByOwner;
@@ -624,10 +620,9 @@ namespace MapEditorInternal {
     }
 
     void UIEditorDraw() {
-        // The UI layout being edited, or the level's own UI.
-        Level& openLevel = EditorLevel();
+        // Only the UI being edited is shown: a UI layout, or the level's own UI.
         Level* editedLayout = UIEditedLayout();
-        Level& level = editedLayout != nullptr ? *editedLayout : openLevel;
+        Level& level = editedLayout != nullptr ? *editedLayout : EditorLevel();
         LevelManager::ScopedCurrentLevel editedScope(level);
 
         // Resolve against the same dimensions sent to uScreenSize at runtime.
@@ -654,26 +649,7 @@ namespace MapEditorInternal {
         };
         SDL_SetRenderClipRect(renderer, &clipRect);
 
-        // Faded behind what is edited: the level's UI layouts, bottom first,
-        // and, while a layout is edited, the level's own UI.
-        for (const std::uint64_t layoutID : openLevel.worldSettings.uiLayouts) {
-            if (layoutID == uiEditedLayout) continue;
-
-            Level* other = UILayouts::Get(layoutID);
-            if (other == nullptr) continue;
-
-            LevelManager::ScopedCurrentLevel otherScope(*other);
-            UISystem::UpdateAllTransforms(*other, static_cast<float>(screenWidth), static_cast<float>(screenHeight));
-            DrawUIContent(*other, UI_CONTEXT_ALPHA);
-        }
-
-        if (editedLayout != nullptr) {
-            LevelManager::ScopedCurrentLevel openScope(openLevel);
-            UISystem::UpdateAllTransforms(openLevel, static_cast<float>(screenWidth), static_cast<float>(screenHeight));
-            DrawUIContent(openLevel, UI_CONTEXT_ALPHA);
-        }
-
-        const std::unordered_map<ID, const ComponentUITransform *> transformsByOwner = DrawUIContent(level, 1.0f);
+        const std::unordered_map<ID, const ComponentUITransform *> transformsByOwner = DrawUIContent(level);
 
         SDL_SetRenderClipRect(renderer, nullptr);
 
