@@ -818,7 +818,7 @@ struct ComponentAudioSource {
 // Every entity MUST have a transform component
 struct Sector;
 struct ComponentTransform {
-    ID ownerID = -1;
+    ID ownerID = INVALID_ID;
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
     // Persist Between Levels (Entity::persistent): when the next level has an
     // entity with the same persistence key, this component takes its values.
@@ -855,7 +855,7 @@ enum SideCount {
 };
 
 struct ComponentSprite {
-    ID ownerID = -1;
+    ID ownerID = INVALID_ID;
     ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
     // Persist Between Levels (Entity::persistent): when the next level has an
     // entity with the same persistence key, this component takes its values.

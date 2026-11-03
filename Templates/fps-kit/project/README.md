@@ -15,7 +15,7 @@ The step-by-step guide starts at `docs/wiki/guide/README.md` in the engine's doc
 | `Assets/Textures`, `Sprites`, `Animations`, `Sounds` | Art and sound |
 | `Assets/Scripts` | The few things that needed code, each explained in comments |
 | `Assets/Music` | A track for the menu and each example level, with `CREDITS.txt` |
-| `Assets/Freedoom` | The art's licence. Keep it with your game. |
+| `Assets/Freedoom` | The art's licence and a README explaining it. Keep the licence with your game. |
 
 Art and sound are from [Freedoom](https://freedoom.github.io/), under a BSD licence. The music is CC0, from
 [OpenGameArt](https://opengameart.org/).
