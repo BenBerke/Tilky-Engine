@@ -5071,8 +5071,11 @@ namespace ImGuiDrawFunctions {
         bool *levelCopyFlag = entity.persistent ? TakeFromLevelCopyFlag(header.componentType, header.instanceID) : nullptr;
 
         // Remembered per type, so collapsing Transform once keeps every
-        // entity's Transform collapsed.
-        const std::string collapseKey = Prefab::ComponentKey(header.componentType);
+        // entity's Transform collapsed. Each script file counts as its own type.
+        std::string collapseKey = Prefab::ComponentKey(header.componentType);
+        if (header.componentType == CMP_SCRIPT)
+            if (const ComponentScript *script = LevelManager::CurrentLevel().scripts.GetByID(header.instanceID))
+                collapseKey += ":" + script->fileName;
         std::set<std::string> &collapsed = MapEditorInternal::collapsedComponentTypes;
         const bool wasOpen = !collapsed.contains(collapseKey);
 
