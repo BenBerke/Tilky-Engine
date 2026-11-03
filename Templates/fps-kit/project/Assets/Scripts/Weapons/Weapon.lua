@@ -34,8 +34,6 @@ public int damageMin = 5
 public int damageMax = 15
 public number range = 2000
 public number berserkMultiplier = 1 -- damage multiplier while Berserk isn't 0
-public Entity puffPrefab = nil      -- spawned where a shot hits a wall
-public Entity bloodPrefab = nil     -- spawned where a shot hits an enemy
 
 -- Projectile.
 public Entity projectilePrefab = nil
@@ -44,6 +42,13 @@ public Entity projectilePrefab = nil
 public number raiseTime = 0.2       -- seconds to come up or go down
 public number bobAmount = 0.035     -- sway while walking, as a share of the weapon's height
 
+-- How it feels to fire. All 0 for a quiet weapon.
+public number recoil = 0            -- degrees the view jumps up
+public number shake = 0             -- how hard the view shakes
+public number spriteKick = 0        -- how far the picture jumps down, as a share of its height
+public number flashLight = 0        -- how much brighter the room gets for a moment
+public Entity casingPrefab = nil    -- thrown out to the right with each shot
+
 local owner = nil
 local holder = 0        -- 0 = down, 1 = up
 local wanted = 0        -- which way it's heading
@@ -51,6 +56,7 @@ local cooldown = 0
 local shotTimer = -1    -- seconds until the queued shot, below 0 when there's none
 local bobTime = 0
 local showing = false   -- is this the weapon on the Weapon View?
+local kickBack = 0      -- how far the picture is jumped down, 0 to 1 of spriteKick
 
 -- The HUD's Weapon View script. Nil if this level has no HUD: the weapon still
 -- works, it just can't be seen.
@@ -95,29 +101,29 @@ local function ViewDirection(yawOffset, pitchOffset)
     return Vector3(math.sin(yaw) * math.cos(pitch), math.sin(pitch), math.cos(yaw) * math.cos(pitch))
 end
 
--- Effect prefabs stand on their position, so lower them to centre them on the hit.
-local function SpawnEffect(prefab, position)
-    if prefab == nil then return end
-    local effect = Game.CreateEntity(prefab)
-    effect.transform.position = position - Vector3(0, effect.transform.scale.z * 0.5, 0)
-end
-
 local function FireRay()
     local direction = ViewDirection(mathT.RandomF(-spread, spread), mathT.RandomF(-spread, spread) * 0.3)
 
     -- RayType.Bullet also fires any Receive Ray (Bullet) events, so a wall can be
     -- a shootable switch. Only things with a solid collider stop a shot.
-    local hit = Game.Raycast(owner.camera:GetEyePosition(), direction, range, owner.id, true, RayType.Bullet)
+    local eye = owner.camera:GetEyePosition()
+    local hit = Game.Raycast(eye, direction, range, owner.id, true, RayType.Bullet)
     if hit == nil then return false end
 
-    local atHit = hit.position - direction
+    local bleeds = hit.entity ~= nil and hit.entity:HasTag("Bleeds")
     if hit.entity ~= nil and hit.entity.monsterAI ~= nil then
         local damage = mathT.Random(damageMin, damageMax)
         if Game.GetVariable("Berserk") ~= 0 then damage = damage * berserkMultiplier end
         Global.ApplyDamage(hit.entity, damage, owner)
-        SpawnEffect(hit.entity:HasTag("Bleeds") and bloodPrefab or puffPrefab, atHit)
-    else
-        SpawnEffect(puffPrefab, atHit)
+    end
+
+    -- Blood carries on the way the shot was going, so it stains what's behind.
+    if Global.Fx ~= nil then
+        if bleeds and Global.Fx.GoreOn() then
+            Global.Fx.Blood(hit.position - direction, direction)
+        elseif not bleeds then
+            Global.Fx.BulletHit(eye, direction, hit)
+        end
     end
     return true
 end
@@ -140,6 +146,19 @@ local function Shoot()
     -- Monsters that can hear this come looking for the player.
     Game.NoiseAlert(owner)
 
+    -- How it feels.
+    kickBack = 1
+    if recoil > 0 and Global.KickView ~= nil then Global.KickView(recoil) end
+    if shake > 0 and Global.ShakeView ~= nil then Global.ShakeView(shake) end
+    local eye = owner.camera:GetEyePosition()
+    if flashLight > 0 and Global.Fx ~= nil then Global.Fx.Flash(eye, flashLight) end
+    if casingPrefab ~= nil then
+        local yaw = mathT.DegToRad(owner.camera.yaw)
+        local forward = Vector3(math.sin(yaw), 0, math.cos(yaw))
+        local right = Vector3(forward.z, 0, -forward.x)
+        Game.EmitParticles(casingPrefab, eye + forward * 5 + right * 2.5 - Vector3(0, 2.5, 0), right + Vector3(0, 0.6, 0))
+    end
+
     if attackType == 2 then
         FireProjectile()
     else
@@ -159,6 +178,7 @@ function Update()
     holder = wanted > holder and math.min(wanted, holder + step) or math.max(wanted, holder - step)
 
     cooldown = cooldown - dt
+    kickBack = math.max(0, kickBack - dt * 7)
     if shotTimer >= 0 then
         shotTimer = shotTimer - dt
         if shotTimer < 0 and owner ~= nil then Shoot() end
@@ -188,7 +208,7 @@ function Update()
     -- Sink while lowered, sway while walking. UI positions are in pixels, so
     -- everything is measured against the size the picture currently has.
     local size = view:GetSize()
-    local offset = Vector2(0, (1 - holder) * size.y)
+    local offset = Vector2(0, (1 - holder + kickBack * spriteKick) * size.y)
     if owner ~= nil and owner.rigidbody ~= nil then
         local velocity = owner.rigidbody.velocity
         local speed = math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z)

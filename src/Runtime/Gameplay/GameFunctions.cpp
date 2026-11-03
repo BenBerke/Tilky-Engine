@@ -346,12 +346,30 @@ namespace {
 
             const HitOrder order{ORDER_WALL, static_cast<std::size_t>(&wall - level.walls.data()), 0};
 
-            const auto submitWallHit = [&](const float distance) {
+            const auto submitWallHit = [&](const float distance, const WallPieces::WallPiece& piece) {
                 if (!beats(distance, order)) return;
 
                 RayHit hit;
                 hit.type = RayHitType::Wall;
                 hit.wall = &wall;
+
+                // Walls are vertical: the normal is the map's, facing the ray.
+                hit.normal = {wall.normal.x, 0.0f, wall.normal.y};
+                if (hit.normal.x * normalizedDir.x + hit.normal.z * normalizedDir.z > 0.0f) hit.normal = hit.normal * -1.0f;
+
+                // How far along the piece the hit is, for the piece's height there.
+                const Vector2 pieceStart = piece.Start(wall);
+                const Vector2 pieceEnd = piece.End(wall);
+                const Vector2 pieceSpan = pieceEnd - pieceStart;
+                const float pieceLengthSq = pieceSpan.x * pieceSpan.x + pieceSpan.y * pieceSpan.y;
+                const Vector3 at = pos + normalizedDir * distance;
+                const float t = pieceLengthSq > 0.0f
+                    ? std::clamp(((at.x - pieceStart.x) * pieceSpan.x + (at.z - pieceStart.y) * pieceSpan.y) / pieceLengthSq, 0.0f, 1.0f)
+                    : 0.0f;
+                hit.pieceSlot = piece.slot;
+                hit.pieceBottom = piece.bottomStart + (piece.bottomEnd - piece.bottomStart) * t;
+                hit.pieceTop = piece.topStart + (piece.topEnd - piece.topStart) * t;
+
                 submit(distance, order, hit);
             };
 
@@ -375,7 +393,7 @@ namespace {
                     closestDistance
                 );
 
-                if (firstHit.has_value()) submitWallHit(*firstHit);
+                if (firstHit.has_value()) submitWallHit(*firstHit, piece);
 
                 const std::optional<float> secondHit = RayTriangleIntersection(
                     pos,
@@ -386,7 +404,7 @@ namespace {
                     closestDistance
                 );
 
-                if (secondHit.has_value()) submitWallHit(*secondHit);
+                if (secondHit.has_value()) submitWallHit(*secondHit, piece);
             }
         };
 
@@ -416,6 +434,19 @@ namespace {
                 hit.type = type;
                 hit.sector = &sector;
                 hit.sectorFloorIndex = floorIndex;
+
+                // Up off a floor and down off a ceiling, leaning against a slope.
+                const float gradient = surface.SlopeGradient();
+                Vector3 normal = {0.0f, 1.0f, 0.0f};
+                switch (surface.slopeDirection) {
+                    case PLUS_X: normal.x = -gradient; break;
+                    case MINUS_X: normal.x = gradient; break;
+                    case PLUS_Z: normal.z = -gradient; break;
+                    case MINUS_Z: normal.z = gradient; break;
+                }
+                normal = Vector3Math::Normalized(normal);
+                hit.normal = type == RayHitType::SectorCeiling ? normal * -1.0f : normal;
+
                 submit(*distance, order, hit);
                 return;
             }
@@ -440,6 +471,7 @@ namespace {
             RayHit hit;
             hit.type = RayHitType::Entity;
             hit.entity = entity;
+            hit.normal = normalizedDir * -1.0f;
             submit(distance, order, hit);
         };
 

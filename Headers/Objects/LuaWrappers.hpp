@@ -30,6 +30,7 @@
 #include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
 #include "Headers/Runtime/Gameplay/PathfinderSystem.hpp"
 #include "Headers/Runtime/Gameplay/MonsterAISystem.hpp"
+#include "Headers/Runtime/Gameplay/ParticleSystem.hpp"
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
 
 // ---------------------------------------------------------
@@ -1101,6 +1102,22 @@ public:
 
 // Its plain fields are bound straight to the component in
 // LuaGameplayComponentBindings.cpp, entities being handed over as IDs there too.
+struct ScriptParticleEmitter {
+    Level* level = nullptr;
+    ID ownerID = static_cast<ID>(-1);
+    // Which of the owner's Particle Emitters this is (an entity can have several).
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // See ScriptMonsterAI's epoch.
+    std::uint32_t epoch = LevelEpoch::current;
+
+    [[nodiscard]] ComponentParticleEmitter* GetComponent() const {
+        if (level == nullptr || !level->IsEntityHandleCurrent(ownerID, epoch)) return nullptr;
+        return level->particleEmitters.GetInstance(instanceID);
+    }
+
+    [[nodiscard]] bool IsValid() const { return GetComponent() != nullptr; }
+};
+
 struct ScriptMonsterAI {
     Level* level = nullptr;
     ID ownerID = static_cast<ID>(-1);
@@ -2174,6 +2191,9 @@ struct ScriptEntity {
     [[nodiscard]] bool HasMonsterAI() const {
         return LiveLevel() != nullptr && LiveLevel()->monsterAIs.Has(ownerID);
     }
+    [[nodiscard]] bool HasParticleEmitter() const {
+        return LiveLevel() != nullptr && LiveLevel()->particleEmitters.Has(ownerID);
+    }
 
     [[nodiscard]] bool HasUITransform() const {
         return LiveLevel() != nullptr && LiveLevel()->ui_transforms.Has(ownerID);
@@ -2281,6 +2301,11 @@ struct ScriptEntity {
     // The first one; GetComponents lists them all.
     [[nodiscard]] ScriptMonsterAI GetMonsterAI() const {
         return {LiveLevel(), ownerID, FirstInstance(&Level::monsterAIs)};
+    }
+
+    // The first one; GetComponents lists them all.
+    [[nodiscard]] ScriptParticleEmitter GetParticleEmitter() const {
+        return {LiveLevel(), ownerID, FirstInstance(&Level::particleEmitters)};
     }
 
     [[nodiscard]] ScriptUITransform GetUITransform() const {

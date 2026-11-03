@@ -21,6 +21,11 @@ To follow along, double-click **Prefabs/Player/Player** in the Asset Browser and
 | Change the Use key | **Player Controller > Use Key** |
 | Be taller or shorter | **Player Controller > Eye Height** (10.25) |
 | Turn off the walking bob | **ViewFeel** script **> Bob Amount** set to 0 |
+| Change how much explosions and big guns shake the view | **ViewFeel** script **> Shake Degrees** (1.4) |
+| Change the kick or grenade key | **QuickActions** script **> Kick Key** (F), **Grenade Key** (G) |
+| Change how hard a kick hits | **QuickActions** script **> Kick Damage Min**, **Max** (6, 14) and **Kick Force** (170) |
+| Throw grenades further | **QuickActions** script **> Throw Speed** (170) |
+| Make everything bleed more or less | **Fx** script **> Extra Gore Scale**, and the prefabs in `Prefabs/Effects` |
 | Make armor stronger | **PlayerHealth** script **> Green Armor Absorbs** (0.333) and **Blue Armor Absorbs** (0.5) |
 | Start with more ammo or health | The **Pistol Start** dispatches, below |
 
@@ -57,7 +62,7 @@ Each one is a **Change Variable** that sets a variable to 0. These variables mus
 lit, but the player in each level is a new entity, so the key **tag** that doors check for would be gone. Also add
 an **On Start** event with the Condition `HasRedKey` equals 1, calling **Get Red Key**, and the same for the other two.
 
-### Pistol Start (21 dispatches)
+### Pistol Start (23 dispatches)
 
 These set up a new life. This is where you decide what the player starts with:
 
@@ -67,9 +72,11 @@ These set up a new life. This is where you decide what the player starts with:
 | `Armor`, `ArmorType` | 0 |
 | `Bullets` | 50 |
 | `Shells`, `Rockets`, `Cells` | 0 |
+| `Grenades` | 2 |
 | `MaxBullets` | 200 |
 | `MaxShells`, `MaxRockets` | 50 |
 | `MaxCells` | 300 |
+| `MaxGrenades` | 20 |
 | `HasBackpack` | 0 |
 | `HasFist`, `HasPistol` | 1 |
 | All the other `Has...` weapons | 0 |
@@ -85,7 +92,7 @@ pressing **P** gives you the shotgun as well.
 
 Adds 1 to `Time`. The Intermission screen shows this as the time you took.
 
-### Ammo caps (8 dispatches)
+### Ammo caps (10 dispatches)
 
 A pickup just adds ammo, without checking if you have room. These put it back down if you go over.
 
@@ -166,6 +173,40 @@ explains how it's used.
 
 **Try it:** set the Eye Height row's value to 6 and your dead body stays higher up. Raise its speed and you
 drop faster.
+
+## Kicking and grenades
+
+Both work with any gun in your hands, through the **QuickActions** script. They draw on the HUD's **Action View**
+picture, over the weapon.
+
+**F kicks.** It's weak but pushes hard, so it's for making space. Berserk multiplies its damage. It hurts anything
+but a thing tagged `Kickable`, which it sets moving instead: that's how you send an Explosive Barrel into a crowd.
+
+**G throws a grenade**, using up one of `Grenades`. It bounces off walls, floors and monsters, and goes off after
+2.5 seconds, in a blast that hurts you too. To change that, open `Prefabs/Projectiles/Grenade`: its **Grenade**
+script has **Fuse** and **Bounciness**. How much it hurts is on `Prefabs/Effects/Grenade Explosion`.
+
+## Blood and marks
+
+The **Fx** script on the player makes all of them, so that every weapon gets the same ones and the Gore setting reaches
+them all. It fires the prefabs in `Prefabs/Effects`, which hold [Particle Emitters](../ParticleEmitter.md). Open one
+and change its numbers to change how much blood there is, how far it flies, or how big the stains are.
+
+| When | What happens | Change it in |
+|---|---|---|
+| A bullet hits something that bleeds | Blood flies on past it and stains what's behind | `Blood` |
+| A bullet hits anything else | A puff and sparks, and a bullet hole in walls | `Puff`, and **Fx > Hole Size** |
+| A monster dies | A pool of blood under the body | `Scripts/Combat/Fx.lua` |
+| A hit takes a monster below minus its starting health | It bursts into pieces. Doom's rule. | **DamageRules > Gib Overkill**, `Blood Burst`, `Gib Chunks` |
+| An explosion | Burn marks, rocks, sparks and smoke, and it throws things | **Explosion** on its prefab, `Explosion Debris` |
+| You're hurt | Blood on your view, fading | **ScreenBlood** on the HUD's **Screen Blood Control** |
+| A gun fires | Recoil, shake, a flash lighting the room, and a casing | [The weapon's own settings](14-Change-Weapons-And-Pickups.md) |
+
+Gore **Off** in the Options menu stops the blood, the bursting and the blood on your view. Bullet holes and burn marks stay.
+
+**To make a sector splash**, give it the tag `Liquid` and one of `Water`, `Nukage` or `Lava`. The player, monsters and
+grenades then splash when they land in it or wade through it, and no blood or burn marks land on it. The
+**LiquidSplashes** script watches for this. It doesn't make the sector hurt: that's a separate job, [below](#a-floor-that-hurts).
 
 ## Recipes
 

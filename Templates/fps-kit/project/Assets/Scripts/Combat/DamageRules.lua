@@ -14,6 +14,12 @@
 -- file: give the thing a Monster AI component and it can be hurt (that's how
 -- the Barrel works, and it never chases anybody).
 
+-- Doom's rule for bursting into pieces: a hit that takes a monster below minus its
+-- starting health. 1 is Doom's. Lower bursts them more easily. See Fx.lua for the rest.
+public number gibOverkill = 1
+
+local startingHealth = {}
+
 -- Top level, not inside Start: this runs before any Start callback in the level.
 function Global.ApplyDamage(target, amount, attacker)
     if target == nil or not target.isValid or amount <= 0 then return end
@@ -21,7 +27,15 @@ function Global.ApplyDamage(target, amount, attacker)
     -- Enemies and barrels: the Monster AI subtracts the health, rolls for pain
     -- and turns on the attacker (monster infighting comes from this).
     if target.monsterAI ~= nil then
+        local health = target.monsterAI.health
+        startingHealth[target.id] = startingHealth[target.id] or health
         target.monsterAI:Hurt(attacker, amount)
+
+        -- Only what bleeds bursts, and only on the blow that killed it.
+        if health > 0 and amount - health >= startingHealth[target.id] * gibOverkill
+           and target:HasTag("Bleeds") and Global.Fx ~= nil then
+            Global.Fx.Gib(target)
+        end
         return
     end
 

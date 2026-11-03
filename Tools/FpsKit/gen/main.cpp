@@ -15,8 +15,8 @@ namespace {
         const std::vector<std::pair<const char*, float>> variables = {
             // What the player carries between levels.
             {"Health", 100}, {"Armor", 0}, {"ArmorType", 0},
-            {"Bullets", 50}, {"Shells", 0}, {"Rockets", 0}, {"Cells", 0},
-            {"MaxBullets", 200}, {"MaxShells", 50}, {"MaxRockets", 50}, {"MaxCells", 300}, {"HasBackpack", 0},
+            {"Bullets", 50}, {"Shells", 0}, {"Rockets", 0}, {"Cells", 0}, {"Grenades", 2},
+            {"MaxBullets", 200}, {"MaxShells", 50}, {"MaxRockets", 50}, {"MaxCells", 300}, {"MaxGrenades", 20}, {"HasBackpack", 0},
             {"HasFist", 1}, {"HasPistol", 1}, {"HasChainsaw", 0}, {"HasShotgun", 0}, {"HasSuperShotgun", 0},
             {"HasMinigun", 0}, {"HasRocketLauncher", 0}, {"HasPlasmaRifle", 0}, {"HasSKAG", 0},
             // Reset at each level start.
@@ -27,6 +27,7 @@ namespace {
             {"CurrentAmmo", 0},      // what the HUD's big ammo number shows
             {"IncomingDamage", 0},   // how much the next "Take Damage" does
             {"MenuState", 0},        // 0 playing, 1 pause menu open, 2 any other screen
+            {"GoreLevel", 1},        // Options menu: 0 off, 1 normal, 2 extra
             // The screen between levels: what's shown so far, counting up.
             {"TallyKills", 0}, {"TallyItems", 0}, {"TallySecrets", 0}, {"TallyMinutes", 0}, {"TallySeconds", 0},
             {"TallyDone", 0}, {"TallySkip", 0},
@@ -89,9 +90,11 @@ int main(int argc, char** argv) {
 
     // Tags used by name in several places.
     for (const char* tag : {"Player", "Enemy", "Pickup", "Bleeds", "RedKey", "BlueKey", "YellowKey",
-                            "HUD", "Pause Menu", "Death Screen", "Intermission", "Victory", "Level List"}) Tag(tag);
+                            "HUD", "Pause Menu", "Death Screen", "Intermission", "Victory", "Level List",
+                            "Options Menu", "Gore Setting", "Kickable", "Liquid", "Water", "Nukage", "Lava"}) Tag(tag);
 
     MakeEffects();
+    MakeParticleEffects();
     MakeProjectiles();
     MakePickups();    // before enemies: they drop some
     MakeEnemies();

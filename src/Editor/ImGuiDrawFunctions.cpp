@@ -1643,7 +1643,8 @@ namespace ImGuiDrawFunctions {
         {FieldComponent::UI_TEXT, "component.ui_text"},
         {FieldComponent::UI_BUTTON, "component.ui_button"},
         {FieldComponent::PATHFINDER, "component.pathfinder"},
-        {FieldComponent::MONSTER_AI, "component.monster_ai"}
+        {FieldComponent::MONSTER_AI, "component.monster_ai"},
+        {FieldComponent::PARTICLE_EMITTER, "component.particle_emitter"}
     };
 
     constexpr std::pair<PayloadDispatchEntitySetField::Operation, const char *> kSetFieldNumberOperations[] = {
@@ -1701,7 +1702,8 @@ namespace ImGuiDrawFunctions {
         {ToggleableComponent::PLAYER_CONTROLLER, "component.player_controller"},
         {ToggleableComponent::UI_SPRITE, "component.ui_sprite"},
         {ToggleableComponent::PATHFINDER, "component.pathfinder"},
-        {ToggleableComponent::MONSTER_AI, "component.monster_ai"}
+        {ToggleableComponent::MONSTER_AI, "component.monster_ai"},
+        {ToggleableComponent::PARTICLE_EMITTER, "component.particle_emitter"}
     };
 
     constexpr std::pair<PathfinderAction, const char *> kPathfinderActionOptions[] = {
@@ -2657,6 +2659,7 @@ namespace ImGuiDrawFunctions {
             case FieldComponent::UI_BUTTON: return static_cast<int>(level.ui_buttons.InstancesOf(owner).size());
             case FieldComponent::PATHFINDER: return static_cast<int>(level.pathfinders.InstancesOf(owner).size());
             case FieldComponent::MONSTER_AI: return static_cast<int>(level.monsterAIs.InstancesOf(owner).size());
+            case FieldComponent::PARTICLE_EMITTER: return static_cast<int>(level.particleEmitters.InstancesOf(owner).size());
         }
         return 0;
     }
@@ -3808,6 +3811,17 @@ namespace ImGuiDrawFunctions {
 
                                 Property(Get("events.toggle").c_str());
                                 DrawEnumCombo("##Mode", payload.mode, kToggleModeOptions);
+                            }
+                            else if constexpr (std::is_same_v<Payload, PayloadDispatchEmitParticles>) {
+                                DrawAssetRow("events.prefab", payload.prefab, AssetKind::Prefab, "editor.tooltip.dispatches.emit_prefab");
+
+                                Property(Get("events.emit_count").c_str());
+                                ImGui::InputInt("##EmitCount", &payload.count);
+                                payload.count = std::max(payload.count, 0);
+                                Tooltip(Get("editor.tooltip.dispatches.emit_count").c_str());
+
+                                Property(Get("events.offset").c_str());
+                                InputOrDrag3("##Offset", &payload.offset.x, draggable);
                             }
                             else if constexpr (std::is_same_v<Payload, PayloadDispatchSpawnPrefab>) {
                                 DrawAssetRow("events.prefab", payload.prefab, AssetKind::Prefab, "editor.tooltip.dispatches.prefab");
@@ -5344,6 +5358,9 @@ namespace ImGuiDrawFunctions {
                 case CMP_MONSTER_AI:
                     if (const auto *c = entity.GetComponentInstance<ComponentMonsterAI>(instanceID)) { enabled = c->isActive; header.enabled = &enabled; }
                     break;
+                case CMP_PARTICLE_EMITTER:
+                    if (const auto *c = entity.GetComponentInstance<ComponentParticleEmitter>(instanceID)) { enabled = c->isActive; header.enabled = &enabled; }
+                    break;
                 default: break;
             }
 
@@ -5427,6 +5444,9 @@ namespace ImGuiDrawFunctions {
                         break;
                     case CMP_PATHFINDER:
                         if (auto *c = entity.GetComponentInstance<ComponentPathfinder>(instanceID)) c->isActive = enabled;
+                        break;
+                    case CMP_PARTICLE_EMITTER:
+                        if (auto *c = entity.GetComponentInstance<ComponentParticleEmitter>(instanceID)) c->isActive = enabled;
                         break;
                     case CMP_MONSTER_AI:
                         if (auto *c = entity.GetComponentInstance<ComponentMonsterAI>(instanceID)) c->isActive = enabled;
@@ -6492,6 +6512,139 @@ namespace ImGuiDrawFunctions {
                 if (!entity.HasComponent<ComponentRigidbody>())
                     ImGui::TextWrapped("%s", Get("component.pathfinder.no_rigidbody").c_str());
             } else { ImGui::TextDisabled("Pathfinder component missing"); }
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  Particle Emitter
+        // ════════════════════════════════════════════════════════════════════
+        else if (componentType == CMP_PARTICLE_EMITTER) {
+            auto *c = entity.GetComponentInstance<ComponentParticleEmitter>(instanceID);
+            if (c) {
+                const auto number = [&](const char *field, const char *key, float *value, const float low = 0.0f) {
+                    PrefabField prefabField(field);
+                    FieldWidth(160.0f);
+                    InputOrDrag(Get(std::string("component.particle_emitter.") + key).c_str(), value, draggable);
+                    Tooltip(Get(std::string("editor.tooltip.component.particle_emitter.") + key).c_str());
+                    *value = std::max(*value, low);
+                };
+                const auto whole = [&](const char *field, const char *key, int *value) {
+                    PrefabField prefabField(field);
+                    FieldWidth(160.0f);
+                    ImGui::InputInt(Get(std::string("component.particle_emitter.") + key).c_str(), value);
+                    Tooltip(Get(std::string("editor.tooltip.component.particle_emitter.") + key).c_str());
+                    *value = std::max(*value, 0);
+                };
+                const auto flag = [&](const char *field, const char *key, bool *value) {
+                    PrefabField prefabField(field);
+                    ImGui::Checkbox(Get(std::string("component.particle_emitter.") + key).c_str(), value);
+                    Tooltip(Get(std::string("editor.tooltip.component.particle_emitter.") + key).c_str());
+                };
+                const auto colorField = [&](const char *field, const char *key, Vector4 *value) {
+                    PrefabField prefabField(field);
+                    FieldWidth(220.0f);
+                    ImGui::ColorEdit4(Get(std::string("component.particle_emitter.") + key).c_str(), &value->x);
+                    Tooltip(Get(std::string("editor.tooltip.component.particle_emitter.") + key).c_str());
+                };
+                const auto textureList = [&](const char *field, const char *key, std::vector<std::string> &list) {
+                    PrefabField prefabField(field);
+                    ImGui::PushID(field);
+                    ImGui::TextUnformatted(Get(std::string("component.particle_emitter.") + key).c_str());
+                    Tooltip(Get(std::string("editor.tooltip.component.particle_emitter.") + key).c_str());
+                    for (std::size_t i = 0; i < list.size(); ++i) {
+                        ImGui::PushID(static_cast<int>(i));
+                        MapEditorInternal::DrawAssetField("", list[i], AssetKind::Texture, 40.0f);
+                        ImGui::SameLine();
+                        const bool removed = ImGui::SmallButton("X");
+                        ImGui::PopID();
+                        if (removed) {
+                            list.erase(list.begin() + static_cast<std::ptrdiff_t>(i));
+                            break;
+                        }
+                    }
+                    if (ImGui::SmallButton(Get("component.particle_emitter.add_texture").c_str())) list.emplace_back();
+                    ImGui::PopID();
+                };
+
+                BeginSection(Get("component.particle_emitter.emission").c_str());
+                flag("playOnStart", "play_on_start", &c->playOnStart);
+                number("rate", "rate", &c->rate);
+                whole("burstMin", "burst_min", &c->burstMin);
+                whole("burstMax", "burst_max", &c->burstMax);
+                c->burstMax = std::max(c->burstMax, c->burstMin);
+                textureList("textures", "textures", c->textures);
+                flag("animate", "animate", &c->animate);
+                EndSection();
+
+                BeginSection(Get("component.particle_emitter.motion").c_str());
+                {
+                    PrefabField prefabField("offset");
+                    FieldWidth(220.0f);
+                    InputOrDrag3(Get("component.particle_emitter.offset").c_str(), &c->offset.x, draggable);
+                    Tooltip(Get("editor.tooltip.component.particle_emitter.offset").c_str());
+                }
+                {
+                    PrefabField prefabField("direction");
+                    FieldWidth(220.0f);
+                    InputOrDrag3(Get("component.particle_emitter.direction").c_str(), &c->direction.x, draggable);
+                    Tooltip(Get("editor.tooltip.component.particle_emitter.direction").c_str());
+                }
+                number("spread", "spread", &c->spread);
+                c->spread = std::min(c->spread, 180.0f);
+                number("speedMin", "speed_min", &c->speedMin);
+                number("speedMax", "speed_max", &c->speedMax);
+                c->speedMax = std::max(c->speedMax, c->speedMin);
+                number("gravity", "gravity", &c->gravity, -100000.0f);
+                number("drag", "drag", &c->drag);
+                EndSection();
+
+                BeginSection(Get("component.particle_emitter.look").c_str());
+                number("lifetimeMin", "lifetime_min", &c->lifetimeMin);
+                number("lifetimeMax", "lifetime_max", &c->lifetimeMax);
+                c->lifetimeMax = std::max(c->lifetimeMax, c->lifetimeMin);
+                number("sizeMin", "size_min", &c->sizeMin);
+                number("sizeMax", "size_max", &c->sizeMax);
+                c->sizeMax = std::max(c->sizeMax, c->sizeMin);
+                number("sizeEnd", "size_end", &c->sizeEnd);
+                colorField("colorStart", "color_start", &c->colorStart);
+                colorField("colorEnd", "color_end", &c->colorEnd);
+                EndSection();
+
+                BeginSection(Get("component.particle_emitter.surfaces").c_str());
+                {
+                    PrefabField prefabField("collision");
+                    const std::string labels[] = {
+                        Get("component.particle_emitter.collision.none"), Get("component.particle_emitter.collision.die"), Get("component.particle_emitter.collision.bounce")
+                    };
+                    const int value = static_cast<int>(c->collision);
+                    FieldWidth(160.0f);
+                    if (ImGui::BeginCombo(Get("component.particle_emitter.collision").c_str(), labels[value].c_str())) {
+                        for (int i = 0; i < 3; ++i)
+                            if (ImGui::Selectable(labels[i].c_str(), value == i)) c->collision = static_cast<ParticleCollision>(i);
+                        ImGui::EndCombo();
+                    }
+                    Tooltip(Get("editor.tooltip.component.particle_emitter.collision").c_str());
+                }
+                if (c->collision == ParticleCollision::BOUNCE) number("bounciness", "bounciness", &c->bounciness);
+                if (c->collision != ParticleCollision::NONE) {
+                    textureList("stainTextures", "stain_textures", c->stainTextures);
+                    if (!c->stainTextures.empty()) {
+                        number("stainChance", "stain_chance", &c->stainChance);
+                        c->stainChance = std::min(c->stainChance, 1.0f);
+                        number("stainSizeMin", "stain_size_min", &c->stainSizeMin);
+                        number("stainSizeMax", "stain_size_max", &c->stainSizeMax);
+                        c->stainSizeMax = std::max(c->stainSizeMax, c->stainSizeMin);
+                        number("stainLifetime", "stain_lifetime", &c->stainLifetime);
+                        colorField("stainColor", "stain_color", &c->stainColor);
+                        {
+                            PrefabField prefabField("noStainTag");
+                            FieldWidth(160.0f);
+                            ImGui::InputText(Get("component.particle_emitter.no_stain_tag").c_str(), &c->noStainTag);
+                            Tooltip(Get("editor.tooltip.component.particle_emitter.no_stain_tag").c_str());
+                        }
+                    }
+                }
+                EndSection();
+            } else { ImGui::TextDisabled("Particle Emitter component missing"); }
         }
 
         // ════════════════════════════════════════════════════════════════════

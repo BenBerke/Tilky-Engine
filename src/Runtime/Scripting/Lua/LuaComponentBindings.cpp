@@ -73,6 +73,26 @@ namespace {
             Method("ClearFileName"),
         }));
 
+        RegisterType(Type("ParticleEmitter", "Throws out particles: small images that aren't entities, can bounce and can leave stains on walls and floors.", {
+            Prop("isValid", "boolean", true),
+            Prop("isPlaying", "boolean", true, "True while the steady stream (rate) is on."),
+            Prop("isActive", "boolean"),
+            Prop("rate", "number", false, "Particles per second while playing. 0 = bursts only."),
+            Prop("burstMin", "integer"), Prop("burstMax", "integer"),
+            Prop("offset", "Vector3"), Prop("direction", "Vector3", false, "Which way particles go, turned with the entity's rotation."),
+            Prop("spread", "number", false, "Degrees either side of direction."),
+            Prop("speedMin", "number"), Prop("speedMax", "number"),
+            Prop("gravity", "number"), Prop("drag", "number"),
+            Prop("lifetimeMin", "number"), Prop("lifetimeMax", "number"),
+            Prop("sizeMin", "number"), Prop("sizeMax", "number"), Prop("sizeEnd", "number", false, "Size at the end of its life, times its start size."),
+            Prop("colorStart", "Vector4"), Prop("colorEnd", "Vector4"), Prop("bounciness", "number"),
+        }, {
+            Method("Play", {}, {}, "Turns the steady stream on."),
+            Method("Stop", {}, {}, "Turns the steady stream off. Live particles carry on."),
+            Method("Emit", {Param("count", "integer?"), Param("position", "Vector3?"), Param("direction", "Vector3?")}, "integer",
+                   "Fires one burst now and returns how many it made. Left out: the emitter's burst numbers, its own place, its own direction."),
+        }));
+
         RegisterType(Type("Flipbook", "Plays a flipbook (.fpk) on one of the Entity's Sprites (or UI Sprites, on a UI entity) by swapping its textures.", {
             Prop("isValid", "boolean", true),
             Prop("isPlaying", "boolean", true, "True while frames are advancing (false when paused, stopped or a Once flipbook finished)."),

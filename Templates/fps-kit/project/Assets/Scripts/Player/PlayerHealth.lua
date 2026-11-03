@@ -55,6 +55,7 @@ public function TakeDamage(amount)
 
     -- The HUD's red flash listens for this signal (Lua Signal event).
     Game.Signal("PlayerHurt", entity)
+    if Global.ScreenBlood ~= nil then Global.ScreenBlood(amount) end
 
     if GameTime.time - lastPainSound >= painSoundGap then
         lastPainSound = GameTime.time

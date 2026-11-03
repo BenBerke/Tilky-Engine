@@ -71,6 +71,37 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
         "ClearFileName", &ScriptModel::ClearFileName
     );
 
+#define TILKY_EMITTER_FIELD(name) \
+        #name, sol::property( \
+            [](const ScriptParticleEmitter& self) { const auto* c = self.GetComponent(); return c != nullptr ? c->name : ComponentParticleEmitter{}.name; }, \
+            [](const ScriptParticleEmitter& self, const decltype(ComponentParticleEmitter::name)& value) { if (auto* c = self.GetComponent()) c->name = value; })
+
+    lua.new_usertype<ScriptParticleEmitter>(
+        "ParticleEmitter",
+
+        "isValid", sol::property(&ScriptParticleEmitter::IsValid),
+        "isPlaying", sol::property([](const ScriptParticleEmitter& self) { const auto* c = self.GetComponent(); return c != nullptr && c->playing; }),
+
+        TILKY_EMITTER_FIELD(isActive), TILKY_EMITTER_FIELD(rate), TILKY_EMITTER_FIELD(burstMin), TILKY_EMITTER_FIELD(burstMax),
+        TILKY_EMITTER_FIELD(offset), TILKY_EMITTER_FIELD(direction), TILKY_EMITTER_FIELD(spread),
+        TILKY_EMITTER_FIELD(speedMin), TILKY_EMITTER_FIELD(speedMax), TILKY_EMITTER_FIELD(gravity), TILKY_EMITTER_FIELD(drag),
+        TILKY_EMITTER_FIELD(lifetimeMin), TILKY_EMITTER_FIELD(lifetimeMax),
+        TILKY_EMITTER_FIELD(sizeMin), TILKY_EMITTER_FIELD(sizeMax), TILKY_EMITTER_FIELD(sizeEnd),
+        TILKY_EMITTER_FIELD(colorStart), TILKY_EMITTER_FIELD(colorEnd), TILKY_EMITTER_FIELD(bounciness),
+
+        "Play", [](const ScriptParticleEmitter& self) { if (auto* c = self.GetComponent()) c->playing = true; },
+        "Stop", [](const ScriptParticleEmitter& self) { if (auto* c = self.GetComponent()) { c->playing = false; c->spawnDebt = 0.0f; } },
+        "Emit", [](const ScriptParticleEmitter& self, const sol::optional<int> count, const sol::optional<Vector3> position, const sol::optional<Vector3> direction) -> int {
+            const ComponentParticleEmitter* c = self.GetComponent();
+            if (c == nullptr || !c->isActive) return 0;
+            const ComponentTransform* transform = self.level->transforms.Get(c->ownerID);
+            const Vector3 at = position.value_or(transform != nullptr ? transform->LocalToWorld(c->offset) : Vector3{0.0f, 0.0f, 0.0f});
+            return ParticleSystem::Emit(*self.level, *c, at, direction.value_or(Vector3{0.0f, 0.0f, 0.0f}), count.value_or(-1));
+        }
+    );
+
+#undef TILKY_EMITTER_FIELD
+
     lua.new_usertype<ScriptFlipbook>(
         "Flipbook",
 

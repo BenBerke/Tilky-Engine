@@ -159,6 +159,11 @@ namespace LevelManager {
             wall.middle.texture.ReplaceTexture(oldReference, newReference);
         }
 
+        for (ComponentParticleEmitter& emitter : level.particleEmitters.components) {
+            for (std::string& texture : emitter.textures) if (texture == oldReference) texture = newReference;
+            for (std::string& texture : emitter.stainTextures) if (texture == oldReference) texture = newReference;
+        }
+
         for (Sector& sector : level.sectors)
             for (SectorFloor& floor : sector.floors) {
                 floor.floor.texture.ReplaceTexture(oldReference, newReference);
@@ -281,6 +286,8 @@ namespace LevelManager {
         ForEachDispatch(level, [&](Dispatch& dispatch) {
             if (auto* spawn = std::get_if<PayloadDispatchSpawnPrefab>(&dispatch.payload); spawn && spawn->prefab == oldReference)
                 spawn->prefab = newReference;
+            if (auto* emit = std::get_if<PayloadDispatchEmitParticles>(&dispatch.payload); emit && emit->prefab == oldReference)
+                emit->prefab = newReference;
         });
     }
 

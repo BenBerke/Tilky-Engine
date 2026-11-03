@@ -276,6 +276,15 @@ struct LevelB {
         sector->dispatches.push_back(Dp("Set Toxic Damage", SetVar("IncomingDamage", damage), 0.0f, {Then(Inst("Take Damage"))}));
     }
 
+    // Splashes when things land in or wade through it (LiquidSplashes.lua), and takes no
+    // blood stains. kind is Water, Nukage or Lava.
+    void MakeLiquid(const Str& name, const Str& kind) {
+        Sector* sector = Find(name);
+        if (sector == nullptr) return;
+        sector->tagIds.push_back(Tag("Liquid"));
+        sector->tagIds.push_back(Tag(kind));
+    }
+
     // One looping track, faded when the next level has a different one. The volumes
     // bring every track to about the same loudness, under the sound effects.
     void Music(const Str& track, const float volume) {
@@ -408,6 +417,7 @@ inline void Level1(LevelB& b) {
 
     b.Put("Player/Player", 0, 24, 0);
     b.Put("Pickups/Ammo/Clip", -24, 72);
+    b.Put("Pickups/Ammo/Grenade", -12, 72);
     b.Put("Pickups/Health/Stimpack", 24, 72);
     b.Put("Decorations/Tall Lamp", -40, 88);
     b.Put("Decorations/Tall Lamp", 40, 88);
@@ -518,6 +528,7 @@ inline void Level2(LevelB& b) {
     b.MakeDoor("Exit Door");
     b.MakeDoor("Secret Door");
     b.MakeToxic("Toxic Pool", 5.0f);
+    b.MakeLiquid("Toxic Pool", "Nukage");
 
     // The switch's event tag "Switch 1" reaches the first stair, which raises the rest.
     {
@@ -546,6 +557,7 @@ inline void Level2(LevelB& b) {
     b.Put("Pickups/Keys/Red Key", -190, 64);
     b.Put("Weapons/Pickups/Super Shotgun", -150, 64);
     b.Put("Pickups/Ammo/Shell Box", -160, 30);
+    b.Put("Pickups/Ammo/Grenade Box", -146, 30);
 
     b.Put("Enemies/Flesh Worm", -50, 200);
     b.Put("Enemies/Flesh Worm", 50, 200);
@@ -647,6 +659,7 @@ inline void Level3(LevelB& b) {
     b.Put("Enemies/Shotgun Zombie", 60, 90);
     b.Put("Enemies/Deadflare", 0, 60, 180, 20);
     b.Put("Pickups/Ammo/Shell Box", 30, 30);
+    b.Put("Pickups/Ammo/Grenade Box", 0, 30);
     b.Put("Pickups/Ammo/Ammo Box", -30, 30);
 
     b.Put("Weapons/Pickups/Minigun", -30, 130);
@@ -712,11 +725,13 @@ inline void Level4(LevelB& b) {
     b.MakeDoor("Arena Door");
     b.MakeTrapDoor("Exit Gate", "Boss Dead");
     b.MakeToxic("Lava Pit", 10.0f);
+    b.MakeLiquid("Lava Pit", "Lava");
 
     b.Put("Player/Player", 0, 16, 0);
     b.Put("Weapons/Pickups/Plasma Rifle", -30, 60);
     b.Put("Weapons/Pickups/SKAG 1337", 30, 60);
     b.Put("Pickups/Ammo/Cell Pack", -30, 40);
+    b.Put("Pickups/Ammo/Grenade Box", 14, 60);
     b.Put("Pickups/Ammo/Cell Pack", 30, 40);
     b.Put("Pickups/Ammo/Rocket Box", 0, 60);
     b.Put("Pickups/Powerups/Berserk", -40, 16);
@@ -780,7 +795,9 @@ inline void LevelBlank(LevelB& b) {
 
 inline void LevelGallery(LevelB& b) {
     b.R("Gallery", -320, 0, 320, 560, 0, 112, "METAL2", "FLOOR4_8", "TLITE6_4", 230);
+    b.R("Water Pool", -40, 500, 40, 548, -4, 112, "METAL2", "FWATER1", "TLITE6_4", 230);
     b.Build();
+    b.MakeLiquid("Water Pool", "Water");
     b.Put("Player/Player", 0, 20, 0);
 
     const auto row = [&](const fs::path& folder, const Str& prefixPath, float z, const float spacing, const Str& title) {
@@ -810,6 +827,7 @@ inline void LevelGallery(LevelB& b) {
     row("Hazards", "Hazards", 300, 24, "HAZARDS");
     row("Decorations", "Decorations", 340, 22, "DECORATIONS. Solid ones have a collider, the others you walk through.");
 
+    b.Note(0, 492, "A WATER POOL. To make a sector splash, give it the tags Liquid and Water, Nukage or Lava.");
     b.Note(0, 8, "EVERY PREFAB IN THE KIT, in rows. Play to walk around them. To use one, drag it from the Prefabs folder onto your own map.");
     b.Finish();
 }

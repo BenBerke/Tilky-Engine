@@ -150,6 +150,7 @@ namespace {
         Kind<ComponentFlipbook, ScriptFlipbook, &ScriptEntity::GetFlipbook>("Flipbook", CMP_FLIPBOOK, LuaComponentPlacement::Any),
         Kind<ComponentPathfinder, ScriptPathfinder, &ScriptEntity::GetPathfinder>("Pathfinder", CMP_PATHFINDER, LuaComponentPlacement::World),
         Kind<ComponentMonsterAI, ScriptMonsterAI, &ScriptEntity::GetMonsterAI>("MonsterAI", CMP_MONSTER_AI, LuaComponentPlacement::World),
+        Kind<ComponentParticleEmitter, ScriptParticleEmitter, &ScriptEntity::GetParticleEmitter>("ParticleEmitter", CMP_PARTICLE_EMITTER, LuaComponentPlacement::World),
         Kind<ComponentUITransform, ScriptUITransform, &ScriptEntity::GetUITransform>("UITransform", CMP_UI_TRANSFORM, LuaComponentPlacement::UI),
         Kind<ComponentUISprite, ScriptUISprite, &ScriptEntity::GetUISprite>("UISprite", CMP_UI_SPRITE, LuaComponentPlacement::UI),
         Kind<ComponentUIText, ScriptUIText, &ScriptEntity::GetUIText>("UIText", CMP_UI_TEXT, LuaComponentPlacement::UI),
@@ -219,7 +220,9 @@ namespace {
                 {.name = "hasPathfinder", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Pathfinder."},
                 {.name = "pathfinder", .luaType = "Pathfinder?", .readOnly = true, .doc = "nil if this Entity has no Pathfinder."},
                 {.name = "hasMonsterAI", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Monster AI."},
+                {.name = "hasParticleEmitter", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a Particle Emitter."},
                 {.name = "monsterAI", .luaType = "MonsterAI?", .readOnly = true, .doc = "nil if this Entity has no Monster AI."},
+                {.name = "particleEmitter", .luaType = "ParticleEmitter?", .readOnly = true, .doc = "nil if this Entity has no Particle Emitter."},
                 {.name = "hasUITransform", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UITransform."},
                 {.name = "uiTransform", .luaType = "UITransform?", .readOnly = true, .doc = "nil if this Entity has no UITransform."},
                 {.name = "hasUISprite", .luaType = "boolean", .readOnly = true, .doc = "True if this Entity has a UISprite."},
@@ -464,6 +467,9 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
         "hasMonsterAI",
         sol::property(&ScriptEntity::HasMonsterAI),
 
+        "hasParticleEmitter",
+        sol::property(&ScriptEntity::HasParticleEmitter),
+
         "monsterAI",
         sol::property(
             [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
@@ -472,6 +478,18 @@ void LuaScriptSystem::RegisterEntityBindings(sol::state& lua) {
                 if (!entity.HasMonsterAI()) return sol::nil;
 
                 return sol::make_object(luaState, entity.GetMonsterAI());
+            }
+        ),
+
+        "particleEmitter",
+        sol::property(
+            [](const ScriptEntity& entity, const sol::this_state state) -> sol::object {
+                const sol::state_view luaState(state);
+                const ScriptParticleEmitter emitter = entity.GetParticleEmitter();
+
+                if (!emitter.IsValid()) return sol::nil;
+
+                return sol::make_object(luaState, emitter);
             }
         ),
 

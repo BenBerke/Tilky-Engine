@@ -20,7 +20,8 @@ X(ComponentRigidbody,        CMP_RIGIDBODY,         rigidbodies,        "compone
 X(ComponentModel,            CMP_MODEL,             models,             "component.model") \
 X(ComponentFlipbook,         CMP_FLIPBOOK,          flipbooks,          "component.flipbook") \
 X(ComponentPathfinder,       CMP_PATHFINDER,        pathfinders,        "component.pathfinder") \
-X(ComponentMonsterAI,        CMP_MONSTER_AI,        monsterAIs,         "component.monster_ai")
+X(ComponentMonsterAI,        CMP_MONSTER_AI,        monsterAIs,         "component.monster_ai") \
+X(ComponentParticleEmitter,  CMP_PARTICLE_EMITTER,  particleEmitters,   "component.particle_emitter")
 
 #define TILKY_UI_COMPONENTS(X) \
 X(ComponentUITransform,      CMP_UI_TRANSFORM,      ui_transforms,      "component.ui_transform") \

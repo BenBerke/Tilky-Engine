@@ -64,7 +64,7 @@ weapon switches to it, and the number keys change between them.
 
 | Folder | Prefabs |
 |---|---|
-| **Ammo** | Clip, Ammo Box, Shells, Shell Box, Rocket, Rocket Box, Cell, Cell Pack, Backpack |
+| **Ammo** | Clip, Ammo Box, Shells, Shell Box, Rocket, Rocket Box, Cell, Cell Pack, Grenade, Grenade Box, Backpack |
 | **Health** | Stimpack, Medikit, Health Bonus, Soul Sphere, Mega Sphere |
 | **Armor** | Green Armor, Blue Armor, Armor Bonus |
 | **Keys** | Red, Blue and Yellow Key, Red, Blue and Yellow Skull |

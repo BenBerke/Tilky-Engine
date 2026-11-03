@@ -15,6 +15,8 @@
 #include "Headers/Runtime/Sound/MusicPlayer.hpp"
 #include "Headers/Runtime/Gameplay/PathfinderSystem.hpp"
 #include "Headers/Runtime/Gameplay/MonsterAISystem.hpp"
+#include "Headers/Runtime/Gameplay/ParticleSystem.hpp"
+#include "Headers/Objects/Prefab.hpp"
 #include "Headers/TagRegistry.hpp"
 
 #include <spdlog/spdlog.h>
@@ -1721,6 +1723,9 @@ namespace {
             case ToggleableComponent::PATHFINDER:
                 setFlags(level.pathfinders.GetAll(entityID), [](ComponentPathfinder& c) -> bool& { return c.isActive; });
                 break;
+            case ToggleableComponent::PARTICLE_EMITTER:
+                setFlags(level.particleEmitters.GetAll(entityID), [](ComponentParticleEmitter& c) -> bool& { return c.isActive; });
+                break;
             case ToggleableComponent::MONSTER_AI:
                 setFlags(level.monsterAIs.GetAll(entityID), [](ComponentMonsterAI& c) -> bool& { return c.isActive; });
                 break;
@@ -2605,6 +2610,22 @@ namespace {
                 }
                 return false;
             }
+            case FieldComponent::PARTICLE_EMITTER: {
+                ComponentParticleEmitter* c = NthComponent(level.particleEmitters, owner, index);
+                if (!c) return false;
+
+                if (field == "isActive") { Access(c->isActive, read, write); return true; }
+                const std::pair<const char*, float*> floats[] = {
+                    {"rate", &c->rate}, {"spread", &c->spread}, {"speedMin", &c->speedMin},
+                    {"speedMax", &c->speedMax}, {"gravity", &c->gravity},
+                };
+                for (const auto& [name, value] : floats) {
+                    if (field != name) continue;
+                    Access(*value, read, write);
+                    return true;
+                }
+                return false;
+            }
             case FieldComponent::MONSTER_AI: {
                 ComponentMonsterAI* c = NthComponent(level.monsterAIs, owner, index);
                 if (!c) return false;
@@ -3397,6 +3418,25 @@ namespace EventSystem {
             },
             [&](const PayloadDispatchEntitySetSprite& setSprite) {
                 if (ComponentSprite* sprite = level.sprites.Get(ownerID)) sprite->textureFileNames = setSprite.textures;
+            },
+            [&](const PayloadDispatchEmitParticles& emit) {
+                const Vector3 at = OwnerPosition(level, ownerKind, ownerID).value_or(Vector3{0.0f, 0.0f, 0.0f}) + emit.offset;
+                const int count = emit.count > 0 ? emit.count : -1;
+
+                if (!emit.prefab.empty()) {
+                    const Level* prefab = Prefab::Get(emit.prefab);
+                    if (prefab == nullptr) {
+                        spdlog::warn("Emit Particles dispatch: couldn't load prefab '{}'", emit.prefab);
+                        return;
+                    }
+                    for (const ComponentParticleEmitter& emitter : prefab->particleEmitters.components)
+                        ParticleSystem::Emit(level, emitter, at + emitter.offset, emitter.direction, count);
+                    return;
+                }
+
+                if (ownerKind != EventOwnerKind::ENTITY) return;
+                for (ComponentParticleEmitter* emitter : level.particleEmitters.GetAll(ownerID))
+                    ParticleSystem::Emit(level, *emitter, at + emitter->offset, {0.0f, 0.0f, 0.0f}, count);
             },
             [&](const PayloadDispatchSpawnPrefab& spawn) {
                 if (spawn.prefab.empty() || !hooks.spawnPrefab) return;

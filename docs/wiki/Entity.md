@@ -89,6 +89,7 @@ except Transform and UI Transform). The property returns the **first** one, and
 | `hasRigidbody` | `rigidbody` | [Rigidbody](Rigidbody.md) |
 | `hasPathfinder` | `pathfinder` | [Pathfinder](Pathfinder.md) |
 | `hasMonsterAI` | `monsterAI` | [Monster AI](MonsterAI.md) |
+| `hasParticleEmitter` | `particleEmitter` | [Particle Emitter](ParticleEmitter.md) |
 | `hasUITransform` | `uiTransform` | [UI Transform](UITransform.md) |
 | `hasUISprite` | `uiSprite` | [UI Sprite](UISprite.md) |
 | `hasUIText` | `uiText` | [UI Text](UIText.md) |

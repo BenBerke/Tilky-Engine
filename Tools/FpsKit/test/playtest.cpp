@@ -8,6 +8,7 @@
 #include <SDL3_image/SDL_image.h>
 #include <glad/glad.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -24,6 +25,7 @@
 #include "Headers/Objects/Prefab.hpp"
 #include "Headers/GlobalEventVariables.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/Gameplay/ParticleSystem.hpp"
 #include "Headers/Runtime/Sound/MusicPlayer.hpp"
 #include "Headers/TagRegistry.hpp"
 
@@ -247,7 +249,21 @@ int main(int argc, char** argv) {
     for (; frame < maxFrames; ++frame) {
         InputManager::BeginFrame();
         if (!ApplyBotRequest()) break;
+        const auto frameStart = std::chrono::steady_clock::now();
         RuntimeSession::Update();
+        const float frameMs = std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - frameStart).count();
+
+        // How many particles and stains, and the slowest frame, twice a second.
+        static float slowestMs = 0.0f;
+        static size_t mostParticles = 0;
+        slowestMs = std::max(slowestMs, frameMs);
+        mostParticles = std::max(mostParticles, ParticleSystem::Particles().size());
+        if (frame % 30 == 29) {
+            if (mostParticles > 0 || !ParticleSystem::Stains().empty())
+                std::printf("[fx] particles %zu stains %zu slowest frame %.1f ms\n", mostParticles, ParticleSystem::Stains().size(), slowestMs);
+            slowestMs = 0.0f;
+            mostParticles = 0;
+        }
 
         // A corpse has to stay on its floor. Checked twice a second.
         if (frame % 30 == 0) {

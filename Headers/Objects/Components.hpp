@@ -44,6 +44,7 @@ enum ComponentType {
     // A normal component. Here, not above CMP_NORMAL_COUNT, because levels and
     // prefabs save these numbers: moving the UI ones would break their references.
     CMP_MONSTER_AI,
+    CMP_PARTICLE_EMITTER,
 
     CMP_COUNT,
 };
@@ -905,6 +906,70 @@ struct ComponentFlipbook {
     bool playing = false;
     bool applyPending = false;  // copy currentFrame to the sprite on the next update
     bool eventPending = false;  // fire currentFrame's event on the next update
+
+    bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
+};
+
+// What a particle does when its path meets a wall, floor or ceiling.
+enum class ParticleCollision : int {
+    NONE = 0,   // passes through
+    DIE = 1,    // ends there, leaving a stain if the emitter has any
+    BOUNCE = 2  // bounces, leaving a stain at each bounce, and rests on a floor
+};
+
+// Throws out particles: small sprites that aren't entities (see ParticleSystem).
+// It doesn't need to stay alive for them, so an effect can be a prefab that's
+// never spawned: Game.EmitParticles fires a prefab's emitters directly.
+struct ComponentParticleEmitter {
+    ID ownerID = static_cast<ID>(-1);
+    ComponentInstanceID instanceID = INVALID_COMPONENT_INSTANCE_ID;
+    // Persist Between Levels (Entity::persistent): when the next level has an
+    // entity with the same persistence key, this component takes its values.
+    bool takeFromLevelCopy = false;
+
+    bool isActive = true;
+    bool playOnStart = false;   // one burst when the entity starts, then the stream
+    float rate = 0.0f;          // particles per second while playing, 0 = bursts only
+    int burstMin = 8;
+    int burstMax = 12;
+
+    // Assets-relative images. Each particle picks one at random, or with
+    // `animate` they play in order over its life.
+    std::vector<std::string> textures;
+    bool animate = false;
+
+    Vector3 offset = {0.0f, 0.0f, 0.0f}; // turned with the entity's rotation
+    Vector3 direction = {0.0f, 1.0f, 0.0f};
+    float spread = 45.0f;       // degrees either side of direction
+    float speedMin = 20.0f;
+    float speedMax = 60.0f;
+    float gravity = 300.0f;     // units per second, each second
+    float drag = 0.0f;          // share of its speed lost per second
+
+    float lifetimeMin = 0.4f;
+    float lifetimeMax = 0.8f;
+    float sizeMin = 1.0f;
+    float sizeMax = 2.0f;
+    float sizeEnd = 1.0f;       // size at the end of its life, times its start size
+    Vector4 colorStart = {1.0f, 1.0f, 1.0f, 1.0f};
+    Vector4 colorEnd = {1.0f, 1.0f, 1.0f, 1.0f};
+
+    ParticleCollision collision = ParticleCollision::NONE;
+    float bounciness = 0.4f;    // share of its speed off the surface it keeps
+
+    // Left where a particle meets a surface.
+    std::vector<std::string> stainTextures;
+    float stainChance = 1.0f;   // 0 to 1
+    float stainSizeMin = 2.0f;
+    float stainSizeMax = 4.0f;
+    float stainLifetime = 0.0f; // seconds, 0 = until the World Settings cap removes it
+    Vector4 stainColor = {1.0f, 1.0f, 1.0f, 1.0f};
+    std::string noStainTag;     // no stain on the floor or ceiling of sectors with this tag
+
+    // Runtime only, not saved.
+    bool started = false;
+    bool playing = false;
+    float spawnDebt = 0.0f;
 
     bool ownerEnabled = true; // runtime copy of the owner's Entity::enabled, see Level::ApplyEntityEnabled
 };

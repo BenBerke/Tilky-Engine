@@ -43,6 +43,7 @@ namespace {
     TILKY_PREFAB_TRAITS(ComponentFlipbook, CMP_FLIPBOOK, flipbooks, "flipbooks")
     TILKY_PREFAB_TRAITS(ComponentPathfinder, CMP_PATHFINDER, pathfinders, "pathfinders")
     TILKY_PREFAB_TRAITS(ComponentMonsterAI, CMP_MONSTER_AI, monsterAIs, "monsterAIs")
+    TILKY_PREFAB_TRAITS(ComponentParticleEmitter, CMP_PARTICLE_EMITTER, particleEmitters, "particleEmitters")
     TILKY_PREFAB_TRAITS(ComponentUITransform, CMP_UI_TRANSFORM, ui_transforms, "uiTransforms")
     TILKY_PREFAB_TRAITS(ComponentUISprite, CMP_UI_SPRITE, ui_sprites, "uiSprites")
     TILKY_PREFAB_TRAITS(ComponentUIText, CMP_UI_TEXT, ui_texts, "uiTexts")

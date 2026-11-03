@@ -1659,6 +1659,26 @@ namespace {
             HoverTooltip(tooltip.c_str());
         }
 
+        {
+            const std::string tooltip = Get("settings.rendering.tooltip.max_particles");
+            SettingRow(Get("settings.rendering.max_particles"), tooltip.c_str());
+            if (ImGui::InputInt("##MaxParticles", &level.rendererSettings.maxParticles)) {
+                level.rendererSettings.maxParticles = std::max(level.rendererSettings.maxParticles, 0);
+                hasUnsavedChanges = true;
+            }
+            HoverTooltip(tooltip.c_str());
+        }
+
+        {
+            const std::string tooltip = Get("settings.rendering.tooltip.max_stains");
+            SettingRow(Get("settings.rendering.max_stains"), tooltip.c_str());
+            if (ImGui::InputInt("##MaxStains", &level.rendererSettings.maxStains)) {
+                level.rendererSettings.maxStains = std::max(level.rendererSettings.maxStains, 0);
+                hasUnsavedChanges = true;
+            }
+            HoverTooltip(tooltip.c_str());
+        }
+
         EndSettingsTable();
     }
 

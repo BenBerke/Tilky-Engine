@@ -37,7 +37,11 @@ Double-click a prefab in `Prefabs/Weapons/In Hand` and look at its **Weapon** sc
 | **Damage Min**, **Damage Max** | Damage of each pellet, picked at random in between |
 | **Range** | How far it reaches |
 | **Berserk Multiplier** | Extra damage with the Berserk powerup. The Fist has 10. |
-| **Puff Prefab**, **Blood Prefab** | What appears where the bullet hits |
+| **Recoil** | Degrees the view jumps up with each shot |
+| **Shake** | How hard the view shakes. 1 is a good thump. |
+| **Sprite Kick** | How far the weapon's picture jumps down, as a share of its height |
+| **Flash Light** | How much brighter the room gets for a moment |
+| **Casing Prefab** | What's thrown out to the right with each shot, like `Prefabs/Effects/Shell Casing` |
 | **Projectile Prefab** | What it fires, for the `Projectile` type |
 | **Ready Flipbook**, **Fire Flipbook** | Its animations |
 | **Trigger Sound**, **Fire Sound**, **Hit Sound** | Its sounds |
@@ -130,7 +134,8 @@ Each pickup has the same structure: a **Collide** event that only the player can
 | Shells, Shell Box | Shells +4, +20 |
 | Rocket, Rocket Box | Rockets +1, +5 |
 | Cell, Cell Pack | Cells +20, +100 |
-| Backpack | Sets `HasBackpack`, doubles every `Max`, adds 10 bullets, 4 shells, 1 rocket and 20 cells |
+| Grenade, Grenade Box | Grenades +1, +5 |
+| Backpack | Sets `HasBackpack`, doubles every `Max`, adds 10 bullets, 4 shells, 1 rocket, 20 cells and 1 grenade |
 | Berserk | Sets `Berserk` to 1 and Health to 100 |
 
 **Make a Medikit heal more:** double-click it, find the **Change Variable** dispatch named **Pick Up**, and change 25.

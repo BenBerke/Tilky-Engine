@@ -168,6 +168,11 @@ namespace {
         ai.beforeAttackFlipbook.clear();
     }
 
+    void ResetCopiedRuntimeState(ComponentParticleEmitter& emitter) {
+        emitter.started = emitter.playing = false;
+        emitter.spawnDebt = 0.0f;
+    }
+
     // The owner's component instance IDs (script instance IDs for scripts), in order.
     template<typename Storage>
     std::vector<std::uint64_t> OwnerInstanceIDs(const Storage& storage, const ID owner) {
@@ -236,6 +241,7 @@ ID Level::CreateEntity(Entity& copy) {
     CopyComponents(flipbooks, copy.id, entity.id, entity.componentsMask, CMP_FLIPBOOK);
     CopyComponents(pathfinders, copy.id, entity.id, entity.componentsMask, CMP_PATHFINDER);
     CopyComponents(monsterAIs, copy.id, entity.id, entity.componentsMask, CMP_MONSTER_AI);
+    CopyComponents(particleEmitters, copy.id, entity.id, entity.componentsMask, CMP_PARTICLE_EMITTER);
     CopyComponents(ui_transforms, copy.id, entity.id, entity.componentsMask, CMP_UI_TRANSFORM);
     CopyComponents(ui_sprites, copy.id, entity.id, entity.componentsMask, CMP_UI_SPRITE);
     CopyComponents(ui_texts, copy.id, entity.id, entity.componentsMask, CMP_UI_TEXT);
@@ -371,6 +377,7 @@ void Level::ApplyEntityEnabled(Entity& entity) {
     SetOwnerEnabled(flipbooks, entity.id, enabled);
     SetOwnerEnabled(pathfinders, entity.id, enabled);
     SetOwnerEnabled(monsterAIs, entity.id, enabled);
+    SetOwnerEnabled(particleEmitters, entity.id, enabled);
     SetOwnerEnabled(ui_sprites, entity.id, enabled);
     SetOwnerEnabled(ui_texts, entity.id, enabled);
     SetOwnerEnabled(ui_buttons, entity.id, enabled);

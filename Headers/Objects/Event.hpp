@@ -1089,7 +1089,8 @@ enum class ToggleableComponent : uint8_t {
     COLLIDER = 4,
     UI_SPRITE = 5,
     PATHFINDER = 6,
-    MONSTER_AI = 7
+    MONSTER_AI = 7,
+    PARTICLE_EMITTER = 8
 };
 
 // Every component of the type on the owner.
@@ -1120,7 +1121,8 @@ enum class FieldComponent : uint8_t {
     UI_TEXT = 12,
     UI_BUTTON = 13,
     PATHFINDER = 14,
-    MONSTER_AI = 15
+    MONSTER_AI = 15,
+    PARTICLE_EMITTER = 16
 };
 
 // What a field holds. Numbers, vectors and colours can change over time.
@@ -1290,6 +1292,20 @@ struct PayloadDispatchNoiseAlert {
     bool operator==(const PayloadDispatchNoiseAlert&) const = default;
 
     NoiseTarget target = NoiseTarget::PLAYER;
+};
+
+// Fires a burst at the owner, placed as Spawn Prefab places things. With a
+// prefab, that prefab's Particle Emitters fire and nothing is spawned; without
+// one, an entity's own emitters do.
+struct PayloadDispatchEmitParticles {
+    static constexpr EventOwnerMask owners = ALL_EVENT_OWNERS;
+    transKey translationKey = "event.dispatch.emit_particles";
+    transKey saveName = "dispatch.emit_particles"; // level file name, never change
+    bool operator==(const PayloadDispatchEmitParticles&) const = default;
+
+    std::string prefab;
+    int count = 0; // 0 = the emitter's own burst numbers
+    Vector3 offset = {0.0f, 0.0f, 0.0f};
 };
 
 // Spawns at the owner: an entity's transform, a wall or linedef's middle on
@@ -1479,7 +1495,8 @@ using DispatchPayload = std::variant<
     PayloadDispatchEntityMonsterAI, PayloadDispatchNoiseAlert,
     PayloadDispatchChangeTag, PayloadDispatchSpawnPrefab, PayloadDispatchPlaySound, PayloadDispatchShowMessage,
     PayloadDispatchRelay, PayloadDispatchResetEvent, PayloadDispatchLoadLevel, PayloadDispatchChangeVariable,
-    PayloadDispatchPause, PayloadDispatchResume, PayloadDispatchQuit, PayloadDispatchSetUIText, PayloadDispatchMusic>;
+    PayloadDispatchPause, PayloadDispatchResume, PayloadDispatchQuit, PayloadDispatchSetUIText, PayloadDispatchMusic,
+    PayloadDispatchEmitParticles>;
 
 template <typename Payload>
 [[nodiscard]] constexpr EventOwnerMask GetOwners(const Payload& payload) noexcept {

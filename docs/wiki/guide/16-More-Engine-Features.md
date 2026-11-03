@@ -35,7 +35,7 @@ An event belongs to an entity, a sector, a wall, a linedef or the level.
 |---|---|
 | **Sector and wall** | Set Color, Set Texture, Set Collision, Set Light, Light Effect, Enable / Disable Linedef |
 | **Moving floors** | Move floor to ceiling, Move ceiling to floor, Move to Height, Door, Lift, Raise Stairs, Stop Movement |
-| **Entities** | Add / Remove Tag, Destroy, Disable, Enable, Change Velocity, Move To, Teleport, Spawn Prefab, Enable / Disable Component |
+| **Entities** | Add / Remove Tag, Destroy, Disable, Enable, Change Velocity, Move To, Teleport, Spawn Prefab, Emit Particles, Enable / Disable Component |
 | **Fields** | Set Field, Set Sprite, Set UI Text |
 | **Enemies** | Pathfinder, Monster AI, Noise Alert |
 | **Sound** | Play Sound, Music |
@@ -165,6 +165,8 @@ The kit's scripts are a good place to learn, since each one has one job and expl
 | Rays and damage | `Scripts/Weapons/Weapon.lua` |
 | Moving something yourself | `Scripts/Combat/Projectile.lua` |
 | Hurting everything in an area | `Scripts/Combat/Explosion.lua` |
+| Bouncing something yourself | `Scripts/Combat/Grenade.lua` |
+| Particles and marks | `Scripts/Combat/Fx.lua` |
 | Reacting to a Monster AI decision | `Scripts/Enemies/FireProjectile.lua` |
 
 A script's `public` values appear in the inspector, which is how the kit's scripts get their settings.

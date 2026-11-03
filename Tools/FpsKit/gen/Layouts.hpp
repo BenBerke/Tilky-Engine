@@ -171,8 +171,31 @@ inline void AddWeaponView(LayoutB& h) {
     AddLua(e, "Scripts/Weapons/WeaponView");
 }
 
+// The boot or the throwing hand, over the weapon: same place, same empty start.
+inline void AddActionView(LayoutB& h) {
+    const ID entityID = h.Image("Action View", {0.125f, 0.0f}, {0.875f, 0.84f}, "");
+    Entity& e = h.At(entityID);
+    e.GetComponent<ComponentUITransform>()->pivot = {0.5f, 0.5f};
+
+    auto* sprite = e.GetComponent<ComponentUISprite>();
+    sprite->fillWhenEmpty = false;
+    sprite->drawOrder = -1;
+
+    e.AddComponent<ComponentFlipbook>();
+    AddLua(e, "Scripts/UI/ActionView");
+}
+
 inline void BuildHud(LayoutB& h) {
     AddWeaponView(h);
+    AddActionView(h);
+
+    // Blood on the visor. ScreenBlood.lua shows and fades these. They stop at the bar.
+    for (int i = 1; i <= 4; ++i) {
+        const Str name = "Screen Blood " + std::to_string(i);
+        const ID blood = h.Image(name, {0.0f, 0.0f}, {1.0f, 0.84f}, "UI/Actions/" + name + ".png", {1, 1, 1, 0});
+        h.At(blood).GetComponent<ComponentUISprite>()->isActive = false;
+    }
+    AddLua(h.At(h.Add("Screen Blood Control", {0, 0}, {0, 0})), "Scripts/UI/ScreenBlood");
 
     h.Image("Crosshair", {0.5f, 0.5f}, {0.5f, 0.5f}, "", {1, 1, 1, 0.7f});
     {
@@ -232,6 +255,10 @@ inline void BuildHud(LayoutB& h) {
         e.dispatches.push_back(Dp("Lost", SetF(FieldComponent::UI_SPRITE, "texture", Text("UI/Digits/Gray " + digit + ".png"))));
     }
 
+    // ── Grenades: how many, just above the bar's right end ──
+    h.Image("Grenade Icon", D(290, 155), D(300, 165), "UI/Actions/Grenade Icon.png");
+    h.PictureNumber("Grenades", "Grenades", "UI/Digits/Yellow ", 316, 156, 7, 9, 2);
+
     // ── The face: Face.lua picks the picture ──
     {
         const ID entityID = h.Image("Face", Bar(143, 0), Bar(176, 32), "UI/Faces/STFST00.png");
@@ -264,6 +291,30 @@ inline void BuildHud(LayoutB& h) {
 inline constexpr float kMenuX = 97.0f;   // Doom's own column
 inline float MenuY(const float top, const int row) { return top + static_cast<float>(row) * 20.0f; }
 
+// The Options list, in a menu that has `backTag` as its main list. It replaces that
+// list while it's open, as the level list does. Three pictures show the Gore setting.
+inline std::vector<ID> AddOptions(LayoutB& m, const float x, const float top, const Str& backTag, const std::vector<ID>& alsoShown = {}) {
+    const std::vector<Str> tags = {"Options Menu"};
+    std::vector<ID> shown = alsoShown;
+
+    // Enabled all the time: a hidden menu's entities don't run.
+    const ID control = m.Add("Gore Setting", {0, 0}, {0, 0}, {"Gore Setting"});
+    AddLua(m.At(control), "Scripts/UI/GoreSetting");
+    m.At(control).dispatches.push_back(Dp("Change Gore", PayloadDispatchEntityCallFunction{"CycleGore"}));
+
+    shown.push_back(m.Word("Options Title", x, MenuY(top, -1), "Options", tags, false));
+    shown.push_back(m.Button("Gore Row", x, MenuY(top, 0), "Gore", {}, {Tagged("Gore Setting", "Change Gore")}, tags, false));
+    const float valueX = x + static_cast<float>(WordSize("Gore").first) + 14.0f;
+    for (const Str& word : {Str("Off"), Str("Normal"), Str("Extra")})
+        shown.push_back(m.Word("Gore " + word, valueX, MenuY(top, 0), word, tags, false));
+    shown.push_back(m.Button("Options Back", x, MenuY(top, 1), "Back", {},
+                             {Tagged("Options Menu", "Hide"), Tagged(backTag, "Show")}, tags, false));
+    shown.push_back(m.Cursor("Options Menu", false));
+
+    for (const ID entityID : shown) m.Showable(entityID);
+    return shown;
+}
+
 inline void BuildPause(LayoutB& p) {
     const std::vector<Str> tags = {"Pause Menu"};
     std::vector<ID> shown;
@@ -277,7 +328,7 @@ inline void BuildPause(LayoutB& p) {
         esc.input = KeyEventInput::KEY;
         esc.key = SDL_SCANCODE_ESCAPE;
         e.events.push_back(Ev(esc, {Self("Open"), Tagged("Pause Menu", "Show")}, If("MenuState", EQ, 0)));
-        e.events.push_back(Ev(esc, {Self("Close"), Tagged("Pause Menu", "Hide")}, If("MenuState", EQ, 1)));
+        e.events.push_back(Ev(esc, {Self("Close"), Tagged("Pause Menu", "Hide"), Tagged("Options Menu", "Hide")}, If("MenuState", EQ, 1)));
         e.dispatches.push_back(Dp("Open", PayloadDispatchPause{}, 0.0f, {Then(Self("Mark Open"))}));
         e.dispatches.push_back(Dp("Open", Play("World/fast door open")));
         e.dispatches.push_back(Dp("Mark Open", SetVar("MenuState", 1)));
@@ -300,14 +351,18 @@ inline void BuildPause(LayoutB& p) {
         {Dp("Go", PayloadDispatchResume{}), Dp("Go", SetVar("Health", 0)), Dp("Go", PayloadDispatchEntityCallFunction{"RestartThisLevel"})}, {Tagged("Pause Menu", "Hide")}, tags, false));
     AddLua(p.At(shown.back()), "Scripts/UI/RestartLevel");
 
+    shown.push_back(p.Button("Options", kMenuX, MenuY(64, 2), "Options", {},
+        {Tagged("Pause Menu", "Hide"), Tagged("Options Menu", "Show")}, tags, false));
+
     {
         PayloadDispatchLoadLevel menu;
         menu.levelName = "Main Menu";
-        shown.push_back(p.Button("Main Menu", kMenuX, MenuY(64, 2), "Main Menu",
+        shown.push_back(p.Button("Main Menu", kMenuX, MenuY(64, 3), "Main Menu",
             {Dp("Go", PayloadDispatchResume{}), Dp("Go", menu)}, {Tagged("Pause Menu", "Hide")}, tags, false));
     }
-    shown.push_back(p.Button("Quit", kMenuX, MenuY(64, 3), "Quit Game", {Dp("Go", PayloadDispatchQuit{})}, {}, tags, false));
+    shown.push_back(p.Button("Quit", kMenuX, MenuY(64, 4), "Quit Game", {Dp("Go", PayloadDispatchQuit{})}, {}, tags, false));
     shown.push_back(p.Cursor("Pause Menu", false));
+    AddOptions(p, kMenuX, 84.0f, "Pause Menu", {p.Image("Options Dim", {0, 0}, {1, 0.84f}, "", {0, 0, 0, 0.45f}, {"Options Menu"}, false)});
 
     for (const ID entityID : shown) p.Showable(entityID);
 }
@@ -451,7 +506,10 @@ inline void BuildMainMenu(LayoutB& m, const std::vector<Str>& levels) {
     m.Showable(m.Button("New Game", x, MenuY(top, 0), "New Game", {Dp("Go", SetVar("Health", 0)), Dp("Go", next)}, {}, items));
     m.Showable(m.Button("Select Level", x, MenuY(top, 1), "Select Level", {},
                         {Tagged("Main Items", "Hide"), Tagged("Level List", "Show")}, items));
-    m.Showable(m.Button("Quit", x, MenuY(top, 2), "Quit Game", {Dp("Go", PayloadDispatchQuit{})}, {}, items));
+    m.Showable(m.Button("Options", x, MenuY(top, 2), "Options", {},
+                        {Tagged("Main Items", "Hide"), Tagged("Options Menu", "Show")}, items));
+    m.Showable(m.Button("Quit", x, MenuY(top, 3), "Quit Game", {Dp("Go", PayloadDispatchQuit{})}, {}, items));
+    AddOptions(m, x, top, "Main Items");
     m.Showable(m.Cursor("Main Items"));
 
     // Choosing a level replaces the main list, as Doom's episode menu does.

@@ -34,8 +34,8 @@ Everything is in your project's `Assets` folder.
 | `Levels` | The menu, the Prefab Gallery, Blank Base Level and the four example levels |
 | `Prefabs/Player` | The player. Most of the game's rules are in here. |
 | `Prefabs/Enemies` | One prefab for each enemy |
-| `Prefabs/Projectiles` | Fireballs, rockets and plasma |
-| `Prefabs/Effects` | Explosions, blood and bullet puffs |
+| `Prefabs/Projectiles` | Fireballs, rockets, plasma and grenades |
+| `Prefabs/Effects` | Explosions, plus the particle effects: blood, gibs, bullet puffs, casings, debris and splashes |
 | `Prefabs/Weapons/In Hand` | The weapons you hold, which do the shooting |
 | `Prefabs/Weapons/Pickups` | The weapons lying on the floor, which give you the one in your hands |
 | `Prefabs/Pickups` | Ammo, health, armor, keys and powerups |
@@ -55,10 +55,11 @@ value from one level to the next.
 |---|---|
 | `Health`, `Armor` | Just what they say |
 | `ArmorType` | 0 is none, 1 is green, and 2 is blue. Blue armor absorbs more of each hit. |
-| `Bullets`, `Shells`, `Rockets`, `Cells` | Ammo you have |
-| `MaxBullets`, `MaxShells`, `MaxRockets`, `MaxCells` | The most ammo you can carry |
+| `Bullets`, `Shells`, `Rockets`, `Cells`, `Grenades` | Ammo you have |
+| `MaxBullets`, `MaxShells`, `MaxRockets`, `MaxCells`, `MaxGrenades` | The most ammo you can carry |
 | `HasFist`, `HasPistol`, `HasShotgun`... | 1 if you own that weapon, 0 if not |
 | `HasBackpack` | 1 if you found a backpack, which doubles the ammo you can carry |
+| `GoreLevel` | The Options menu's Gore setting: 0 is off, 1 is normal, and 2 is extra |
 | `HasRedKey`, `HasBlueKey`, `HasYellowKey` | 1 if you hold that key. The HUD uses these for its icons. |
 | `Berserk`, `Invulnerable`, `RadSuit` | 1 while you have that powerup |
 | `Kills`, `Items`, `Secrets` | What you've done on this level |
@@ -77,10 +78,12 @@ Tags are labels on entities. You'll find them in **Project Settings > Tags**.
 |---|---|---|
 | `Player` | The player | Pickups and triggers only react to this tag |
 | `Enemy` | Every enemy | An enemy's attacks use it to tell when they've hit another monster rather than the player |
-| `Bleeds` | Enemies with blood | A bullet makes blood instead of a puff |
+| `Bleeds` | Enemies with blood | A bullet makes blood instead of a puff, and big enough hits burst it into pieces |
+| `Kickable` | The Explosive Barrel | A kick shoves it instead of hurting it. It needs a Rigidbody. |
+| `Liquid`, with `Water`, `Nukage` or `Lava` | Sectors | Makes a sector splash, and keeps blood and burn marks off it |
 | `Pickup` | Every pickup | Marks it as something you can collect |
 | `RedKey`, `BlueKey`, `YellowKey` | The player, after finding a key | Locked doors check for these |
-| `HUD`, `Pause Menu`, `Death Screen`, `Intermission`, `Victory` | Everything on that screen | Lets one call reach a whole screen at once |
+| `HUD`, `Pause Menu`, `Options Menu`, `Death Screen`, `Intermission`, `Victory` | Everything on that screen | Lets one call reach a whole screen at once |
 
 **Event Tags** are different, and they're listed separately in **Project Settings > Event Tags**. They connect
 a thing that happens to a thing that reacts, as you saw on [page 9](09-Events-And-Dispatches.md). The

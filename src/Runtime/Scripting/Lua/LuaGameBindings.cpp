@@ -366,6 +366,14 @@ namespace {
                 "A rayType other than RayType.General (the default) fires the Receive Ray events of what it hits and of "
                 "every linedef it passes, with the ignored entity as the instigator."
             ),
+            Method("EmitParticles", {Param("prefab", "Entity|string"), Param("position", "Vector3"), Param("direction", "Vector3?"), Param("scale", "number?")}, "integer",
+                   "Fires every Particle Emitter on a prefab at a point, without spawning anything. prefab is an Entity field holding a prefab "
+                   "or a path like \"Prefabs/Effects/Blood.prefab\". direction left out uses each emitter's own. scale multiplies its burst numbers. Returns how many it made."),
+            Method("StainSurface", {Param("origin", "Vector3"), Param("direction", "Vector3"), Param("length", "number"), Param("texture", "string"), Param("size", "number"),
+                                    Param("color", "Vector4?"), Param("lifetime", "number?"), Param("noStainTag", "string?")}, "boolean",
+                   "Leaves a stain where a line first meets a wall, floor or ceiling; entities don't stop it. It rides doors and lifts, and the oldest go first over World Settings' cap. "
+                   "lifetime 0 or left out lasts until the cap removes it. False if it found no surface with room."),
+            Method("ClearStains", {}, {}, "Removes every stain."),
             Method("Signal", {Param("name", "string"), Param("instigator", "Entity?")}, {},
                    "Fires every Lua Signal event named `name`, on any wall, sector, entity, linedef or the level. "
                    "`instigator` is what their tag filters check and what their dispatches get."),
@@ -854,6 +862,40 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
                       }
     );
 
+    game.set_function("EmitParticles", [](const sol::object prefab, const Vector3& position, const sol::optional<Vector3> direction, const sol::optional<float> scale) -> int {
+        Level& level = LevelManager::CurrentLevel();
+
+        const Level* source = nullptr;
+        ID owner = INVALID_ID;
+        if (prefab.is<ScriptEntity>()) {
+            const ScriptEntity entity = prefab.as<ScriptEntity>();
+            source = entity.level;
+            owner = entity.ownerID;
+        }
+        else if (prefab.get_type() == sol::type::string) {
+            source = Prefab::Get(prefab.as<std::string>());
+            if (source != nullptr) owner = Prefab::RootOf(*source).id;
+        }
+        else throw sol::error("Game.EmitParticles: prefab must be an Entity field holding a prefab, or a path");
+
+        if (source == nullptr) return 0;
+
+        int made = 0;
+        for (const ComponentParticleEmitter& emitter : source->particleEmitters.components) {
+            if (emitter.ownerID != owner || !emitter.isActive) continue;
+            made += ParticleSystem::Emit(level, emitter, position + emitter.offset, direction.value_or(emitter.direction), -1, scale.value_or(1.0f));
+        }
+        return made;
+    });
+
+    game.set_function("StainSurface", [](const Vector3& origin, const Vector3& direction, const float length, const std::string& texture, const float size,
+                                         const sol::optional<Vector4> color, const sol::optional<float> lifetime, const sol::optional<std::string> noStainTag) {
+        return ParticleSystem::StainSurface(LevelManager::CurrentLevel(), origin, direction, length, texture, size,
+                                            color.value_or(Vector4{1.0f, 1.0f, 1.0f, 1.0f}), lifetime.value_or(0.0f), noStainTag.value_or(std::string{}));
+    });
+
+    game.set_function("ClearStains", [] { ParticleSystem::ClearStains(); });
+
     game.set_function("Signal", [](const std::string& name, const sol::optional<ScriptEntity> instigator) {
         Level& level = LevelManager::CurrentLevel();
         EventSystem::Signal(level, name, instigator ? instigator->ownerID : INVALID_ID);
@@ -927,6 +969,7 @@ sol::object LuaRayHit::ToLua(sol::state_view lua, Level &level, const std::optio
     result["typeID"] = static_cast<int>(hit->type);
     result["position"] = hit->position;
     result["distance"] = hit->distance;
+    result["normal"] = hit->normal;
 
     result["entityID"] = hit->entity != nullptr
                              ? hit->entity->id

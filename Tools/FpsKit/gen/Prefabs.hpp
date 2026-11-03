@@ -32,8 +32,6 @@ inline Str MakeEffect(const Str& name, const Str& artName, const Str& letters, c
 }
 
 inline void MakeEffects() {
-    MakeEffect("Puff", "Puff", "ABCD", 0.1f);
-    MakeEffect("Blood", "Blood", "ABC", 0.1f);
     MakeEffect("Fireball Hit", "Fireball", "CDE", 0.12f, "World/fireball explode");
     MakeEffect("Red Ball Hit", "Plasma Ball Red", "CDE", 0.12f, "World/fireball explode");
     MakeEffect("Green Ball Hit", "Plasma Ball Green", "CDE", 0.12f, "World/fireball explode");
@@ -44,8 +42,227 @@ inline void MakeEffects() {
     MakeEffect("Slug Explosion", "Rocket", "BCD", 0.14f, "Weapons/rocket explode", 16.0f, 40.0f);
     MakeEffect("SKAG Explosion", "SKAG Hit", "ABCDEF", 0.14f, "Weapons/rocket explode", 90.0f, 600.0f);
     MakeEffect("Barrel Explosion", "Barrel Explosion", "ABCDE", 0.14f, "World/barrel explode", 32.0f, 128.0f);
+    MakeEffect("Grenade Explosion", "Rocket", "BCD", 0.14f, "Weapons/rocket explode", 44.0f, 120.0f);
     MakeEffect("Teleport Fog", "Teleport Fog", "ABCDEFGHIJ", 0.1f);
     MakeEffect("Item Fog", "Item Fog", "ABCDE", 0.14f, "Items/item respawn");
+}
+
+// ── Particle effects: prefabs nothing ever spawns ───────────────────────────
+//
+// Fx.lua and Weapon.lua fire these with Game.EmitParticles: the prefab's emitters go
+// off at a point and no entity is made. They're ordinary prefabs, so open one in the
+// editor to change how they look.
+
+inline std::vector<Str> FxPics(const Str& folder, const Str& name, const int count) {
+    std::vector<Str> pictures;
+    for (int i = 1; i <= count; ++i) pictures.push_back("Sprites/FX/" + folder + "/" + name + " " + std::to_string(i) + ".png");
+    return pictures;
+}
+
+inline std::vector<Str> ArtPics(const json& art, const Str& letters) {
+    std::vector<Str> pictures;
+    for (const char letter : letters) pictures.push_back(art["path"].get<Str>() + "/" + letter + ".png");
+    return pictures;
+}
+
+inline void MakeParticleEffect(const Str& name, const std::function<void(Entity&)>& fill) {
+    MakePrefab("Prefabs/Effects/" + name + ".prefab", false, [&](Level&, Entity& e) { fill(e); });
+}
+
+inline void MakeParticleEffects() {
+    using C = ParticleCollision;
+    constexpr float kStainBlood = 0.85f;
+
+    MakeParticleEffect("Blood", [](Entity& e) {
+        // Doom's own puff of blood, at the hit.
+        auto* puff = e.AddComponent<ComponentParticleEmitter>();
+        puff->textures = ArtPics(Art("effects", "Blood"), "ABC");
+        puff->animate = true;
+        puff->burstMin = puff->burstMax = 1;
+        puff->speedMin = puff->speedMax = 0.0f;
+        puff->spread = 0.0f;
+        puff->gravity = 20.0f;
+        puff->lifetimeMin = puff->lifetimeMax = 0.3f;
+        puff->sizeMin = puff->sizeMax = 5.0f;
+
+        // Droplets, thrown on past the target. Those that land leave stains.
+        auto* drops = e.AddComponent<ComponentParticleEmitter>();
+        drops->textures = FxPics("Blood", "Drop", 4);
+        drops->burstMin = 6;
+        drops->burstMax = 11;
+        drops->spread = 32.0f;
+        drops->speedMin = 40.0f;
+        drops->speedMax = 130.0f;
+        drops->gravity = 300.0f;
+        drops->lifetimeMin = 1.0f;
+        drops->lifetimeMax = 1.6f;
+        drops->sizeMin = 0.5f;
+        drops->sizeMax = 1.2f;
+        drops->collision = C::DIE;
+        drops->stainTextures = FxPics("Blood", "Small Stain", 3);
+        drops->stainChance = 0.55f;
+        drops->stainSizeMin = 3.0f;
+        drops->stainSizeMax = 7.0f;
+        drops->stainColor = {1.0f, 1.0f, 1.0f, kStainBlood};
+        drops->noStainTag = "Liquid";
+    });
+
+    MakeParticleEffect("Blood Burst", [](Entity& e) {
+        auto* drops = e.AddComponent<ComponentParticleEmitter>();
+        drops->textures = FxPics("Blood", "Drop", 4);
+        drops->burstMin = 45;
+        drops->burstMax = 65;
+        drops->spread = 180.0f;
+        drops->speedMin = 40.0f;
+        drops->speedMax = 170.0f;
+        drops->gravity = 300.0f;
+        drops->lifetimeMin = 1.0f;
+        drops->lifetimeMax = 2.0f;
+        drops->sizeMin = 0.6f;
+        drops->sizeMax = 1.8f;
+        drops->collision = C::DIE;
+        drops->stainTextures = FxPics("Blood", "Stain", 5);
+        drops->stainChance = 0.5f;
+        drops->stainSizeMin = 5.0f;
+        drops->stainSizeMax = 13.0f;
+        drops->stainColor = {1.0f, 1.0f, 1.0f, kStainBlood};
+        drops->noStainTag = "Liquid";
+    });
+
+    MakeParticleEffect("Gib Chunks", [](Entity& e) {
+        auto* chunks = e.AddComponent<ComponentParticleEmitter>();
+        chunks->textures = FxPics("Gibs", "Chunk", 6);
+        chunks->burstMin = 8;
+        chunks->burstMax = 12;
+        chunks->spread = 65.0f;
+        chunks->speedMin = 50.0f;
+        chunks->speedMax = 135.0f;
+        chunks->gravity = 300.0f;
+        chunks->lifetimeMin = 6.0f;
+        chunks->lifetimeMax = 11.0f;
+        chunks->sizeMin = 1.6f;
+        chunks->sizeMax = 3.6f;
+        chunks->collision = C::BOUNCE;
+        chunks->bounciness = 0.3f;
+        chunks->stainTextures = FxPics("Blood", "Small Stain", 3);
+        chunks->stainChance = 0.6f;
+        chunks->stainSizeMin = 3.0f;
+        chunks->stainSizeMax = 6.0f;
+        chunks->stainColor = {1.0f, 1.0f, 1.0f, kStainBlood};
+        chunks->noStainTag = "Liquid";
+    });
+
+    MakeParticleEffect("Puff", [](Entity& e) {
+        auto* puff = e.AddComponent<ComponentParticleEmitter>();
+        puff->textures = ArtPics(Art("effects", "Puff"), "ABCD");
+        puff->animate = true;
+        puff->burstMin = puff->burstMax = 1;
+        puff->speedMin = puff->speedMax = 0.0f;
+        puff->spread = 0.0f;
+        puff->gravity = -14.0f;
+        puff->lifetimeMin = puff->lifetimeMax = 0.4f;
+        puff->sizeMin = puff->sizeMax = 4.0f;
+
+        auto* sparks = e.AddComponent<ComponentParticleEmitter>();
+        sparks->textures = {"Sprites/FX/Debris/Spark.png"};
+        sparks->burstMin = 2;
+        sparks->burstMax = 5;
+        sparks->spread = 55.0f;
+        sparks->speedMin = 40.0f;
+        sparks->speedMax = 110.0f;
+        sparks->gravity = 240.0f;
+        sparks->lifetimeMin = 0.15f;
+        sparks->lifetimeMax = 0.35f;
+        sparks->sizeMin = 0.3f;
+        sparks->sizeMax = 0.6f;
+        sparks->collision = C::DIE;
+    });
+
+    MakeParticleEffect("Explosion Debris", [](Entity& e) {
+        auto* rocks = e.AddComponent<ComponentParticleEmitter>();
+        rocks->textures = FxPics("Debris", "Rock", 3);
+        rocks->burstMin = 12;
+        rocks->burstMax = 18;
+        rocks->spread = 180.0f;
+        rocks->speedMin = 50.0f;
+        rocks->speedMax = 190.0f;
+        rocks->gravity = 300.0f;
+        rocks->lifetimeMin = 1.5f;
+        rocks->lifetimeMax = 3.5f;
+        rocks->sizeMin = 0.6f;
+        rocks->sizeMax = 1.6f;
+        rocks->collision = C::BOUNCE;
+        rocks->bounciness = 0.35f;
+
+        auto* sparks = e.AddComponent<ComponentParticleEmitter>();
+        sparks->textures = {"Sprites/FX/Debris/Spark.png"};
+        sparks->burstMin = 16;
+        sparks->burstMax = 26;
+        sparks->spread = 180.0f;
+        sparks->speedMin = 70.0f;
+        sparks->speedMax = 220.0f;
+        sparks->gravity = 160.0f;
+        sparks->lifetimeMin = 0.3f;
+        sparks->lifetimeMax = 0.8f;
+        sparks->sizeMin = 0.4f;
+        sparks->sizeMax = 0.9f;
+        sparks->collision = C::DIE;
+
+        auto* smoke = e.AddComponent<ComponentParticleEmitter>();
+        smoke->textures = FxPics("Debris", "Smoke", 3);
+        smoke->burstMin = 6;
+        smoke->burstMax = 9;
+        smoke->spread = 180.0f;
+        smoke->speedMin = 10.0f;
+        smoke->speedMax = 45.0f;
+        smoke->gravity = -18.0f;
+        smoke->drag = 1.8f;
+        smoke->lifetimeMin = 0.8f;
+        smoke->lifetimeMax = 1.6f;
+        smoke->sizeMin = 8.0f;
+        smoke->sizeMax = 14.0f;
+        smoke->sizeEnd = 2.2f;
+        smoke->colorStart = {0.7f, 0.7f, 0.7f, 0.6f};
+        smoke->colorEnd = {0.5f, 0.5f, 0.5f, 0.0f};
+    });
+
+    const auto casing = [](const Str& name, const Str& picture, const float size) {
+        MakeParticleEffect(name, [&](Entity& e) {
+            auto* shell = e.AddComponent<ComponentParticleEmitter>();
+            shell->textures = {"Sprites/FX/Casings/" + picture + ".png"};
+            shell->burstMin = shell->burstMax = 1;
+            shell->spread = 22.0f;
+            shell->speedMin = 28.0f;
+            shell->speedMax = 48.0f;
+            shell->gravity = 280.0f;
+            shell->lifetimeMin = 3.0f;
+            shell->lifetimeMax = 5.0f;
+            shell->sizeMin = size;
+            shell->sizeMax = size * 1.15f;
+            shell->collision = C::BOUNCE;
+            shell->bounciness = 0.45f;
+        });
+    };
+    casing("Bullet Casing", "Bullet", 0.9f);
+    casing("Shell Casing", "Shell", 1.4f);
+
+    for (const Str& liquid : {Str("Water"), Str("Nukage"), Str("Lava")}) {
+        MakeParticleEffect("Splash " + liquid, [&](Entity& e) {
+            auto* drops = e.AddComponent<ComponentParticleEmitter>();
+            drops->textures = FxPics("Splash", liquid + " Drop", 3);
+            drops->burstMin = 12;
+            drops->burstMax = 20;
+            drops->spread = 28.0f;
+            drops->speedMin = 30.0f;
+            drops->speedMax = 95.0f;
+            drops->gravity = 280.0f;
+            drops->lifetimeMin = 0.4f;
+            drops->lifetimeMax = 0.8f;
+            drops->sizeMin = 0.5f;
+            drops->sizeMax = 1.3f;
+            drops->collision = C::DIE;
+        });
+    }
 }
 
 // ── Projectiles ─────────────────────────────────────────────────────────────
@@ -79,6 +296,18 @@ inline void MakeProjectiles() {
     MakeProjectile("Rocket", "Rocket", "A", 175.0f, 20, 160, "Rocket Explosion");
     MakeProjectile("Plasma", "Plasma", "AB", 218.0f, 5, 40, "Plasma Hit");
     MakeProjectile("SKAG Ball", "SKAG Ball", "AB", 218.0f, 100, 800, "SKAG Explosion");
+
+    // Bounces and goes off on a fuse, so it has its own script: Grenade.lua.
+    std::vector<Frame> spin;
+    for (int i = 1; i <= 4; ++i) spin.push_back(Pic("Sprites/FX/Grenade/Spin " + std::to_string(i) + ".png", 0.07f));
+    const Str book = Book("Animations/Projectiles/Grenade.fpk", spin, FlipbookLoopMode::Loop);
+    MakePrefab("Prefabs/Projectiles/Grenade.prefab", false, [&](Level&, Entity& e) {
+        auto* sprite = AddSprite(e, 10, 10, false);
+        SetSpriteFrame(sprite, spin[0]);
+        e.AddComponent<ComponentFlipbook>()->flipbookFileName = book;
+        ComponentScript& script = AddLua(e, "Scripts/Combat/Grenade");
+        script.publicValues["explosionPrefab"] = PrefabRef("Prefabs/Effects/Grenade Explosion.prefab");
+    });
 }
 
 // ── Enemies ─────────────────────────────────────────────────────────────────
@@ -182,6 +411,7 @@ inline void MakeEnemy(const EnemySpec& s) {
         if (!s.painSound.empty()) e.dispatches.push_back(Dp("Flinch", Play(s.painSound)));
 
         // ── Death: the body stays on the floor, but nothing bumps into it or shoots it ──
+        // (Corpse.lua also leaves a pool of blood under whatever bleeds, through Fx.lua.)
         AddLua(e, "Scripts/Enemies/Corpse");
         e.events.push_back(Ev(PayloadMonsterDied{}, {Self("Die")}));
         e.dispatches.push_back(Dp("Die", AddVar("Kills", 1)));
@@ -333,6 +563,18 @@ inline Str MakeWeaponView(const WeaponSpec& s) {
     const Str readyBook = Book("Animations/Weapons/" + s.name + " Ready.fpk", ready, FlipbookLoopMode::Loop);
     const Str fireBook = Book("Animations/Weapons/" + s.name + " Fire.fpk", fire, FlipbookLoopMode::Once);
 
+    // How it feels to fire: recoil degrees, shake, picture kick, room flash, casing.
+    struct Feel { float recoil, shake, kick, flash; Str casing; };
+    static const std::map<Str, Feel> kFeel = {
+        {"Pistol", {0.5f, 0.0f, 0.03f, 40.0f, "Bullet Casing"}},
+        {"Shotgun", {1.6f, 0.35f, 0.08f, 70.0f, "Shell Casing"}},
+        {"Super Shotgun", {2.8f, 0.7f, 0.12f, 90.0f, "Shell Casing"}},
+        {"Minigun", {0.3f, 0.12f, 0.03f, 45.0f, "Bullet Casing"}},
+        {"Rocket Launcher", {1.3f, 0.3f, 0.07f, 60.0f, ""}},
+        {"Plasma Rifle", {0.2f, 0.05f, 0.02f, 30.0f, ""}},
+        {"SKAG 1337", {3.0f, 1.0f, 0.12f, 120.0f, ""}},
+    };
+
     return MakePrefab("Prefabs/Weapons/In Hand/" + s.name + ".prefab", true, [&](Level&, Entity& e) {
         ComponentScript& w = AddLua(e, "Scripts/Weapons/Weapon");
         auto& v = w.publicValues;
@@ -355,8 +597,13 @@ inline Str MakeWeaponView(const WeaponSpec& s) {
         v["damageMax"] = s.damageMax;
         v["range"] = s.range;
         v["berserkMultiplier"] = s.berserk;
-        v["puffPrefab"] = PrefabRef("Prefabs/Effects/Puff.prefab");
-        v["bloodPrefab"] = PrefabRef("Prefabs/Effects/Blood.prefab");
+        if (const auto feel = kFeel.find(s.name); feel != kFeel.end()) {
+            v["recoil"] = feel->second.recoil;
+            v["shake"] = feel->second.shake;
+            v["spriteKick"] = feel->second.kick;
+            v["flashLight"] = feel->second.flash;
+            if (!feel->second.casing.empty()) v["casingPrefab"] = PrefabRef("Prefabs/Effects/" + feel->second.casing + ".prefab");
+        }
         if (!s.projectile.empty()) v["projectilePrefab"] = PrefabRef("Prefabs/Projectiles/" + s.projectile + ".prefab");
     });
 }
@@ -448,11 +695,13 @@ inline void MakePickups() {
     ammo("Rocket Box", "Rockets", 5, "MaxRockets", "Picked up a box of rockets.");
     ammo("Cell", "Cells", 20, "MaxCells", "Picked up an energy cell.");
     ammo("Cell Pack", "Cells", 100, "MaxCells", "Picked up an energy cell pack.");
+    ammo("Grenade", "Grenades", 1, "MaxGrenades", "Picked up a grenade.");
+    ammo("Grenade Box", "Grenades", 5, "MaxGrenades", "Picked up a box of grenades.");
 
     MakePickup({"Pickups/Ammo", "Backpack", "Backpack", {}, {
         Dp("Pick Up", SetVar("HasBackpack", 1)), Dp("Pick Up", SetVar("MaxBullets", 400)), Dp("Pick Up", SetVar("MaxShells", 100)),
-        Dp("Pick Up", SetVar("MaxRockets", 100)), Dp("Pick Up", SetVar("MaxCells", 600)),
-        Dp("Pick Up", AddVar("Bullets", 10)), Dp("Pick Up", AddVar("Shells", 4)), Dp("Pick Up", AddVar("Rockets", 1)), Dp("Pick Up", AddVar("Cells", 20))},
+        Dp("Pick Up", SetVar("MaxRockets", 100)), Dp("Pick Up", SetVar("MaxCells", 600)), Dp("Pick Up", SetVar("MaxGrenades", 40)),
+        Dp("Pick Up", AddVar("Bullets", 10)), Dp("Pick Up", AddVar("Shells", 4)), Dp("Pick Up", AddVar("Rockets", 1)), Dp("Pick Up", AddVar("Cells", 20)), Dp("Pick Up", AddVar("Grenades", 1))},
         {}, "Picked up a backpack full of ammo!"});
 
     MakePickup({"Pickups/Health", "Stimpack", "Stimpack", If("Health", LT, 100), {AddCapped("Health", 10, 100)}, {}, "Picked up a stimpack."});
@@ -529,11 +778,13 @@ inline void MakeDecorations() {
     const auto frames = ArtFrames(art, "AB", 0.2f);
     const Str book = Book("Animations/Hazards/Barrel.fpk", frames, FlipbookLoopMode::Loop);
     MakePrefab("Prefabs/Hazards/Explosive Barrel.prefab", false, [&](Level& level, Entity& e) {
+        // Kickable: QuickActions.lua frees it and shoves it instead of hurting it.
+        e.tagIds = {Tag("Kickable")};
         auto* sprite = AddSprite(e, art["w"], art["h"], false);
         SetSpriteFrame(sprite, frames[0]);
         e.AddComponent<ComponentFlipbook>()->flipbookFileName = book;
         AddCapsule(level, e, 3.0f, 10.5f);
-        AddBody(e, true);
+        AddBody(e, true)->friction = 170.0f;
 
         auto* ai = e.AddComponent<ComponentMonsterAI>();
         ai->health = 20.0f;
@@ -670,8 +921,33 @@ inline void MakePlayer(const std::vector<Str>& weaponViews) {
         AddBody(e, false, 10.0f);
 
         AddLua(e, "Scripts/Combat/DamageRules");
+        {
+            ComponentScript& fx = AddLua(e, "Scripts/Combat/Fx");
+            const auto effect = [](const Str& name) { return PrefabRef("Prefabs/Effects/" + name + ".prefab"); };
+            fx.publicValues["bloodPrefab"] = effect("Blood");
+            fx.publicValues["bloodBurstPrefab"] = effect("Blood Burst");
+            fx.publicValues["gibPrefab"] = effect("Gib Chunks");
+            fx.publicValues["puffPrefab"] = effect("Puff");
+            fx.publicValues["debrisPrefab"] = effect("Explosion Debris");
+            fx.publicValues["splashWaterPrefab"] = effect("Splash Water");
+            fx.publicValues["splashNukagePrefab"] = effect("Splash Nukage");
+            fx.publicValues["splashLavaPrefab"] = effect("Splash Lava");
+        }
         AddLua(e, "Scripts/Player/PlayerHealth");
         AddLua(e, "Scripts/Player/ViewFeel");
+        AddLua(e, "Scripts/World/LiquidSplashes");
+        {
+            // The boot and the throwing hand: six frames each, in UI/Actions.
+            const auto action = [](const Str& name, const float seconds) {
+                std::vector<Frame> frames;
+                for (int i = 1; i <= 6; ++i) frames.push_back(Pic("UI/Actions/" + name + " " + std::to_string(i) + ".png", seconds));
+                return AssetRef(Book("Animations/Actions/" + name + ".fpk", frames, FlipbookLoopMode::Once));
+            };
+            ComponentScript& quick = AddLua(e, "Scripts/Player/QuickActions");
+            quick.publicValues["kickFlipbook"] = action("Kick", 0.06f);
+            quick.publicValues["throwFlipbook"] = action("Throw", 0.07f);
+            quick.publicValues["grenadePrefab"] = PrefabRef("Prefabs/Projectiles/Grenade.prefab");
+        }
         ComponentScript& holder = AddLua(e, "Scripts/Weapons/WeaponHolder");
         for (size_t i = 0; i < weaponViews.size(); ++i)
             holder.publicValues["weapon" + std::to_string(i + 1)] = PrefabRef(weaponViews[i]);
@@ -687,8 +963,8 @@ inline void MakePlayer(const std::vector<Str>& weaponViews) {
         // ── Dead last time (or a new game)? Start again with a pistol ──
         e.events.push_back(Ev(PayloadOnStart{}, {Self("Pistol Start")}, If("Health", LE, 0)));
         const std::vector<std::pair<const char*, float>> fresh = {
-            {"Health", 100}, {"Armor", 0}, {"ArmorType", 0}, {"Bullets", 50}, {"Shells", 0}, {"Rockets", 0}, {"Cells", 0},
-            {"MaxBullets", 200}, {"MaxShells", 50}, {"MaxRockets", 50}, {"MaxCells", 300}, {"HasBackpack", 0}, {"HasFist", 1},
+            {"Health", 100}, {"Armor", 0}, {"ArmorType", 0}, {"Bullets", 50}, {"Shells", 0}, {"Rockets", 0}, {"Cells", 0}, {"Grenades", 2},
+            {"MaxBullets", 200}, {"MaxShells", 50}, {"MaxRockets", 50}, {"MaxCells", 300}, {"MaxGrenades", 20}, {"HasBackpack", 0}, {"HasFist", 1},
             {"HasPistol", 1}, {"HasChainsaw", 0}, {"HasShotgun", 0}, {"HasSuperShotgun", 0}, {"HasMinigun", 0},
             {"HasRocketLauncher", 0}, {"HasPlasmaRifle", 0}, {"HasSKAG", 0}};
         for (const auto& [v, value] : fresh) add(Dp("Pistol Start", SetVar(v, value)));
@@ -702,7 +978,7 @@ inline void MakePlayer(const std::vector<Str>& weaponViews) {
 
         // ── Ammo can't go over its maximum ──
         for (const auto& [v, normal, backpack] : std::vector<std::tuple<Str, float, float>>{
-                 {"Bullets", 200, 400}, {"Shells", 50, 100}, {"Rockets", 50, 100}, {"Cells", 300, 600}}) {
+                 {"Bullets", 200, 400}, {"Shells", 50, 100}, {"Rockets", 50, 100}, {"Cells", 300, 600}, {"Grenades", 20, 40}}) {
             e.events.push_back(Ev(PayloadConditionMet{}, {Self("Cap " + v)}, IfVars(v, GT, "Max" + v)));
             add(Dp("Cap " + v, SetVar(v, normal), 0.0f, {ThenIf(Self("Cap " + v + " Backpack"), If("HasBackpack", EQ, 1))}));
             add(Dp("Cap " + v + " Backpack", SetVar(v, backpack)));

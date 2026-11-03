@@ -90,6 +90,15 @@ the player's death opens the Death Screen.
 
 `MenuState` is why Esc won't open the pause menu on the death screen. It's set to 2 there, so neither event runs.
 
+## The Options menu
+
+The Pause Menu and the Main Menu each have an **Options** button, which hides their list and shows everything tagged
+`Options Menu`. Its one row so far is **Gore**. Clicking it calls **Change Gore** on the **Gore Setting** entity, which is
+always enabled so that it can keep running while the menu is hidden. The **GoreSetting** script on it steps
+`GoreLevel` through Off, Normal and Extra, saves your choice, and shows the matching picture.
+
+To add a row, add another button tagged `Options Menu` with its own script, the same way.
+
 ## Recipe: add a menu button
 
 Let's add a **Hard Mode** button to a menu, which sets a variable of that name.
@@ -139,6 +148,9 @@ The easiest way is to duplicate the closest one.
 
 | Script | What it does |
 |---|---|
+| **ActionView** | Shows the boot or the throwing hand over the weapon, when **QuickActions** on the player asks |
+| **ScreenBlood** | Shows and fades the blood on your view. **Most Shown** is how solid it can get. |
+| **GoreSetting** | The Options menu's Gore row, above |
 | **IntermissionTally** | Counts up the kills, items, secrets and time, using the `Tally...` variables |
 | **RestartLevel** | Has one function, `RestartThisLevel`, for buttons to call |
 | **Face** | **Health Variable**, **Invulnerable Variable** and **Picture Folder**. Put your own faces in the same folder structure. |

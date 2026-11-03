@@ -1,9 +1,17 @@
 -- Test only, never shipped: plays through the whole Classic FPS Kit.
 -- Talks to the harness through an entity named "BOT:<keys>|<command>;<command>".
 
+-- The routes below call these, so they're declared first.
+local ignored, log, V, FxReport, Barrel, NearestEnemy, KickProbe
+
 local ROUTES = {
     ["Main Menu"] = {
         { wait = 0.5 }, { shot = "menu" },
+        -- Options: open, change Gore, back.
+        { click = { 0.275, 0.705 } }, { wait = 0.2 }, { shot = "menu_options" },
+        { click = { 0.275, 0.505 } }, { wait = 0.2 }, { shot = "menu_options_gore" },
+        { call = function() log("menu gore now", V("GoreLevel")); Game.SetVariable("GoreLevel", 1) end },
+        { click = { 0.275, 0.605 } }, { wait = 0.2 },
         { click = { 0.275, 0.605 } }, { wait = 0.2 }, { shot = "menu_levels" },
         { click = { 0.275, 0.505 } }, { wait = 1 },
     },
@@ -67,7 +75,74 @@ local ROUTES = {
         { click = { 0.476, 0.895 } }, { wait = 1 },
     },
     ["Prefab Gallery"] = {
-        { wait = 0.5 }, { shot = "gallery_a" }, { go = { 0, 100 } }, { shot = "gallery_b" }, { done = true },
+        { call = function() for _, e in ipairs(Game.FindEntitiesWithTag("Enemy")) do ignored[e.id] = true end end },
+        { wait = 0.5 }, { shot = "gallery_a" }, { go = { 0, 100 } }, { shot = "gallery_b" },
+        { call = function() FxReport("start") end },
+
+        -- Wading in water.
+        { go = { 0, 480 } }, { pitch = -55 }, { hold = "W", seconds = 0.45 }, { pitch = -55 }, { shot = "fx_water" }, { wait = 0.1 }, { shot = "fx_water2" }, { pitch = 0 }, { go = { 0, 470 } },
+
+        -- A grenade: count down, hand on screen, flight, blast.
+        { face = { 0, 400 } }, { key = "G" }, { wait = 0.1 }, { shot = "fx_throw_hand" }, { wait = 0.3 },
+        { call = function() FxReport("thrown") end }, { shot = "fx_grenade_flying" }, { wait = 0.5 }, { shot = "fx_grenade_bounced" },
+        { wait = 1.6 }, { shot = "fx_grenade_blast" }, { call = function() FxReport("blast") end }, { wait = 0.2 }, { shot = "fx_grenade_after" },
+        { wait = 1.5 }, { shot = "fx_scorch" },
+
+        -- A grenade into the pool.
+        { face = { 0, 524 } }, { pitch = -8 }, { key = "G" }, { wait = 0.6 }, { shot = "fx_grenade_water" }, { wait = 2.6 }, { pitch = 0 },
+
+        -- Kicking a barrel away.
+        { go = function() local b = Barrel(); return { b.transform.position.x, 316 } end }, { wait = 0.5 },
+        { face = function() local p = Barrel().transform.position; return { p.x, p.z } end },
+        { call = function() local b = Barrel(); log("barrel before", b.transform.position.x, b.transform.position.z, "static", b.rigidbody.isStatic) end },
+        { call = function() KickProbe() end }, { key = "F" }, { wait = 0.1 }, { shot = "fx_kick" }, { wait = 0.15 },
+        { call = function() local b = Barrel(); log("barrel kicked", "static", b.rigidbody.isStatic, "speed", b.rigidbody.velocity.length, "y", b.transform.position.y) end },
+        { wait = 0.8 },
+        { call = function() local b = Barrel(); log("barrel after", b.transform.position.x, b.transform.position.y, b.transform.position.z, "vel", b.rigidbody.velocity.y, "grav", b.rigidbody.gravityScale, "floor", Game.GetSectorAt(b.transform.position):GetFloorHeightAt(b.transform.position), "mass", b.rigidbody.mass) end }, { shot = "fx_kick_after" },
+        { go = function() local p = Barrel().transform.position; local e = entity.transform.position; local d = (e - p); local l = d.length; return { p.x + d.x / l * 24, p.z + d.z / l * 24 } end }, { wait = 0.6 },
+        { face = function() local p = Barrel().transform.position; return { p.x, p.z } end }, { wait = 0.1 }, { shot = "fx_barrel_close" },
+        { call = function() local b = Barrel(); log("barrel close", b.transform.position.y, "sprite", b.sprite.isActive, "scale", b.transform.scale.x, b.transform.scale.y, b.transform.scale.z, "eye", entity.camera:GetEyePosition().y) end },
+
+        -- Shooting that barrel: blast, debris, burns.
+        { call = function() Barrel().monsterAI.isActive = true; Global.ApplyDamage(Barrel(), 1000, entity) end }, { wait = 0.15 },
+        { shot = "fx_barrel_blast" }, { call = function() FxReport("barrel"); for _, b in ipairs(Game.FindEntitiesWithTag("Kickable")) do log("barrel at", b.transform.position.x, b.transform.position.y, b.transform.position.z, b.name) end end }, { wait = 0.8 },
+
+        -- Bullets into a monster, near the middle of its row.
+        { go = { 20, 66 } }, { face = { 20, 40 } }, { call = function() Global.fxTarget = NearestEnemy(); Global.fxTarget.monsterAI.isActive = true; log("target", Global.fxTarget.name, "health", Global.fxTarget.monsterAI.health) end },
+        { hold = "LCtrl", seconds = 0.7 }, { shot = "fx_blood" }, { call = function() FxReport("bullets") end }, { wait = 0.8 }, { shot = "fx_stains" },
+        { call = function() local t = Global.fxTarget; log("target health", t.monsterAI.health, "state", t.monsterAI.state) end },
+
+        -- Kicking a monster: damage and a shove.
+        { call = function() local t = NearestEnemy(); t.monsterAI.isActive = true; Global.fxKicked = t; log("kicking", t.name, "health", t.monsterAI.health, "at", t.transform.position.x, t.transform.position.z, "body", t.rigidbody ~= nil) end },
+        { aim = function() return Global.fxKicked end }, { go = function() local p = Global.fxKicked.transform.position; return { p.x, p.z + 14 } end }, { wait = 0.5 },
+        { aim = function() return Global.fxKicked end }, { call = function() KickProbe() end }, { key = "F" }, { wait = 0.3 },
+        { call = function() local t = Global.fxKicked; log("kicked", t.name, "health", t.monsterAI.health, "at", t.transform.position.x, t.transform.position.z) end },
+
+        -- A plain kill leaves a pool. A huge hit bursts it.
+        { call = function() local t = NearestEnemy(); t.monsterAI.isActive = true; Global.ApplyDamage(t, t.monsterAI.health, entity); log("killed", t.name) end },
+        { wait = 1.5 }, { shot = "fx_pool" },
+        { call = function() local t = NearestEnemy(); t.monsterAI.isActive = true; log("gibbing", t.name, t:HasTag("Bleeds")); Global.ApplyDamage(t, 100000, entity); Global.fxGib = t end },
+        { wait = 0.2 }, { shot = "fx_gib" }, { call = function() FxReport("gib"); log("gib sprite shown", Global.fxGib.sprite.isActive) end }, { wait = 1.5 }, { shot = "fx_gib_after" },
+
+        -- Blood on the screen, and every Gore level.
+        { call = function() Global.ScreenBlood(60) end }, { wait = 0.1 }, { shot = "fx_screen_blood" }, { wait = 2.5 },
+        { call = function() Game.SetVariable("GoreLevel", 0); log("gore off", Global.Fx.GoreOn()); Global.Fx.Blood(entity.transform.position + Vector3(0, 8, 0), Vector3(0, 0, 1)); Global.ScreenBlood(60) end },
+        { wait = 0.05 }, { shot = "fx_gore_off" }, { call = function() FxReport("gore off") end },
+        { call = function() Game.SetVariable("GoreLevel", 2); log("gore extra", Global.Fx.GoreOn()); Global.Fx.Blood(entity.transform.position + Vector3(0, 8, 8), Vector3(0, 0, 1)) end },
+        { wait = 0.05 }, { shot = "fx_gore_extra" }, { call = function() FxReport("gore extra"); Game.SetVariable("GoreLevel", 1) end },
+
+        -- Options, from the pause menu.
+        { wait = 1 }, { key = "Esc" }, { wait = 0.2 }, { shot = "fx_pause" },
+        { click = { 0.446, 0.565 } }, { wait = 0.2 }, { shot = "fx_options" },
+        { click = { 0.446, 0.465 } }, { wait = 0.2 }, { shot = "fx_options_gore" }, { call = function() log("gore after click", V("GoreLevel"), "saved", Saving.HasKey("options", "gore")) end },
+        { click = { 0.446, 0.565 } }, { wait = 0.2 }, { shot = "fx_options_back" }, { key = "Esc" }, { wait = 0.2 }, { shot = "fx_unpaused" },
+        { call = function() Game.SetVariable("GoreLevel", 1); log("menu state", V("MenuState"), "time", GameTime.timeScale) end },
+
+        -- How much a lot of particles costs.
+        { wait = 1 },
+        { call = function() local y = math.rad(entity.camera.yaw); local f = Vector3(math.sin(y), 0, math.cos(y)); for i = 1, 12 do Global.Fx.Blood(entity.transform.position + f * 25 + Vector3(i * 2 - 12, 30, 0), Vector3(0, -1, 0), 4) end end },
+        { wait = 1 }, { wait = 0.1 }, { shot = "fx_stress" }, { wait = 1 }, { call = function() FxReport("end") end },
+        { done = true },
     },
     ["Blank Base Level"] = { { wait = 0.5 }, { shot = "blank" }, { load = "Prefab Gallery" } },
 }
@@ -80,15 +155,15 @@ local clickFrames = 0
 local target, targetTime = nil, 0
 local enemies = {}
 local scan = 0
-local ignored = {}
+ignored = {}
 
-local function log(...)
+function log(...)
     local parts = {}
     for i, v in ipairs({ ... }) do parts[i] = tostring(v) end
     Debug.LogWarning("BOT " .. table.concat(parts, " "))
 end
 
-local function V(name) return Game.GetVariable(name) end
+function V(name) return Game.GetVariable(name) end
 
 local function Report(label)
     log(Game.levelName, "[" .. label .. "] hp", V("Health"), "armor", V("Armor"), "bullets", V("Bullets"), "shells", V("Shells"),
@@ -105,6 +180,35 @@ local function Center(e) return e.transform.position + Vector3(0, e.transform.sc
 
 local function Alive(e)
     return e.isValid and e.monsterAI ~= nil and e.monsterAI.state ~= MonsterAIState.Dead
+end
+
+function FxReport(label)
+    log("[fx " .. label .. "] grenades", V("Grenades"), "gore", V("GoreLevel"), "hp", V("Health"))
+end
+
+local fxBarrel = nil
+function Barrel()
+    if fxBarrel == nil or not fxBarrel.isValid then
+        fxBarrel = Game.FindNearestWithTag("Kickable", Vector3(0, 0, 300))
+    end
+    return fxBarrel
+end
+
+function KickProbe()
+    local eye, y, p = entity.camera:GetEyePosition(), math.rad(entity.camera.yaw), math.rad(entity.camera.pitch)
+    local hit = Game.Raycast(eye, Vector3(math.sin(y) * math.cos(p), math.sin(p), math.cos(y) * math.cos(p)), 24, entity.id, true)
+    log("kick probe from", eye.x, eye.y, eye.z, "yaw", entity.camera.yaw, "pitch", entity.camera.pitch, "hit", hit and hit.type, hit and hit.distance, hit and hit.entity and hit.entity.name)
+end
+
+function NearestEnemy()
+    local best, bestDistance = nil, 1e9
+    for _, e in ipairs(Game.FindEntitiesWithTag("Enemy")) do
+        if Alive(e) and e:HasTag("Bleeds") then
+            local d = (e.transform.position - entity.transform.position).length
+            if d < bestDistance then best, bestDistance = e, d end
+        end
+    end
+    return best
 end
 
 local function FindTarget()
@@ -205,8 +309,28 @@ function Update()
     stepTime = stepTime + dt
 
     local advance = false
+    if type(s.go) == "function" then s.go = s.go() end
+    if type(s.face) == "function" then s.face = s.face() end
     if s.mark then
         advance = true
+    elseif s.call then
+        s.call()
+        advance = true
+    elseif s.pitch then
+        entity.camera.pitch = s.pitch
+        advance = true
+    elseif s.aim then
+        local d = Center(s.aim()) - Eye()
+        entity.camera.yaw = math.deg(math.atan(d.x, d.z))
+        entity.camera.pitch = math.deg(math.atan(d.y, math.sqrt(d.x * d.x + d.z * d.z)))
+        advance = true
+    elseif s.hold then
+        keys[#keys + 1] = s.hold
+        timer = timer + dt
+        if timer >= s.seconds then
+            timer = 0
+            advance = true
+        end
     elseif s.flag then
         Global[s.flag] = true
         advance = true

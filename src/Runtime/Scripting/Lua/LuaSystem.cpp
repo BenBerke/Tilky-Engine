@@ -814,6 +814,7 @@ namespace {
             case CMP_FLIPBOOK: return ResolveInstanceRef<ScriptFlipbook>(luaView, level, level.flipbooks, ref);
             case CMP_PATHFINDER: return ResolveInstanceRef<ScriptPathfinder>(luaView, level, level.pathfinders, ref);
             case CMP_MONSTER_AI: return ResolveInstanceRef<ScriptMonsterAI>(luaView, level, level.monsterAIs, ref);
+            case CMP_PARTICLE_EMITTER: return ResolveInstanceRef<ScriptParticleEmitter>(luaView, level, level.particleEmitters, ref);
 
             default: break;
         }

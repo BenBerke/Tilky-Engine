@@ -19,6 +19,7 @@ function BecomeCorpse()
     entity.collider.isTrigger = true
     entity.rigidbody.gravityScale = 0
     entity.rigidbody:Stop()
+    if Global.Fx ~= nil then Global.Fx.Pool(entity) end
 end
 
 function Update()

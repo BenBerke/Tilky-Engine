@@ -24,6 +24,7 @@ enum class RayType : uint8_t {
 
 struct Wall;
 struct Entity;
+enum class WallSurfaceSlot;
 struct Sector;
 
 enum class RayHitType {
@@ -45,6 +46,15 @@ struct RayHit {
     float distance = .0f;
 
     int sectorFloorIndex = -1;
+
+    // Unit length, facing back along the ray. For an entity, straight back along
+    // the ray, because colliders don't report a surface.
+    Vector3 normal = {0.0f, 1.0f, 0.0f};
+
+    // A wall hit only: which piece was hit, and its height where the ray hit it.
+    WallSurfaceSlot pieceSlot{};
+    float pieceBottom = 0.0f;
+    float pieceTop = 0.0f;
 
     [[nodiscard]] bool HitEntity() const { return type == RayHitType::Entity && entity != nullptr; }
     [[nodiscard]] bool HitWall() const { return type == RayHitType::Wall && wall != nullptr; }

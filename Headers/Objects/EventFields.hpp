@@ -109,6 +109,12 @@ inline constexpr EventFieldInfo EVENT_FIELDS[] = {
     {FieldComponent::PATHFINDER, "pushFriction", "component.pathfinder.push_friction", FieldValueKind::FLOAT},
     {FieldComponent::PATHFINDER, "stuckTime", "component.pathfinder.stuck_time", FieldValueKind::FLOAT},
 
+    {FieldComponent::PARTICLE_EMITTER, "isActive", "events.field.is_active", FieldValueKind::BOOL},
+    {FieldComponent::PARTICLE_EMITTER, "rate", "component.particle_emitter.rate", FieldValueKind::FLOAT},
+    {FieldComponent::PARTICLE_EMITTER, "spread", "component.particle_emitter.spread", FieldValueKind::FLOAT},
+    {FieldComponent::PARTICLE_EMITTER, "speedMin", "component.particle_emitter.speed_min", FieldValueKind::FLOAT},
+    {FieldComponent::PARTICLE_EMITTER, "speedMax", "component.particle_emitter.speed_max", FieldValueKind::FLOAT},
+    {FieldComponent::PARTICLE_EMITTER, "gravity", "component.particle_emitter.gravity", FieldValueKind::FLOAT},
     {FieldComponent::MONSTER_AI, "isActive", "events.field.is_active", FieldValueKind::BOOL},
     {FieldComponent::MONSTER_AI, "health", "component.monster_ai.health", FieldValueKind::FLOAT},
     {FieldComponent::MONSTER_AI, "sightFov", "component.monster_ai.sight_fov", FieldValueKind::FLOAT},

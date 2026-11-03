@@ -23,6 +23,9 @@ end
 | [`GetEntities()`](#finding-entities) | list of `Entity` | Every entity in the level. |
 | [`GetSectorAt(position)`](#getsectorat) | `Sector` or `nil` | The sector at a point on the map. |
 | [`Raycast(origin, direction, length, ignoredEntityID, requireCollider, [rayType])`](#raycast) | table or `nil` | What a line hits first. |
+| [`EmitParticles(prefab, position, [direction], [scale])`](#emitparticles) | | Fires a prefab's Particle Emitters at a point, without spawning anything. |
+| [`StainSurface(origin, direction, length, texture, size, [color], [lifetime], [noStainTag])`](#stainsurface) | boolean | Leaves a mark where a line meets a wall, floor or ceiling. |
+| [`ClearStains()`](#stainsurface) | | Removes every stain. |
 | [`LineOfSight(from, to)`](#lineofsight) | boolean | Whether anything solid is between two points. |
 | [`Signal(name, [instigator])`](#signal) | | Fires every Lua Signal event with this name. |
 | [`GetVariable(name)`](#getvariable-and-setvariable) | number | The value of an event variable. |
@@ -290,6 +293,7 @@ nothing within `length`, the result is `nil`. Otherwise it is a table:
 | `typeID` | integer | The same as a number: `1` Entity, `2` Wall, `3` SectorFloor, `4` SectorCeiling. |
 | `position` | `Vector3` | The point that was hit. |
 | `distance` | number | From `origin` to `position`. |
+| `normal` | `Vector3` | Length 1, facing back toward the ray. Tilted on a slope. For an entity it's straight back along the ray. |
 | `entity` | `Entity` or `nil` | Set when an entity was hit. |
 | `wall` | [`Wall`](Wall.md) or `nil` | Set when a wall was hit. |
 | `sector` | [`Sector`](Sector.md) or `nil` | Set when a floor or ceiling was hit. |
@@ -354,6 +358,43 @@ entity.camera:Raycast(2000, true, RayType.Bullet)
 ```
 
 ---
+
+## EmitParticles
+
+```lua
+Game.EmitParticles(prefab, position, [direction], [scale])
+```
+
+Fires every [Particle Emitter](ParticleEmitter.md) on a prefab at a point. Nothing is spawned, so it's far
+cheaper than making an entity for each effect.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `prefab` | `Entity` field or string | A prefab field, or a path like `"Prefabs/Effects/Blood.prefab"` |
+| `position` | `Vector3` | Where it happens |
+| `direction` | `Vector3`, optional | Which way they go. Left out, each emitter uses its own **Direction**. |
+| `scale` | number, optional | Multiplies the burst numbers. 2 throws twice as many. |
+
+## StainSurface
+
+```lua
+Game.StainSurface(origin, direction, length, texture, size, [color], [lifetime], [noStainTag])   -- boolean
+Game.ClearStains()
+```
+
+Leaves a flat picture where a line first meets a wall, floor or ceiling. Entities don't stop the line. The
+stain rides along on doors and lifts, and shrinks or moves to stay on its surface.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `origin`, `direction`, `length` | `Vector3`, `Vector3`, number | The line |
+| `texture` | string | The image, like `"Sprites/FX/Marks/Scorch 1.png"` |
+| `size` | number | Its size, in world units |
+| `color` | `Vector4`, optional | Multiplied with the image |
+| `lifetime` | number, optional | Seconds until it fades. 0 or left out keeps it until **Max Stains** in World Settings removes it. |
+| `noStainTag` | string, optional | Leaves nothing on the floor or ceiling of a sector with this tag |
+
+It returns false if the line met nothing, or there was no room. `ClearStains` removes every stain.
 
 ## Signal
 

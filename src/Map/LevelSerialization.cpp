@@ -669,6 +669,8 @@ namespace {
                 rendererSettingsJson.value("distanceLightEnd", RendererSettings{}.distanceLightEnd), 0.0f);
             rendererSettings.distanceLightDarkest = std::clamp(
                 rendererSettingsJson.value("distanceLightDarkest", RendererSettings{}.distanceLightDarkest), 0.0f, 1.0f);
+            rendererSettings.maxParticles = std::max(rendererSettingsJson.value("maxParticles", RendererSettings{}.maxParticles), 0);
+            rendererSettings.maxStains = std::max(rendererSettingsJson.value("maxStains", RendererSettings{}.maxStains), 0);
         }
 
         if (levelStatsJson.contains("sky") && levelStatsJson["sky"].is_object()) LoadSky(levelStatsJson["sky"], level.sky);
@@ -710,7 +712,9 @@ namespace {
                     {"wallContrast", rendererSettings.wallContrast},
                     {"distanceLightStart", rendererSettings.distanceLightStart},
                     {"distanceLightEnd", rendererSettings.distanceLightEnd},
-                    {"distanceLightDarkest", rendererSettings.distanceLightDarkest}
+                    {"distanceLightDarkest", rendererSettings.distanceLightDarkest},
+                    {"maxParticles", rendererSettings.maxParticles},
+                    {"maxStains", rendererSettings.maxStains}
                 }
             },
             {"sky", SaveSky(level.sky)}
@@ -902,7 +906,8 @@ namespace {
         {ToggleableComponent::COLLIDER, "collider"},
         {ToggleableComponent::UI_SPRITE, "ui_sprite"},
         {ToggleableComponent::PATHFINDER, "pathfinder"},
-        {ToggleableComponent::MONSTER_AI, "monster_ai"}
+        {ToggleableComponent::MONSTER_AI, "monster_ai"},
+        {ToggleableComponent::PARTICLE_EMITTER, "particle_emitter"}
     };
 
     constexpr std::pair<PathfinderAction, const char*> kPathfinderActionNames[] = {
@@ -975,7 +980,8 @@ namespace {
         {FieldComponent::UI_TEXT, "ui_text"},
         {FieldComponent::UI_BUTTON, "ui_button"},
         {FieldComponent::PATHFINDER, "pathfinder"},
-        {FieldComponent::MONSTER_AI, "monster_ai"}
+        {FieldComponent::MONSTER_AI, "monster_ai"},
+        {FieldComponent::PARTICLE_EMITTER, "particle_emitter"}
     };
 
     constexpr std::pair<PayloadDispatchEntitySetField::Operation, const char*> kSetFieldOperationNames[] = {
@@ -1332,6 +1338,12 @@ namespace {
             j["worldPosition"] = payload.worldPosition;
         }
 
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEmitParticles>) {
+            j["prefab"] = payload.prefab;
+            j["count"] = payload.count;
+            j["offset"] = {payload.offset.x, payload.offset.y, payload.offset.z};
+        }
+
         if constexpr (std::is_same_v<Payload, PayloadDispatchPlaySound>) {
             j["sound"] = payload.sound;
             j["gain"] = payload.gain;
@@ -1629,6 +1641,12 @@ namespace {
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchEntitySetSprite>) {
             ReadOptional(j, "textures", payload.textures);
+        }
+
+        if constexpr (std::is_same_v<Payload, PayloadDispatchEmitParticles>) {
+            ReadOptional(j, "prefab", payload.prefab);
+            ReadOptional(j, "count", payload.count);
+            ReadOptionalVector3(j, "offset", payload.offset);
         }
 
         if constexpr (std::is_same_v<Payload, PayloadDispatchSpawnPrefab>) {
@@ -3081,6 +3099,64 @@ namespace LevelSerialization {
         return true;
     }
 
+    json ComponentOwnFieldsToJson(const ComponentParticleEmitter& c) {
+        const auto color = [](const Vector4& v) { return json::array({v.x, v.y, v.z, v.w}); };
+        return {
+            {"isActive", c.isActive}, {"playOnStart", c.playOnStart}, {"rate", c.rate},
+            {"burstMin", c.burstMin}, {"burstMax", c.burstMax},
+            {"textures", c.textures}, {"animate", c.animate},
+            {"offset", Vec3Json(c.offset)}, {"direction", Vec3Json(c.direction)}, {"spread", c.spread},
+            {"speedMin", c.speedMin}, {"speedMax", c.speedMax}, {"gravity", c.gravity}, {"drag", c.drag},
+            {"lifetimeMin", c.lifetimeMin}, {"lifetimeMax", c.lifetimeMax},
+            {"sizeMin", c.sizeMin}, {"sizeMax", c.sizeMax}, {"sizeEnd", c.sizeEnd},
+            {"colorStart", color(c.colorStart)}, {"colorEnd", color(c.colorEnd)},
+            {"collision", static_cast<int>(c.collision)}, {"bounciness", c.bounciness},
+            {"stainTextures", c.stainTextures}, {"stainChance", c.stainChance},
+            {"stainSizeMin", c.stainSizeMin}, {"stainSizeMax", c.stainSizeMax}, {"stainLifetime", c.stainLifetime},
+            {"stainColor", color(c.stainColor)}, {"noStainTag", c.noStainTag}
+        };
+    }
+
+    bool ComponentOwnFieldsFromJson(const json& j, ComponentParticleEmitter& c) {
+        const ComponentParticleEmitter d{};
+        const auto color = [&j](const char* key, const Vector4& fallback) {
+            if (!j.contains(key)) return fallback;
+            const json& v = j[key];
+            return Vector4{v[0].get<float>(), v[1].get<float>(), v[2].get<float>(), v[3].get<float>()};
+        };
+        c.isActive = j.value("isActive", d.isActive);
+        c.playOnStart = j.value("playOnStart", d.playOnStart);
+        c.rate = j.value("rate", d.rate);
+        c.burstMin = j.value("burstMin", d.burstMin);
+        c.burstMax = j.value("burstMax", d.burstMax);
+        c.textures = j.value("textures", d.textures);
+        c.animate = j.value("animate", d.animate);
+        if (j.contains("offset")) c.offset = Vec3FromJson(j["offset"]);
+        if (j.contains("direction")) c.direction = Vec3FromJson(j["direction"]);
+        c.spread = j.value("spread", d.spread);
+        c.speedMin = j.value("speedMin", d.speedMin);
+        c.speedMax = j.value("speedMax", d.speedMax);
+        c.gravity = j.value("gravity", d.gravity);
+        c.drag = j.value("drag", d.drag);
+        c.lifetimeMin = j.value("lifetimeMin", d.lifetimeMin);
+        c.lifetimeMax = j.value("lifetimeMax", d.lifetimeMax);
+        c.sizeMin = j.value("sizeMin", d.sizeMin);
+        c.sizeMax = j.value("sizeMax", d.sizeMax);
+        c.sizeEnd = j.value("sizeEnd", d.sizeEnd);
+        c.colorStart = color("colorStart", d.colorStart);
+        c.colorEnd = color("colorEnd", d.colorEnd);
+        c.collision = static_cast<ParticleCollision>(std::clamp(j.value("collision", 0), 0, 2));
+        c.bounciness = j.value("bounciness", d.bounciness);
+        c.stainTextures = j.value("stainTextures", d.stainTextures);
+        c.stainChance = j.value("stainChance", d.stainChance);
+        c.stainSizeMin = j.value("stainSizeMin", d.stainSizeMin);
+        c.stainSizeMax = j.value("stainSizeMax", d.stainSizeMax);
+        c.stainLifetime = j.value("stainLifetime", d.stainLifetime);
+        c.stainColor = color("stainColor", d.stainColor);
+        c.noStainTag = j.value("noStainTag", d.noStainTag);
+        return true;
+    }
+
     json ComponentOwnFieldsToJson(const ComponentPathfinder& c) {
         return {
             {"input", static_cast<int>(c.input)},
@@ -3295,6 +3371,7 @@ namespace {
         LoadComponentArray<ComponentFlipbook>(componentsJson, "flipbooks", level, level.flipbooks, CMP_FLIPBOOK);
         LoadComponentArray<ComponentPathfinder>(componentsJson, "pathfinders", level, level.pathfinders, CMP_PATHFINDER);
         LoadComponentArray<ComponentMonsterAI>(componentsJson, "monsterAIs", level, level.monsterAIs, CMP_MONSTER_AI);
+        LoadComponentArray<ComponentParticleEmitter>(componentsJson, "particleEmitters", level, level.particleEmitters, CMP_PARTICLE_EMITTER);
     }
 
     // A storage's components grouped by entity, each entity's in their own
@@ -3355,6 +3432,7 @@ namespace {
         SaveComponentArray(componentsJson, "flipbooks", entities, level.flipbooks);
         SaveComponentArray(componentsJson, "pathfinders", entities, level.pathfinders);
         SaveComponentArray(componentsJson, "monsterAIs", entities, level.monsterAIs);
+        SaveComponentArray(componentsJson, "particleEmitters", entities, level.particleEmitters);
 
         levelData["components"] = componentsJson;
     }

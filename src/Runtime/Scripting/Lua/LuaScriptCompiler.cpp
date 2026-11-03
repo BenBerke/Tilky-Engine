@@ -183,6 +183,7 @@ namespace {
             {"Flipbook",         ScriptValueType::Component, "Flipbook",         CMP_FLIPBOOK},
             {"Pathfinder",       ScriptValueType::Component, "Pathfinder",       CMP_PATHFINDER},
             {"MonsterAI",        ScriptValueType::Component, "MonsterAI",        CMP_MONSTER_AI},
+            {"ParticleEmitter",  ScriptValueType::Component, "ParticleEmitter",  CMP_PARTICLE_EMITTER},
         };
         return types;
     }

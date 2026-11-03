@@ -32,6 +32,7 @@
 #include "Headers/Runtime/Gameplay/FlipbookSystem.hpp"
 #include "Headers/Runtime/Gameplay/PathfinderSystem.hpp"
 #include "Headers/Runtime/Gameplay/MonsterAISystem.hpp"
+#include "Headers/Runtime/Gameplay/ParticleSystem.hpp"
 #include "Headers/Runtime/Gameplay/UIButtonSystem.hpp"
 #include "Headers/Runtime/Scripting/CSharp/CSharpScripting.hpp"
 
@@ -242,6 +243,7 @@ namespace LevelSystem {
         if (GetActivePlayerController(level) == nullptr) spdlog::info("Level started without an active player controller");
 
         // Before the scripts' Start, so what they tell these there counts.
+        ParticleSystem::Start();
         PathfinderSystem::Start(level);
         MonsterAISystem::Start(level, [&level](const ID entityID, const MonsterAISystem::NoticeKind kind, const ID otherID) {
             scriptingSystem.DispatchMonsterNotice(level, entityID, kind, otherID);
@@ -398,6 +400,13 @@ namespace LevelSystem {
                     case PathfinderSystem::NoticeKind::STOPPED_MOVING: EventSystem::FirePathfinderStoppedMoving(level, entityID); break;
                 }
             });
+        }
+
+        {
+            // After scripts, events and sector moves: stains follow this frame's
+            // doors, and what was emitted this frame already moves.
+            ZoneScopedN("Particles");
+            ParticleSystem::Update(level, GameTime::deltaTime);
         }
 
         // Only here, so the sky spins while the game runs and never in the editor.

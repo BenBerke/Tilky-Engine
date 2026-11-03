@@ -163,6 +163,11 @@ struct RendererSettings {
     float distanceLightStart = 256.0f;
     float distanceLightEnd = 1536.0f;
     float distanceLightDarkest = 0.18f;
+
+    // How many Particle Emitter particles and stains can exist at once. Over
+    // the cap, the oldest are removed to make room.
+    int maxParticles = 2048;
+    int maxStains = 256;
 };
 
 constexpr float MAX_WALL_CONTRAST = 64.0f;
@@ -275,6 +280,7 @@ struct Level {
     ComponentStorage<ComponentFlipbook> flipbooks;
     ComponentStorage<ComponentPathfinder> pathfinders;
     ComponentStorage<ComponentMonsterAI> monsterAIs;
+    ComponentStorage<ComponentParticleEmitter> particleEmitters;
 
     ComponentStorage<ComponentUITransform> ui_transforms;
     ComponentStorage<ComponentUISprite> ui_sprites;
