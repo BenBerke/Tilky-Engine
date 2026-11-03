@@ -1870,6 +1870,15 @@ namespace ImGuiDrawFunctions {
         else return nullptr;
     }
 
+    // Kept out of DrawPayloadTypeCombo's per-type lambda: a std::visit in there
+    // instantiates a whole visit table for every payload type, and that many
+    // functions made GCC 16.1's LTO write one of them twice ("two or more
+    // sections for ...__visit_invoke...") and fail the Release link.
+    template<typename Variant>
+    static const TagFilter *FilterOfVariant(const Variant &payload) {
+        return std::visit([](const auto &p) { return FilterOf(p); }, payload);
+    }
+
     // Whether the owner can have a `Payload`: the owner kind fits, the UI
     // Button events only go on an entity with a UI Button, and the Pathfinder
     // event and dispatch only on one with a Pathfinder.
@@ -1902,7 +1911,7 @@ namespace ImGuiDrawFunctions {
             const bool picked = ImGui::Selectable(Get(Payload::translationKey).c_str(), selected);
             OptionTooltip(Payload::translationKey);
             if (picked && !selected) {
-                const TagFilter *oldFilter = std::visit([](const auto &p) { return FilterOf(p); }, payload);
+                const TagFilter *oldFilter = FilterOfVariant(payload);
                 const std::optional<TagFilter> keptFilter = oldFilter ? std::optional(*oldFilter) : std::nullopt;
 
                 Payload replacement{};

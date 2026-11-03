@@ -1,0 +1,158 @@
+TITLE:
+Events and Dispatches, Prefabs, Monster AI, the Classic FPS Kit and much more
+
+POST (Steam BBCode):
+
+This is a big one. You can now build most of a level's gameplay in the inspector without writing any code, start a Doom-style game from a ready-made kit, and work much faster in the editor.
+
+[h2]Before you update an existing project[/h2]
+The level format has changed. Levels made in older versions may not load or look correct in this version, because textures, collider sizes and sound references are now saved differently. Your projects stay on the engine version they already use, so nothing changes until you switch them. [b]Make a backup first if you do switch.[/b]
+
+[h2]Events and Dispatches[/h2]
+An event is something that happens, and a dispatch is what it does in response. Together they cover doors, keys, lifts, switches, pickups and more, with no scripting.
+[list]
+[*][b]Events:[/b] collisions, triggers, rays, timers, key presses and releases, UI buttons, level start, conditions becoming true, entities landing in a sector, moving floors and ceilings finishing, and monster AI.
+[*][b]Dispatches:[/b] Door, Lift, Move to Height, Raise Stairs, Teleport, Set Light, Light Effect, Set Field, Set Sprite, Set UI Text, Add / Remove Tag, Change Velocity, Change Variable, Play Sound, Show Message, Emit Particles, Load Level and more.
+[*][b]Doors:[/b] five door types, separate floor and ceiling movement, and locks that check the tags of whoever opens them.
+[*][b]Lifts and stairs:[/b] Down-Wait-Up, Up-Wait-Down and Perpetual lifts, plus Doom-style rising stairs.
+[*][b]Light effects:[/b] Flicker, Strobe, Glow and Fire Flicker.
+[*][b]One-click tools:[/b] Make Door, Make Lift and Make Teleporter.
+[*][b]Flow control:[/b] chain dispatches with targets, conditions and waits, and give any dispatch a delay or cooldown.
+[*][b]Event options:[/b] chance and trigger limits on events.
+[*][b]Variables:[/b] level and global variables that can be shown directly on the HUD.
+[*][b]Linedefs:[/b] invisible lines on the map that fire events, with no collision and no need to split a sector.
+[*][b]Typed rays:[/b] the player gets a built-in Use key, and objects can respond to Interact, Bullet, Line of Sight or Custom rays.
+[*][b]Connections:[/b] event tags and named dispatches for wiring a switch to whatever it controls.
+[/list]
+
+[h2]Classic FPS Kit[/h2]
+A new project template for making a Doom-style game by dragging prefabs onto a map. Choose it when you create a project.
+[list]
+[*]16 enemies, 9 weapons, pickups, keys, switches, menus and a HUD.
+[*]Kicking and grenades that work with any weapon.
+[*]Blood stains, liquid splashes, gibs and blood on the screen, with a gore setting in the Options menu.
+[*]Four example levels, a blank starting level and a gallery of every prefab.
+[*]Art and sound from Freedoom, plus CC0 music.
+[/list]
+The kit comes with [b]Make a Doom-Style Game[/b], a new step-by-step guide for complete beginners. No programming needed. Later chapters show how to change the enemies, weapons, pickups and UI.
+
+[h2]Prefabs[/h2]
+[list]
+[*]New .prefab assets and a Prefab Editor.
+[*]Placed copies stay linked to the prefab and can override individual fields.
+[*]Drag and drop prefabs into your level, or create them from Lua at runtime.
+[/list]
+
+[h2]Monster AI and Pathfinding[/h2]
+[list]
+[*][b]Pathfinder component:[/b] Doom-style chasing with no baked navigation data. Defaults behave like Doom, and every number can be changed.
+[*][b]Monster AI component:[/b] looking, chasing, attacking, infighting, sound alerts, health, knockback and death, with walk, attack and die animations.
+[*]Monsters can open doors, and walls can block pathfinders or sound.
+[*]New events, dispatches and Lua functions let you hook into all of it.
+[/list]
+
+[h2]Particles[/h2]
+[list]
+[*]New Particle Emitter component that can throw hundreds of small images.
+[*]Particles can leave stains on walls, floors and ceilings, and the stains ride along on doors and lifts.
+[*]Looping, plus a Play and Stop preview in the runtime editor.
+[/list]
+
+[h2]Rendering[/h2]
+[list]
+[*][b]Animated surfaces:[/b] walls, floors and ceilings can play texture animations in Loop, Ping-Pong or Once mode, with timing and offsets per frame.
+[*][b]Texture scale:[/b] scale 1 now follows the image's pixel size, so textures keep their proportions without hand tuning. Texels Per Unit is a project setting.
+[*][b]Distance light:[/b] control how surfaces darken with distance, per level, in World Settings.
+[/list]
+
+[h2]Physics[/h2]
+[list]
+[*]Capsule colliders, and proper AABB physics for box colliders.
+[*]Colliders now scale with the entity's Transform.
+[*]Steep slopes act as walls, and slope strength is set in true degrees.
+[*]Fast objects no longer tunnel through walls, with an adjustable sub-step limit in World Settings.
+[*]Smoother stepping up stairs.
+[/list]
+
+[h2]Audio and Music[/h2]
+[list]
+[*]MP3, OGG and FLAC support alongside WAV.
+[*]Per-level music playlists in World Settings with Once, Loop, Ping-Pong and Shuffle modes, volume, fades and gaps.
+[*]Music keeps playing across levels that share a playlist.
+[*]A new Music API for Lua.
+[/list]
+
+[h2]UI[/h2]
+[list]
+[*][b]UI Button:[/b] clickable UI that uses the event system.
+[*][b]UI layouts:[/b] reusable .uilayout assets for HUDs and menus.
+[*][b]UI Text:[/b] Show Variable displays a variable with a prefix and suffix, no script needed.
+[*][b]UI Sprite:[/b] colour tint, solid colour rectangles and a Draw Order setting.
+[*][b]UI Editor:[/b] move and resize handles, snapping with guide lines, multi-select, undo and redo, and right-click creation.
+[*][b]Show Message:[/b] style messages with anchors, boxes, textures, shadows, outlines and fades in World Settings.
+[/list]
+
+[h2]Lua Scripting[/h2]
+[list]
+[*][b]public function[/b] for calling one script from another.
+[*][b]Invoke, InvokeReal, InvokeFrame and InvokeRepeating[/b] for delayed and repeating calls.
+[*][b]GameTime.timeScale[/b] for slow motion and pausing.
+[*][b]Saving[/b] for values that stay after the game closes, such as progress and options.
+[*]Add tags, components and scripts at runtime, and create entities from prefabs.
+[*]New APIs for sectors, walls, the sky, pathfinding and quitting the game.
+[/list]
+
+[h2]Entities and Levels[/h2]
+[list]
+[*]Entities can be disabled and enabled.
+[*]Persist Between Levels keeps an entity, its scripts and its data across level changes.
+[*]The project's Levels list sets the level order, and Load Next Level follows it.
+[/list]
+
+[h2]Editor[/h2]
+[list]
+[*][b]Undo and redo:[/b] one shared history across the 2D and runtime editors, kept when you press Play.
+[*][b]Command Palette:[/b] search every editor action with Ctrl + Shift + P.
+[*][b]Rebindable keys:[/b] change every editor key and shortcut.
+[*][b]Inspector:[/b] one inspector for every object, reached by right-clicking in any 2D mode, with collapsible components.
+[*][b]Tag Explorer:[/b] see everything that uses a tag.
+[*][b]Comments:[/b] pin notes to the map, or to walls, sectors, linedefs and entities.
+[*][b]Selection:[/b] paint selections with a brush and save selection groups.
+[*][b]View modes:[/b] brightness, floor height, ceiling height and room height, with rooms too low for the player shown in red.
+[*][b]Grid tools:[/b] move the grid origin, align the grid to a wall, set a grid colour and add a background texture.
+[*][b]Textures:[/b] drag them onto the 2D map, copy and paste between surfaces, flood fill and auto align.
+[*][b]Entities:[/b] snap to walls, point at the cursor, and move along with a dragged sector.
+[*][b]Linking:[/b] drag sectors and walls from the map into reference fields.
+[*][b]OBJ export:[/b] export a whole level or a selection, with textures.
+[*][b]Auto save:[/b] saves the open level in the background at an interval you choose.
+[*][b]Runtime editor:[/b] docking, wireframe view, Gravity Mode and Esc to release the mouse.
+[*][b]Asset Browser:[/b] copy, cut, paste, duplicate and Open In Explorer.
+[*][b]Map display:[/b] cursor coordinates, wall length and angle, and the camera position is remembered.
+[/list]
+
+[h2]Launcher and Export[/h2]
+[list]
+[*]Create Project now has a template menu, with Blank, the Classic FPS Kit and a button that installs the Showcase.
+[*]Export Game now runs in the background, with a progress bar, so you can keep working while it finishes.
+[/list]
+
+[h2]Showcase Project[/h2]
+The eleven showcase levels have been rebuilt with events and dispatches. Open a level in the 2D editor, and comments pinned to the map tell you which events to look at. Lua scripts are now only used for what events don't do, such as time of day and shooting.
+
+[h2]Documentation[/h2]
+[list]
+[*]The new beginner's guide.
+[*]New wiki pages for Invoke, Monster AI, Particle Emitter, Pathfinder, Saving and Loading, and UI Button, among others.
+[/list]
+
+[h2]Fixes[/h2]
+[list]
+[*]Rays hitting sloped surfaces.
+[*]Switching between levels.
+[*]Save and quit.
+[*]Many smaller editor and standalone build fixes.
+[/list]
+
+Come share what you're making, report bugs and suggest features on [url=https://discord.gg/NQa8uFPWaz]our Discord[/url]. If you'd like to support the engine, you can do so on [url=https://github.com/sponsors/BenBerke]GitHub Sponsors[/url] or [url=https://ko-fi.com/benberke]Ko-Fi[/url].
+
+Thanks for using Tilky Engine!

@@ -73,6 +73,8 @@ The sector architecture supports:
 * **True 3D Perspective:** Walls, floors, ceilings, sprites, and entities are rendered inside a complete 3D scene.
 * **RGBA Surface Colors:** Walls, floors, ceilings, and sprites support color tinting and alpha transparency.
 * **Upper and Lower Wall Textures:** Walls between sectors of different heights get separate top and bottom textures, each with its own scale, offset, and flipping.
+* **Animated Surfaces:** Walls, floors, and ceilings can play texture animations, with Loop, Ping-Pong, and Once modes and per-frame timing and offsets.
+* **Particles and Stains:** Particle emitters can throw hundreds of small images and leave stains on walls, floors, and ceilings. Stains ride along on doors and lifts.
 * **Sector Lighting:** Every sector carries a light color that scripts can fade and flicker at runtime.
 * **Sector Hierarchy:** Sectors can be organized into parent and child groups.
 * **Skyboxes:** Each level can have a cubemap, panoramic, or classic DOOM-style cylinder sky.
@@ -91,8 +93,12 @@ Available systems include:
 * Camera and Player Controller components, with acceleration-based movement.
 * Audio related components.
 * Lua script components.
-* UI components: UI Transform, UI Sprite, and UI Text with custom fonts and colors.
+* Particle Emitter, with looping, stains, and Play and Stop preview in the runtime editor.
+* Pathfinder and Monster AI components for Doom-style chasing, attacking, and infighting, with no baked navigation data.
+* UI components: UI Transform, UI Sprite, UI Text with custom fonts and colors, and UI Button.
 * Multiple components of the same type on one entity.
+* Prefabs with per-field overrides on each placed copy.
+* Entities that can be disabled, and that can persist between levels.
 * Project-wide tags on entities, walls, and sectors.
 * Component serialization and project loading.
 * Fast component lookup through entity ownership IDs.
@@ -107,12 +113,33 @@ Features include:
 * Velocity-based movement.
 * Friction and air resistance.
 * Static and dynamic rigidbodies.
+* Box and capsule colliders that scale with the entity's Transform.
+* Steep slopes that act as walls, and swept wall collision that stops fast objects tunnelling through.
 * Ground detection and ground-normal calculation.
 * Sector floor and ceiling collision.
 * Multi-floor sector selection.
 * Correct handling of entities above ceilings and between vertical sector levels.
 * SIMD-accelerated mathematical and collision operations.
 * Tracy profiling instrumentation for collision and physics workloads.
+
+### Events and Dispatches
+
+Much of a level's behaviour can be built in the inspector without writing a script. An **event** is something that happens, and a **dispatch** is what it does in response.
+
+* Doors with five types, split floor and ceiling movement, and locks that check the instigator's tags.
+* Lifts, Doom-style stairs, teleporters, sector light effects, and one-click **Make Door**-style tools.
+* Events from collisions, triggers, rays, timers, key presses, buttons, and level start, with chance and trigger limits.
+* Dispatches that change variables, set component fields, play sounds, show messages, emit particles, and load levels.
+* Flow control: chain dispatches with targets, conditions, and waits.
+* Level and global event variables, shown directly on the HUD by UI Text.
+* Linedefs: invisible lines on the map that can fire events, with no collision and without splitting sectors.
+* Event tags and named dispatches for connecting switches to what they control.
+
+### Audio and Music
+
+* OpenAL positional audio, with WAV, MP3, OGG, and FLAC support.
+* Per-level music playlists in World Settings with Once, Loop, Ping-Pong, and Shuffle modes, volume, fades, and gaps.
+* Tracks that keep playing across levels that share a playlist.
 
 ---
 
@@ -129,6 +156,7 @@ The launcher acts as the entry point for the toolchain.
 * Manage project assets and settings.
 * Associate projects with specific engine versions.
 * Download and install engine versions directly from GitHub Releases.
+* Start new projects from a template, including the bundled **Classic FPS Kit**.
 * Download sample projects to learn from.
 * Switch projects between installed engine versions.
 * Launch projects using the correct editor build.
@@ -156,6 +184,13 @@ The Dear ImGui-powered editor provides dedicated editing modes for sectors, wall
 * Per-user editor settings that persist between sessions.
 * Test the current project directly inside the runtime.
 * Use a runtime editor and free camera for in-game inspection.
+* Undo and redo with one shared history across the 2D and runtime editors, kept when you press Play.
+* Rebind every editor key and shortcut.
+* Search every editor action with the Command Palette.
+* Edit prefabs in the Prefab Editor, and build reusable HUDs and menus as UI layouts.
+* Snap entities to walls, save selection groups, and paint selections with a brush.
+* Check levels with brightness and height view modes, the Tag Explorer, and comments pinned to the map.
+* Copy textures between surfaces, and export levels to OBJ.
 
 ### Asset Browser
 
@@ -163,7 +198,7 @@ The integrated asset browser provides project-level file management without leav
 
 * Navigate project directories.
 * Create files and folders.
-* Rename and delete assets.
+* Rename, delete, copy, cut, paste, and duplicate assets.
 * Use file and folder context menus.
 * Preview supported image assets (PNG, JPG, and more) and play audio files.
 * Drag and drop assets into compatible editor fields.
@@ -203,6 +238,7 @@ The runtime loads exported project data and executes the complete game simulatio
 
 Projects can be packaged into standalone builds using the integrated export pipeline.
 
+* Export in the background and keep working, with a progress bar in the editor.
 * Build the standalone runtime.
 * Copy required runtime libraries.
 * Package project assets and data.
@@ -263,6 +299,11 @@ The scripting environment supports:
 * Keyboard and mouse input.
 * Component property access, raycasts, and entity lookup by name or tag.
 * Sector API for moving floors and ceilings, fading lights, and changing textures.
+* `public function` for calling one script from another.
+* `Invoke`, `InvokeReal`, `InvokeFrame`, and `InvokeRepeating` for delayed and repeating calls, and `GameTime.timeScale` for slow motion and pausing.
+* `Saving` for values that stay when the game closes, such as progress and options.
+* `Music` for controlling the level's playlist.
+* Adding components and scripts, tags, and new entities from prefabs at runtime.
 * Logging to the in-game console and the engine log.
 * Runtime Lua error reporting.
 
@@ -297,6 +338,20 @@ The full scripting reference lives in [`docs/wiki`](docs/wiki/README.md), starti
 
 ---
 
+## 🎯 Classic FPS Kit
+
+The **Classic FPS Kit** is a project template for making a Doom-style game by dragging prefabs onto a map. Choose it when you create a project in the launcher.
+
+* 16 enemies, 9 weapons, pickups, keys, switches, menus, and a HUD.
+* Kicking and grenades that work with any weapon.
+* Blood stains, liquid splashes, gibs, and blood on the screen, with a gore setting in the Options menu.
+* Four example levels, a blank starting level, and a gallery of every prefab.
+* Art and sound from [Freedoom](https://freedoom.github.io/) under a BSD licence, and CC0 music.
+
+New to the engine? [**Make a Doom-Style Game**](docs/wiki/guide/README.md) is a beginner's guide that uses the kit and needs no programming.
+
+---
+
 ## 🛠 Tech Stack
 
 | Category                      | Technology                            |
@@ -305,7 +360,7 @@ The full scripting reference lives in [`docs/wiki`](docs/wiki/README.md), starti
 | **Graphics**                  | OpenGL 4.3, GLSL, GLAD                |
 | **Framework**                 | SDL3                                  |
 | **UI**                        | Dear ImGui                            |
-| **Audio**                     | OpenAL                                |
+| **Audio**                     | OpenAL, dr_libs, stb_vorbis           |
 | **Scripting**                 | Lua, sol2                             |
 | **Profiling**                 | Tracy                                 |
 | **Serialization**             | nlohmann/json                         |
@@ -350,8 +405,7 @@ Pass `-DTILKY_ENABLE_TRACY=OFF` to build without the Tracy profiler.
 | `Tilky_Launcher`   | Creates, opens, versions, and launches Tilky projects.  |
 | `Tilky_Engine`     | Main visual editor and development runtime.             |
 | `Tilky_Standalone` | Standalone runtime used by exported projects.           |
-| `Tilky_Exporter`   | Packages projects into distributable standalone builds. |
-| `Tilky_All`        | Builds the complete Tilky toolchain.                    |
+| `Tilky_All`        | Builds the editor and the standalone runtime.           |
 
 ---
 
@@ -373,6 +427,12 @@ Pass `-DTILKY_ENABLE_TRACY=OFF` to build without the Tracy profiler.
 | Key                        | Action                                                        |
 | :------------------------- | :------------------------------------------------------------ |
 | `Q`                        | Cycle editor modes                                            |
+| `G` / `R`                  | Geometry Mode (again for Linedef Mode) / Sector Mode          |
+| `T`                        | Entity Mode                                                   |
+| `U` / `V`                  | UI Editor / Runtime Editor                                    |
+| `P`                        | Save & Play                                                   |
+| `M`                        | Cycle texture view                                            |
+| `B` + drag                 | Paint a selection (`Ctrl` removes)                            |
 | `LMB`                      | Draw, select or move objects                                  |
 | `Ctrl + LMB`               | Add to or remove from the selection                           |
 | `Shift + LMB`              | Range select                                                  |
@@ -388,7 +448,13 @@ Pass `-DTILKY_ENABLE_TRACY=OFF` to build without the Tracy profiler.
 | `[` / `]`                  | Fewer or more polygon sides (Sector Mode)                     |
 | `Alt`                      | Flip which end of a staircase is the bottom (Sector Mode)     |
 | `Escape`                   | Cancel drawing (Sector Mode), or release the mouse in the runtime |
-| `Ctrl + Z`                 | Undo action                                                   |
+| `Ctrl + Z` / `Ctrl + Y`    | Undo / redo                                                   |
+| `Ctrl + C` / `Ctrl + V`    | Copy / paste entities                                         |
+| `Ctrl + D`                 | Duplicate                                                     |
+| `Ctrl + S`                 | Save                                                          |
+| `Ctrl + Shift + P`         | Command Palette                                               |
+
+These are the defaults. Every key can be rebound in the editor.
 
 ---
 
@@ -419,6 +485,14 @@ Pass `-DTILKY_ENABLE_TRACY=OFF` to build without the Tracy profiler.
 * [x] **Lua Autocomplete:** Added engine-API autocomplete to the embedded Lua editor.
 * [x] **Advanced Drawing Tools:** Added rectangle, polygon, circle, curve, and staircase sector tools.
 * [x] **Scripting Wiki:** Wrote a full scripting reference and a library of example scripts in `docs/`.
+* [x] **Events and Dispatches:** Added no-code events, dispatches, flow control, variables, doors, lifts, stairs, teleporters, and linedefs.
+* [x] **Prefabs:** Added `.prefab` assets, the Prefab Editor, and per-field overrides.
+* [x] **Particle Emitter:** Added particles and surface stains, with a preview in the runtime editor.
+* [x] **Pathfinding and Monster AI:** Added Doom-style chasing, attacking, and infighting.
+* [x] **UI Layouts and Buttons:** Added reusable `.uilayout` assets and clickable UI.
+* [x] **Saving and Music:** Added the `Saving` API, level playlists, and MP3, OGG, and FLAC audio.
+* [x] **Project Templates:** Added launcher templates and the Classic FPS Kit, with a beginner's guide.
+* [x] **Editor Workflow:** Added shared undo history, rebindable keys, the Command Palette, and the Tag Explorer.
 
 ## 🔨 Future Milestones
 

@@ -85,13 +85,18 @@ WEAPONS = {
     "Shotgun": {"Ready": ["SHTGA0"], "B": ["SHTGB0"], "C": ["SHTGC0"], "D": ["SHTGD0"],
                 "Flash1": ["SHTFA0", "SHTGA0"], "Flash2": ["SHTFB0", "SHTGA0"]},
     "Super Shotgun": {"Ready": ["SHT2A0"], "B": ["SHT2B0"], "C": ["SHT2C0"], "D": ["SHT2D0"], "E": ["SHT2E0"],
-                      "F": ["SHT2F0"], "G": ["SHT2G0"], "H": ["SHT2H0"], "Flash1": ["SHT2I0"], "Flash2": ["SHT2J0"]},
+                      "F": ["SHT2F0"], "G": ["SHT2G0"], "H": ["SHT2H0"],
+                      "Flash1": ["SHT2I0", "SHT2A0"], "Flash2": ["SHT2J0", "SHT2A0"]},
     "Minigun": {"Ready": ["CHGGA0"], "B": ["CHGGB0"], "Flash1": ["CHGFA0", "CHGGA0"], "Flash2": ["CHGFB0", "CHGGB0"]},
     "Rocket Launcher": {"Ready": ["MISGA0"], "B": ["MISGB0"], "Flash1": ["MISFA0", "MISGB0"], "Flash2": ["MISFB0", "MISGB0"],
                         "Flash3": ["MISFC0", "MISGB0"], "Flash4": ["MISFD0", "MISGB0"]},
     "Plasma Rifle": {"Ready": ["PLSGA0"], "B": ["PLSGB0"], "Flash1": ["PLSFA0", "PLSGA0"], "Flash2": ["PLSFB0", "PLSGA0"]},
     "SKAG 1337": {"Ready": ["BFGGA0"], "B": ["BFGGB0"], "C": ["BFGGC0"], "Flash1": ["BFGFA0", "BFGGB0"], "Flash2": ["BFGFB0", "BFGGB0"]},
 }
+
+# Pixels a weapon sits above Doom's spot. Freedoom's Super Shotgun is drawn so low
+# that the status bar hides most of it, and firing's picture kick pushes it off screen.
+WEAPON_LIFT = {"Super Shotgun": 12}
 
 WALLS = """STARTAN1 STARTAN2 STARTAN3 STARG1 STARG2 STARG3 STARGR1 STARBR1 BROWN1 BROWN96 BROWN144 BROWNGRN BROWNHUG
 BROWNPIP GRAY1 GRAY2 GRAY4 GRAY5 GRAY7 GRAYBIG GRAYTALL GRAYVINE BIGBRIK1 BIGBRIK2 BIGDOOR1 BIGDOOR2 BIGDOOR3 BIGDOOR4
@@ -284,14 +289,14 @@ def extract_actor(wad, prefix, letters, out_dir, reference, centred=False):
     return manifest
 
 
-def extract_weapon(wad, frames, out_dir):
+def extract_weapon(wad, frames, out_dir, lift=0):
     for frame, lumps in frames.items():
         cw, ch = 320, 168
         canvas = [-1] * (cw * ch)
         for lump in lumps:
             pic = wad.picture(lump)
             # R_DrawPSprite: x = 1 - leftoffset, y = 32 - topoffset (WEAPONTOP).
-            blit(canvas, cw, ch, pic, 1 - pic[2], 32 - pic[3])
+            blit(canvas, cw, ch, pic, 1 - pic[2], 32 - pic[3] - lift)
         write_png(os.path.join(out_dir, frame + ".png"), cw, ch, indices_to_rgba(wad.palette, cw, ch, canvas))
 
 
@@ -389,7 +394,7 @@ def main():
         manifest["effects"][name] = extract_actor(wad, prefix, letters, os.path.join(assets, ref), ref, centred=True)
 
     for name, frames in WEAPONS.items():
-        extract_weapon(wad, frames, os.path.join(assets, "Sprites", "Weapons", name))
+        extract_weapon(wad, frames, os.path.join(assets, "Sprites", "Weapons", name), WEAPON_LIFT.get(name, 0))
 
     missing = []
     for name in WALLS:
