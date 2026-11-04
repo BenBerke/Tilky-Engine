@@ -1056,12 +1056,46 @@ namespace {
         PUSHED    // moved out of it or up onto it
     };
 
-    // `from` is where the body's bottom was before this step's move.
+    // Is the body walking onto a step it has climbed but whose edge its centre
+    // hasn't crossed? Lowered by `drop` it would be back in the step, and the
+    // step's top is what it is level with now.
+    bool IsWalkingOntoStep(
+        const Wall& wall,
+        const WallSpan& span,
+        const float stepSize,
+        const Vector3& velocity,
+        const Body& body,
+        const float drop
+    ) {
+        if (stepSize <= 0.0f) return false;
+
+        Body lowered = body;
+        lowered.base.y -= drop;
+
+        WallHit hit;
+
+        if (!(lowered.isBox ? FindBoxWallHit(wall, span, lowered, hit) : FindRoundWallHit(wall, span, lowered, hit)))
+            return false;
+
+        if (Vector3Math::Dot(velocity, hit.normal) >= -Constants::Epsilon) return false;
+
+        const float loweredBottom = lowered.Bottom();
+
+        return hit.spanBottom <= loweredBottom + GROUND_CONTACT_SLOP &&
+               hit.spanTop <= body.Bottom() + GROUND_CONTACT_SLOP &&
+               hit.spanTop > loweredBottom + Constants::Epsilon &&
+               hit.spanTop <= loweredBottom + stepSize + Constants::Epsilon;
+    }
+
+    // `from` is where the body's bottom was before this step's move. Stepping
+    // up lifts it too: the crossed-wall test reads the body's height along the
+    // move, and a body that just climbed this span would still be below its
+    // top there, and get pushed back across a whole radius.
     WallResult ResolveWallSpan(
         const Wall &wall,
         const WallSpan &span,
         const float stepSize,
-        const Vector3 &from,
+        Vector3 &from,
         Body &body,
         ComponentTransform &transform,
         ComponentRigidbody &rigidbody
@@ -1099,6 +1133,7 @@ namespace {
             transform.AddPosition({0.0f, verticalCorrection, 0.0f});
 
             body.base.y += verticalCorrection;
+            from.y += verticalCorrection;
 
             if (rigidbody.velocity.y < 0.0f) rigidbody.velocity.y = 0.0f;
 
@@ -1371,7 +1406,7 @@ namespace PhysicsSystem {
             // velocity * deltaTime right before this run. Moves that don't
             // come from velocity (a script setting the position) aren't
             // swept, so teleporting past a wall still works.
-            const Vector3 sweptFrom = selfBody.base - selfRigidbody->velocity * deltaTime;
+            Vector3 sweptFrom = selfBody.base - selfRigidbody->velocity * deltaTime;
 
             const auto resolveWalls = [&] {
                 bool pushed = true;
@@ -1765,7 +1800,37 @@ namespace PhysicsSystem {
                         groundDrop +
                         GROUND_CONTACT_SLOP;
 
-                    if (groundDistance <= snapDistance) {
+                    // A body walking onto a step is up here because it climbed
+                    // it, with its centre still over the lower floor. Snapped
+                    // down, any step shorter than the snap distance was undone
+                    // every frame; left to fall, it could drop off taller ones.
+                    const Body restingBody = MakeBody(*selfTransform, selfCollider);
+                    bool walkingOntoStep = false;
+
+                    for (const Wall* wall : nearbyWalls) {
+                        if (wall == nullptr || level.walls.empty()) continue;
+
+                        const std::ptrdiff_t wallIndex = wall - level.walls.data();
+
+                        if (wallIndex < 0 || wallIndex >= static_cast<std::ptrdiff_t>(wallSpans.size())) continue;
+
+                        for (const WallSpan& span : wallSpans[wallIndex]) {
+                            if (IsWalkingOntoStep(*wall, span, selfCollider.stepSize, selfRigidbody->velocity, restingBody, groundDistance)) {
+                                walkingOntoStep = true;
+                                break;
+                            }
+                        }
+
+                        if (walkingOntoStep) break;
+                    }
+
+                    if (walkingOntoStep) {
+                        selfRigidbody->isGrounded = true;
+                        selfRigidbody->groundNormal = {0.0f, 1.0f, 0.0f};
+
+                        if (groundSeparatingSpeed < 0.0f) selfRigidbody->velocity.y = 0.0f;
+                    }
+                    else if (groundDistance <= snapDistance) {
                         selfTransform->AddPosition({0.0f, -groundDistance, 0.0f});
 
                         correctedBottomHeight -= groundDistance;
