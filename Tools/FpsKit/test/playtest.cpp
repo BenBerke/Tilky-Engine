@@ -358,6 +358,86 @@ static void CheckEmitters() {
     std::fflush(stdout);
 }
 
+// What a level or a Play session leaves behind must not reach the next one.
+// usage: playtest <project.tilky> "Level 1 - Outpost" <outDir> 0 --carry
+static const char* const NO_CAMERA_LEVEL = "No Camera";
+
+static void MakeNoCameraLevel(const fs::path& assets) {
+    Level level;
+    std::string error;
+    if (!LevelSerialization::LoadLevelFromFile(assets / "Levels/Blank Base Level.bson", level, nullptr, &error)) std::printf("no camera: %s\n", error.c_str());
+    LevelManager::ScopedCurrentLevel scope(level);
+    std::vector<ID> owners;
+    for (const ComponentCamera& camera : level.cameras.components) owners.push_back(camera.ownerID);
+    for (const ID owner : owners) level.DestroyEntity(owner);
+    LevelSerialization::SaveLevelToFile(assets / "Levels" / (std::string(NO_CAMERA_LEVEL) + ".bson"), level, nullptr, &error);
+}
+
+static int CheckCarry() {
+    int failures = 0;
+    const auto tick = [](const int frames) {
+        for (int i = 0; i < frames; ++i) {
+            InputManager::BeginFrame();
+            RuntimeSession::Update();
+        }
+    };
+    // Long-lived particles and a stain under the player, or the camera without one.
+    const auto spray = [] {
+        Level& level = LevelManager::CurrentLevel();
+        Vector3 at = {0.0f, 0.0f, 0.0f};
+        for (const ComponentTransform& transform : level.transforms.components)
+            if (transform.sectorIndex >= 0 && level.playerControllers.Get(transform.ownerID) != nullptr) at = transform.position;
+
+        ComponentParticleEmitter emitter;
+        emitter.textures = {"Sprites/FX/Debris/Spark.png"};
+        emitter.speedMin = emitter.speedMax = 0.1f;
+        emitter.gravity = 0.0f;
+        emitter.lifetimeMin = emitter.lifetimeMax = 1000.0f;
+        ParticleSystem::Emit(level, emitter, at + Vector3{0.0f, 20.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 40);
+        ParticleSystem::StainSurface(level, at + Vector3{0.0f, 10.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, 200.0f,
+                                     "Sprites/FX/Blood/Small Stain 1.png", 4.0f, {1.0f, 1.0f, 1.0f, 1.0f});
+        std::printf("[carry] sprayed: particles %zu, stains %zu\n", ParticleSystem::Particles().size(), ParticleSystem::Stains().size());
+    };
+    const auto expectEmpty = [&failures](const char* when) {
+        const size_t particles = ParticleSystem::Particles().size(), stains = ParticleSystem::Stains().size();
+        std::printf("[carry] %s: particles %zu, stains %zu, want 0 0 %s\n", when, particles, stains, particles + stains == 0 ? "ok" : "FAIL");
+        if (particles + stains != 0) ++failures;
+    };
+    tick(90);
+    spray();
+    LevelSystem::RequestLevelLoad("Level 2 - Keys");
+    tick(1);
+    expectEmpty("after a level load");
+
+    tick(30);
+    spray();
+    LevelSystem::RequestLevelLoad(NO_CAMERA_LEVEL);
+    tick(1);
+    expectEmpty("after loading a level with no camera");
+    tick(10);
+    expectEmpty("10 frames into that level");
+
+    LevelSystem::RequestLevelLoad("Level 1 - Outpost");
+    tick(120);
+    spray();
+    RuntimeSession::Shutdown();
+    expectEmpty("after stopping Play");
+
+    if (!RuntimeSession::Start(RuntimeSession::EDITOR)) return failures + 1;
+    tick(5);
+    expectEmpty("in the runtime editor after Play");
+    RuntimeSession::Shutdown();
+
+    if (!RuntimeSession::Start(RuntimeSession::PLAY)) return failures + 1;
+    expectEmpty("at the start of the next Play");
+    RuntimeSession::Shutdown();
+    expectEmpty("after the second Play");
+
+    std::printf("[carry] %d failed\n", failures);
+    std::fflush(stdout);
+    return failures;
+}
+
 int main(int argc, char** argv) {
     if (argc == 3 && std::strcmp(argv[2], "--roundtrip") == 0) {
         if (!ProjectManager::LoadProjectMetaData(argv[1])) return 2;
@@ -379,7 +459,9 @@ int main(int argc, char** argv) {
     TagRegistry::LoadFromProjectSettings(settings);
     GlobalEventVariables::LoadFromProjectSettings(settings);
     GlobalEventVariables::ResetValues();
-    AddBot();
+    const bool checkCarry = argc > 5 && std::strcmp(argv[5], "--carry") == 0;
+    if (checkCarry) MakeNoCameraLevel(ProjectManager::GetAssetsPath());
+    else AddBot();
     if (!Localisation::LoadLanguage("en")) return 3;
     if (!Editor::LoadLevel(argv[2])) return 4;
     if (!Editor::Initialize()) return 5;
@@ -391,6 +473,13 @@ int main(int argc, char** argv) {
     if (!RuntimeSession::Start(checkEmitters ? RuntimeSession::EDITOR : RuntimeSession::PLAY)) return 7;
     SDL_SetWindowSize(renderer->GetWindow(), 1280, 720);
     SDL_SyncWindow(renderer->GetWindow());
+
+    if (checkCarry) {
+        const int failures = CheckCarry();
+        RuntimeSession::Destroy();
+        Editor::Destroy();
+        return failures;
+    }
 
     if (checkEmitters) {
         CheckEmitters();

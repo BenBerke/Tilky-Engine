@@ -636,6 +636,8 @@ namespace LevelSystem {
     void Shutdown(Level &level) {
         EventSystem::Stop();
         scriptingSystem.Shutdown();
+        // The runtime editor draws what's left, and it isn't running to clear it.
+        ParticleSystem::Stop();
         scriptingInitialized = false;
         reportedControllerID = INVALID_ENTITY_ID;
         previousControllerID = INVALID_ENTITY_ID;
@@ -646,6 +648,9 @@ namespace LevelSystem {
     void StopLevel(Level &level, const std::unordered_set<ID>& keepEntities) {
         EventSystem::Stop();
         scriptingSystem.StopExcept(level, keepEntities);
+        // After OnDestroy, which can still emit. Here and not only in the next
+        // level's start, which returns early for a level with no camera.
+        ParticleSystem::Stop();
         reportedControllerID = INVALID_ENTITY_ID;
         previousControllerID = INVALID_ENTITY_ID;
     }
