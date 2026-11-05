@@ -26,6 +26,9 @@
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Math/Constants.hpp"
+#include "Headers/Math/Quaternion/QuaternionMath.hpp"
+#include "Headers/Math/Vector/Vector3Math.hpp"
 #include "Headers/Editor/AssetBrowser.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Runtime/RuntimeEditor/TransformGizmo.hpp"
@@ -110,6 +113,178 @@ namespace {
             left * (-ndcX * tanHalfFov * aspect) +
             up * (ndcY * tanHalfFov)
         );
+    }
+
+    // ---- Entity picking ----
+    // The transform's scale box says nothing about what's on screen: it can be
+    // invisible, sprites are scale.x by scale.z, and from inside one every
+    // pixel hits it. So the mouse picks what's actually drawn. Game rays
+    // (GameFunctions::Raycast) keep the box.
+
+    // ENTITY_MARKER_HALF_SIZE in Rendering.vs.glsl: entities with nothing else
+    // to click are picked by this much around their position, markers shown or not.
+    constexpr float ENTITY_PICK_PIXELS = 8.0f;
+
+    std::optional<float> RayQuadDistance(const Vector3& origin, const Vector3& dir, const Vector3& bottomCentre,
+                                         const Vector3& right, const Vector3& up, const float width, const float height) {
+        const Vector3 normal = Vector3Math::Cross(right, up);
+        const float facing = Vector3Math::Dot(dir, normal);
+        if (std::abs(facing) < Constants::Epsilon) return std::nullopt;
+
+        const float distance = Vector3Math::Dot(bottomCentre - origin, normal) / facing;
+        if (distance <= 0.0f) return std::nullopt;
+
+        const Vector3 local = origin + dir * distance - bottomCentre;
+        const float along = Vector3Math::Dot(local, right);
+        const float above = Vector3Math::Dot(local, up);
+
+        if (std::abs(along) > std::abs(width) * 0.5f) return std::nullopt;
+        if (above < std::min(height, 0.0f) || above > std::max(height, 0.0f)) return std::nullopt;
+
+        return distance;
+    }
+
+    // Entering the box only: a camera inside it isn't looking at it.
+    std::optional<float> RayBoxEntryDistance(const Vector3& origin, const Vector3& dir, const Vector3& boxMin, const Vector3& boxMax) {
+        float entry = 0.0f;
+        float exit = std::numeric_limits<float>::max();
+
+        const auto axis = [&](const float from, const float along, const float low, const float high) {
+            if (std::abs(along) < Constants::Epsilon) return from >= low && from <= high;
+
+            const float first = (low - from) / along;
+            const float second = (high - from) / along;
+
+            entry = std::max(entry, std::min(first, second));
+            exit = std::min(exit, std::max(first, second));
+
+            return entry <= exit;
+        };
+
+        if (!axis(origin.x, dir.x, std::min(boxMin.x, boxMax.x), std::max(boxMin.x, boxMax.x))) return std::nullopt;
+        if (!axis(origin.y, dir.y, std::min(boxMin.y, boxMax.y), std::max(boxMin.y, boxMax.y))) return std::nullopt;
+        if (!axis(origin.z, dir.z, std::min(boxMin.z, boxMax.z), std::max(boxMin.z, boxMax.z))) return std::nullopt;
+
+        if (entry <= 0.0f) return std::nullopt;
+        return entry;
+    }
+
+    // How far along the ray the marker of an entity at `position` is, if the
+    // mouse is on it. The marker is pulled toward the camera to clear the floor
+    // it stands on (RenderEntityMarkerVertex), which doesn't move it on screen.
+    std::optional<float> MarkerDistance(const ComponentCamera& camera, const Vector3& origin, const Vector3& position,
+                                        const Vector2 mousePosition, const Vector2 viewportSize) {
+        if (viewportSize.x <= 0.0f || viewportSize.y <= 0.0f) return std::nullopt;
+
+        const Vector3 forward = Vector3Math::Normalized(camera.forward);
+        const Vector3 left = GetCameraLeft(camera);
+        const Vector3 up = Vector3Math::Normalized(Vector3Math::Cross(forward, left));
+
+        const Vector3 toPosition = position - origin;
+        const float depth = Vector3Math::Dot(toPosition, forward);
+        if (depth <= 0.01f) return std::nullopt;
+
+        const float tanHalfFov = std::tan(camera.fov * std::numbers::pi_v<float> / 180.0f * 0.5f);
+        const float aspect = viewportSize.x / viewportSize.y;
+
+        const float ndcX = -Vector3Math::Dot(toPosition, left) / (depth * tanHalfFov * aspect);
+        const float ndcY = Vector3Math::Dot(toPosition, up) / (depth * tanHalfFov);
+
+        const float offsetX = (ndcX + 1.0f) * 0.5f * viewportSize.x - mousePosition.x;
+        const float offsetY = (1.0f - ndcY) * 0.5f * viewportSize.y - mousePosition.y;
+
+        if (offsetX * offsetX + offsetY * offsetY > ENTITY_PICK_PIXELS * ENTITY_PICK_PIXELS) return std::nullopt;
+
+        const float distance = Vector3Math::Length(toPosition);
+        const float worldPerPixel = 2.0f * depth * tanHalfFov / viewportSize.y;
+
+        return distance - std::min(4.0f * ENTITY_PICK_PIXELS * worldPerPixel, distance * 0.5f);
+    }
+
+    // What's under the mouse: the nearest of the map geometry and the entities
+    // as they're drawn. Disabled entities are skipped, as all rays skip them.
+    std::optional<RayHit> PickUnderMouse(Level& level, const ComponentCamera& camera, const Vector3& origin, const Vector3& dir,
+                                         const Vector2 mousePosition, const Vector2 viewportSize) {
+        const std::optional<RayHit> geometry = GameFunctions::RaycastGeometry(level, origin, dir, RAY_LENGTH);
+        const float geometryDistance = geometry.has_value() ? geometry->distance : RAY_LENGTH;
+
+        Entity* picked = nullptr;
+        float pickedDistance = RAY_LENGTH;
+
+        const auto consider = [&](const ID entityID, const std::optional<float> distance, const bool seenThroughGeometry) {
+            if (!distance.has_value() || *distance >= pickedDistance) return;
+            if (!seenThroughGeometry && *distance >= geometryDistance) return;
+            if (entityID == camera.ownerID) return;
+
+            Entity* entity = level.GetEntity(entityID);
+            if (entity == nullptr || !entity->enabled) return;
+
+            picked = entity;
+            pickedDistance = *distance;
+        };
+
+        for (const ComponentSprite& sprite : level.sprites.components) {
+            if (!sprite.isActive) continue;
+
+            const ComponentTransform* transform = level.transforms.Get(sprite.ownerID);
+            if (transform == nullptr) continue;
+
+            const Vector3 position = transform->LocalToWorld(sprite.offset);
+            Vector3 right;
+            Vector3 up;
+
+            // The same axes renderSprite (Rendering.vs.glsl) builds the quad from.
+            if (sprite.isStatic) {
+                const Quaternion rotation = transform->rotation.Normalized();
+                right = QuaternionMath::Rotate(rotation, {1.0f, 0.0f, 0.0f});
+                up = QuaternionMath::Rotate(rotation, {0.0f, 1.0f, 0.0f});
+            }
+            else {
+                const Vector2 toCamera = {origin.x - position.x, origin.z - position.z};
+                const float toCameraLength = std::sqrt(toCamera.x * toCamera.x + toCamera.y * toCamera.y);
+
+                right = toCameraLength > 0.001f
+                    ? Vector3{-toCamera.y / toCameraLength, 0.0f, toCamera.x / toCameraLength}
+                    : Vector3{1.0f, 0.0f, 0.0f};
+                up = {0.0f, 1.0f, 0.0f};
+            }
+
+            consider(sprite.ownerID, RayQuadDistance(origin, dir, position, right, up, transform->scale.x, transform->scale.z), false);
+        }
+
+        // A model's mesh isn't known here, so its scale box stands in for it.
+        for (const ComponentModel& model : level.models.components) {
+            if (model.fileName.empty()) continue;
+
+            const ComponentTransform* transform = level.transforms.Get(model.ownerID);
+            if (transform == nullptr) continue;
+
+            const Vector3 position = transform->LocalToWorld(model.offset);
+            const Vector3 halfSize = transform->scale * 0.5f;
+
+            consider(model.ownerID, RayBoxEntryDistance(
+                origin, dir,
+                {position.x - halfSize.x, position.y, position.z - halfSize.z},
+                {position.x + halfSize.x, position.y + transform->scale.y, position.z + halfSize.z}
+            ), false);
+        }
+
+        // Markers in Always mode show through walls, so they're clicked through them.
+        const bool markersThroughGeometry = MapEditorInternal::entityMarkerMode == MapEditorInternal::EntityMarkerMode::Always;
+
+        for (const ComponentTransform& transform : level.transforms.components)
+            consider(transform.ownerID, MarkerDistance(camera, origin, transform.position, mousePosition, viewportSize), markersThroughGeometry);
+
+        if (picked == nullptr) return geometry;
+
+        RayHit hit;
+        hit.type = RayHitType::Entity;
+        hit.entity = picked;
+        hit.distance = pickedDistance;
+        hit.position = origin + dir * pickedDistance;
+        hit.normal = dir * -1.0f;
+
+        return hit;
     }
 
     ImGuiDrawFunctions::EntityInspectorState entityInspectorState;
@@ -3063,13 +3238,13 @@ namespace RuntimeEditor {
             viewportSize
         );
 
-        const std::optional<RayHit> hit = GameFunctions::Raycast(
+        const std::optional<RayHit> hit = PickUnderMouse(
             level,
+            *camera,
             rayOrigin,
             rayDirection,
-            RAY_LENGTH,
-            camera->ownerID,
-            false
+            rayScreenPosition,
+            viewportSize
         );
 
         // Cached for Draw(), which needs a drop target but has no viewport size

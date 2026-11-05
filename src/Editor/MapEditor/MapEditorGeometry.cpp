@@ -62,43 +62,21 @@ namespace MapEditorInternal {
         return Vector2Math::DistanceSquared(a, b) < radius * radius;
     }
 
-    bool AABBCollisionWithEntity(const ComponentTransform& transform, const Vector2& mousePosition) {
-        const Vector2 planarPosition = {transform.position.x,transform.position.z};
-
-        const Vector2 planarScale = {transform.scale.x, transform.scale.z};
-
-        const __m128 entityPos = planarPosition.reg;
-        const __m128 entityScale = planarScale.reg;
-        const __m128 mousePos = mousePosition.reg;
-
-        const __m128 halfOnes = _mm_set1_ps(0.5f);
-        const __m128 entityHalfSize = _mm_mul_ps(entityScale, halfOnes);
-        const __m128 mouseHalfSize = _mm_set1_ps(0.05f);
-
-        const __m128 entityMin = _mm_sub_ps(entityPos, entityHalfSize);
-        const __m128 entityMax = _mm_add_ps(entityPos, entityHalfSize);
-
-        const __m128 mouseMin = _mm_sub_ps(mousePos, mouseHalfSize);
-        const __m128 mouseMax = _mm_add_ps(mousePos, mouseHalfSize);
-
-        const __m128 c1 = _mm_cmple_ps(entityMin, mouseMax);
-        const __m128 c2 = _mm_cmpge_ps(entityMax, mouseMin);
-
-        const __m128 result = _mm_and_ps(c1, c2);
-
-        return (_mm_movemask_ps(result) & 3) == 3;
-    }
-
+    // Entities are drawn as ENTITY_SIZE squares whatever their scale, so that
+    // square is what gets picked. Last drawn is on top, so it's asked first.
     Entity* EntityAt(const Vector2& mouseClick) {
         Level& level = LevelManager::CurrentLevel();
 
-        for (Entity& entity : level.entities) {
+        for (auto entity = level.entities.rbegin(); entity != level.entities.rend(); ++entity) {
             // Filtered out in the Entity Mode panel: drawn dimmed, never picked.
-            if (!EntityPassesFilter(entity)) continue;
+            if (!EntityPassesFilter(*entity)) continue;
 
             // UI entities live in the UI Editor's screen space, not on the map.
-            const ComponentTransform* transform = level.transforms.Get(entity.id);
-            if (transform != nullptr && AABBCollisionWithEntity(*transform, mouseClick)) return &entity;
+            const ComponentTransform* transform = level.transforms.Get(entity->id);
+            if (transform == nullptr) continue;
+
+            if (std::abs(mouseClick.x - transform->position.x) <= ENTITY_SIZE * 0.5f &&
+                std::abs(mouseClick.y - transform->position.z) <= ENTITY_SIZE * 0.5f) return &*entity;
         }
 
         return nullptr;

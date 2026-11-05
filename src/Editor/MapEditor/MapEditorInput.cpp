@@ -1213,12 +1213,11 @@ namespace MapEditorInternal {
                     if (transform == nullptr) continue;
 
                     // The same footprint EntityAt picks with.
-                    const float halfX = transform->scale.x * 0.5f;
-                    const float halfZ = transform->scale.z * 0.5f;
+                    const float half = ENTITY_SIZE * 0.5f;
 
                     const bool overlaps =
-                        transform->position.x - halfX <= boxMax.x && transform->position.x + halfX >= boxMin.x &&
-                        transform->position.z - halfZ <= boxMax.y && transform->position.z + halfZ >= boxMin.y;
+                        transform->position.x - half <= boxMax.x && transform->position.x + half >= boxMin.x &&
+                        transform->position.z - half <= boxMax.y && transform->position.z + half >= boxMin.y;
 
                     if (!overlaps) continue;
                     if (std::find(selectedEntities.begin(), selectedEntities.end(), entity.id) != selectedEntities.end()) continue;
