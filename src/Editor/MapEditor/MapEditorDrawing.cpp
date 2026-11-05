@@ -799,6 +799,8 @@ namespace MapEditorInternal {
             SDL_FColor sectorColor = normalSectorColor;
 
             constexpr SDL_FColor hoveredTexturedSectorTint = {.5f, .5f, .5f, 1.0f};
+            // Lighter than the hover tint, so hovering a selected sector still shows.
+            constexpr SDL_FColor selectedTexturedSectorTint = {.65f, .65f, .65f, 1.0f};
 
             // In any mode: the inspector shows sectors in every mode.
             const bool selected = !selectedSectors.empty() &&
@@ -837,6 +839,7 @@ namespace MapEditorInternal {
                 if (floorTexture != nullptr) {
                     if (layerDimmed) DrawFilledTriangleTextured(triangle, floorTexture, {0.35f, 0.35f, 0.35f, 1.0f});
                     else if (hovered) DrawFilledTriangleTextured(triangle,floorTexture, hoveredTexturedSectorTint);
+                    else if (selected) DrawFilledTriangleTextured(triangle, floorTexture, selectedTexturedSectorTint);
                     else DrawFilledTriangleTextured(triangle,floorTexture, {1.0f, 1.0f, 1.0f, 1.0f});
                 }
                 else DrawFilledTriangle(triangle, sectorColor);
