@@ -118,8 +118,8 @@ switching frames never makes the texture jump.
 
 Physics tests entity colliders against the solid parts of each wall. An opening is passable as
 long as the entity fits through the gap, unless it has a Middle texture with **Has Collision** on. If the solid part in the way is a low step at the
-collider's bottom, and it is no taller than its collider's **Step Size**, the entity steps up onto it
-instead of being blocked. See [Collider](Collider.md#step-size).
+collider's bottom, and it is no taller than its collider's **Step Height**, the entity steps up onto it
+instead of being blocked. See [Collider](Collider.md#step-height).
 
 ## In the editor
 

@@ -144,7 +144,7 @@ same list carry on playing with no interruption. See [Audio](../Audio.md) and [A
 **World Settings > Physics** has **Gravity** and **Max Physics Sub-steps**. Sub-steps stop very fast things passing
 through walls, at some cost in speed. Each entity's **Rigidbody** has **Mass**, **Friction** and **Gravity Scale**.
 
-A collider's **Step Size** is how high a step it can climb, and its **Max Slope** how steep a floor it can walk on.
+A collider's **Step Height** is how high a step it can climb, and its **Max Slope** how steep a floor it can walk on.
 [Collider](../Collider.md) and [Rigidbody](../Rigidbody.md) go into detail.
 
 ## Editing in 3D

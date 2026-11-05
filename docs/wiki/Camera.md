@@ -87,7 +87,7 @@ When a physics body walks up a step, physics lifts it onto the step in a single 
 smoothing, the view would jump up. With **Smooth Stepping** on, the view glides up to the new
 height instead, and does the same when stepping down.
 
-- It only applies to a camera whose entity has a [Collider](Collider.md) with a **Step Size**
+- It only applies to a camera whose entity has a [Collider](Collider.md) with a **Step Height**
   above 0 and a grounded [Rigidbody](Rigidbody.md), which is how a player is normally set up.
 - **Smoothing Strength** sets how fast the view catches up. Each second it closes about
   `1 - e^(-strength)` of the remaining gap, so `1` is a slow, floaty glide, `10` is quick and `20`

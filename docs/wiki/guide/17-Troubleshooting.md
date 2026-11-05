@@ -16,7 +16,7 @@ Check the sector's shape. Two sectors that should join need to share their wall 
 [page 3](03-Sectors.md).
 
 **The player can't get up a step.**
-Lower the step, or raise the player's Collider **Step Size**.
+Lower the step, or raise the player's Collider **Step Height**.
 
 **The level is too bright, or too dark far away.**
 See "Darkness in the distance" on [page 10](10-Finish-Your-Game.md).

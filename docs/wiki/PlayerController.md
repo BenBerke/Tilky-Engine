@@ -14,7 +14,7 @@ The player entity needs:
 |---|---|
 | [Transform](Transform.md) | Where the player is. |
 | [Rigidbody](Rigidbody.md) | **Required.** The controller moves the player by setting the Rigidbody's velocity. Without one the controller is skipped and an error is logged. Leave **Is Static** off. |
-| [Collider](Collider.md), Capsule | The player's body: needed to stand on floors, bump into walls and ceilings and climb steps. Keep its offset at `0, 0, 0` so the player's position is at the bottom of the capsule, and make it taller than **Eye Height**. Give it a **Step Size** (e.g. `8`) so the player can walk up stairs. |
+| [Collider](Collider.md), Capsule | The player's body: needed to stand on floors, bump into walls and ceilings and climb steps. Keep its offset at `0, 0, 0` so the player's position is at the bottom of the capsule, and make it taller than **Eye Height**. Give it a **Step Height** (e.g. `8`) so the player can walk up stairs. |
 | [Camera](Camera.md) | What you see through. It is normally on the same entity, so the view sits at **Eye Height** above the player's position. |
 | Player Controller | Tick **Is Active**. |
 

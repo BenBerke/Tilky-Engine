@@ -38,7 +38,7 @@ square trigger volumes.
 
 Sizes are multiplied by the [Transform](Transform.md)'s `scale`: a sphere's or capsule's radius by
 `scale.x`, a capsule's height by `scale.y`, and a box by all three axes. The `offset` is scaled
-per axis the same way. **Step Size** is always in world units.
+per axis the same way. **Step Height** is always in world units.
 
 ### Where the collider sits
 
@@ -65,7 +65,7 @@ An entity can have several Colliders. Together they make **one compound shape**:
   by any of its active colliders.
 - Collision and trigger callbacks still fire **once per pair of entities**, however many of their
   colliders touch.
-- Each collider has its own Step Size; ray casts test every collider.
+- Each collider has its own Step Height; ray casts test every collider.
 - Floor and ceiling checks use the sector under each collider's bottom.
 
 `entity.collider` is the first one; `entity:GetComponents(Component.Collider)` lists them all.
@@ -126,12 +126,12 @@ steeper floor the body isn't grounded: gravity keeps pulling, it slides down the
 [Player Controller](PlayerController.md) can't jump off it. A steep slope is a wall to walk into:
 moving uphill on it gains no height, while moving across or down it still works.
 
-### Step Size
+### Step Height
 
-**Step Size** lets a body walk up small ledges instead of being stopped by them. When the body walks
-into the solid lower part of a wall (the face of a step) whose top is no more than Step Size above
+**Step Height** lets a body walk up small ledges instead of being stopped by them. When the body walks
+into the solid lower part of a wall (the face of a step) whose top is no more than Step Height above
 the collider's bottom, it is lifted onto the step. The same limit applies going **down**: walking off a ledge
-no taller than Step Size snaps the body down onto the lower floor instead of making it fall.
+no taller than Step Height snaps the body down onto the lower floor instead of making it fall.
 
 `0` turns stepping off. For a player, `8` to `12` feels right with the default scale. The
 [Camera](Camera.md#smooth-stepping)'s Smooth Stepping hides the sudden height change.
@@ -171,7 +171,7 @@ colliders are all inactive falls through the floor.
 | **Collider Type** | `type` | Capsule | Sphere, AABB or Capsule. |
 | **Is Trigger** | `isTrigger` | off | See [Triggers](#triggers). |
 | **Radius** (sphere, capsule) / **Height** (capsule) / **Scale** (AABB) | `scale` | `0.1875, 0.5, 0.1875` | Radius is `scale.x`, a capsule's height `scale.y`, a box's size all three. Multiplied by the Transform's scale: `6, 16, 6` at the default scale of 32. See [Size and scale](#size-and-scale). |
-| **Step Size** | `stepSize` | `15` | See [Step Size](#step-size). |
+| **Step Height** | `stepSize` | `15` | See [Step Height](#step-height). |
 | **Max Slope** | `maxSlope` | `45` | Degrees, `0` to `90`. See [Max Slope](#max-slope). |
 | **Offset** | `offset` | `0, 0, 0` | Where the collider's bottom sits. See [Where the collider sits](#where-the-collider-sits). |
 

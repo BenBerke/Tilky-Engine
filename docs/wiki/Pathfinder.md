@@ -42,10 +42,10 @@ moved one step ahead. The step is **blocked** when:
   solid middle texture, or a wall or enabled linedef with **Blocks Pathfinders**
   ticked (Doom's block-monsters line). Walls are checked directly, so a pillar thinner than the
   collider blocks it too,
-- the floor there is more than the collider's **Step Size** above the floor it stands on (too high
+- the floor there is more than the collider's **Step Height** above the floor it stands on (too high
   to climb),
-- the floor there is more than **Step Size** below it, or the square would hang over a drop higher
-  than **Step Size** (it won't walk off ledges, unless **Can Drop Off** is ticked),
+- the floor there is more than **Step Height** below it, or the square would hang over a drop higher
+  than **Step Height** (it won't walk off ledges, unless **Can Drop Off** is ticked),
 - there isn't room for the collider's height under the ceiling.
 
 With a [Rigidbody](Rigidbody.md) the entity moves by its velocity, so physics still stops it at
@@ -65,7 +65,7 @@ It never uses a closing type of door, and it leaves a locked door shut unless it
 tag, without playing the locked sound or showing the message. To keep Pathfinders out of a door
 altogether, untick the door's **Pathfinders Can Open**.
 
-Without a Collider the entity is treated as a point with the default Step Size of `15`.
+Without a Collider the entity is treated as a point with the default Step Height of `15`.
 
 ### Arriving
 
@@ -96,7 +96,7 @@ the target, which is useful for air entities.
 
 Tick **Air Entity** for things that fly. A flyer:
 
-- ignores Step Size and drop-offs, so it floats over ledges and pits,
+- ignores Step Height and drop-offs, so it floats over ledges and pits,
 - rises or sinks at **Float Speed** toward the destination's height once the height difference
   times **Float Ratio** is more than the distance left (Doom's `140` and `3`), and on arriving,
   staying between the floor and ceiling. Heading toward a raised floor, it rises over it first,
@@ -163,7 +163,7 @@ A disabled entity's Pathfinder is frozen. An entity can have several Pathfinders
 A Pathfinder saved before these options existed keeps stopping in range, opening no doors and
 turning at once, until you change those settings.
 
-For a walker, also give the entity a [Collider](Collider.md) (its size and **Step Size** decide
+For a walker, also give the entity a [Collider](Collider.md) (its size and **Step Height** decide
 where it fits) and a [Rigidbody](Rigidbody.md) (so walls, other bodies and gravity apply).
 
 ## Scripting

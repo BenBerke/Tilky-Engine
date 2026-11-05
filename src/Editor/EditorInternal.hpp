@@ -36,8 +36,8 @@ namespace MapEditorInternal {
     extern float editorZoom;
     extern float GRID_SIZE; // fixed world-space grid/snap spacing - NOT affected by editorZoom. Adjustable at runtime via the Grid & Snapping panel.
     constexpr float MIN_EDITOR_ZOOM = 0.001f;
-    constexpr float MAX_EDITOR_ZOOM = 1000.00f;
-    constexpr float MIN_GRID_SIZE = .1f;
+    constexpr float MAX_EDITOR_ZOOM = 10000.00f;
+    constexpr float MIN_GRID_SIZE = .01f;
     constexpr float DEFAULT_GRID_SIZE = 12.0f;
 
     constexpr float ENTITY_SIZE = 10.0f;

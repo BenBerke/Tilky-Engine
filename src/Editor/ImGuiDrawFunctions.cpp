@@ -6089,14 +6089,15 @@ namespace ImGuiDrawFunctions {
                 EndSection();
 
                 BeginSection("Behaviour");
-                FieldWidth(160.0f);
                 {
                     PrefabField prefabField("stepSize");
+                    FieldWidth(160.0f);
                     InputOrDrag(Get("component.collider.step_size").c_str(), &c->stepSize, draggable);
                     Tooltip(Get("editor.tooltip.component.collider.step_size").c_str());
                 }
                 {
                     PrefabField prefabField("maxSlope");
+                    FieldWidth(160.0f);
                     InputOrDrag(Get("component.collider.max_slope").c_str(), &c->maxSlope, draggable);
                     Tooltip(Get("editor.tooltip.component.collider.max_slope").c_str());
                     c->maxSlope = std::clamp(c->maxSlope, 0.0f, 90.0f);
