@@ -3289,8 +3289,8 @@ namespace {
         DrawExportQuitModal();
     }
 
-    // Bottom bar styled like the main menu bar, showing the mouse position in
-    // level coordinates. Submitted before the dockspace so it shrinks the
+    // Bottom bar styled like the main menu bar, showing the current mode and
+    // the mouse position in level coordinates. Submitted before the dockspace so it shrinks the
     // viewport's work area instead of covering docked panels.
     void DrawStatusBar() {
         constexpr ImGuiWindowFlags flags =
@@ -3303,9 +3303,15 @@ namespace {
             if (ImGui::BeginMenuBar()) {
                 const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
 
-                char text[64];
-                std::snprintf(text, sizeof(text), "X: %.2f   Y: %.2f", mouseWorld.x, mouseWorld.y);
-                ImGui::TextUnformatted(text);
+                const char* modeKey = currentMode == MODE_GEOMETRY ? "mode.geometry"
+                                    : currentMode == MODE_SECTOR ? "mode.sector"
+                                    : "mode.entity";
+
+                char coordinates[64];
+                std::snprintf(coordinates, sizeof(coordinates), "X:%.2f Y:%.2f", mouseWorld.x, mouseWorld.y);
+
+                const std::string text = Get(modeKey) + " - " + coordinates;
+                ImGui::TextUnformatted(text.c_str());
 
                 ImGui::EndMenuBar();
             }
