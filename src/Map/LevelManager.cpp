@@ -76,15 +76,14 @@ namespace LevelManager {
             if (std::ranges::find(onDisk, name) == onDisk.end()) onDisk.push_back(std::move(name));
         }
 
+        if (!ProjectManager::HasLevelOrder()) return onDisk;
+
         std::vector<std::string> ordered;
         ordered.reserve(onDisk.size());
 
         for (const std::string& name : ProjectManager::GetLevelOrder())
             if (std::ranges::find(onDisk, name) != onDisk.end() && std::ranges::find(ordered, name) == ordered.end())
                 ordered.push_back(name);
-
-        for (std::string& name : onDisk)
-            if (std::ranges::find(ordered, name) == ordered.end()) ordered.push_back(std::move(name));
 
         return ordered;
     }
@@ -93,7 +92,7 @@ namespace LevelManager {
         const std::vector<std::string> levels = OrderedLevelNames();
         if (levels.empty()) return {};
 
-        // A level that isn't saved yet isn't in the list: start from the top.
+        // A level that isn't in the list starts from the top.
         const auto current = HasCurrentLevel() ? std::ranges::find(levels, CurrentLevel().name) : levels.end();
         if (current == levels.end() || current + 1 == levels.end()) return levels.front();
 
@@ -104,7 +103,7 @@ namespace LevelManager {
         const std::vector<std::string> levels = OrderedLevelNames();
 
         if (levels.empty()) {
-            std::cerr << "No .bson level files found in: "
+            std::cerr << "The project's level list has no level in it. Assets folder: "
                       << ProjectManager::GetAssetsPath().string()
                       << "\n";
             return false;

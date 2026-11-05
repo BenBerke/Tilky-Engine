@@ -37,6 +37,7 @@ namespace {
     float currentUIReferenceHeight = ProjectManager::DEFAULT_UI_REFERENCE_HEIGHT;
     float currentTexelsPerUnit = ProjectManager::DEFAULT_TEXELS_PER_UNIT;
     std::vector<std::string> currentLevelOrder;
+    bool currentHasLevelOrder = false;
 }
 
 namespace ProjectManager {
@@ -201,6 +202,7 @@ namespace ProjectManager {
             projectData["name"] = projectName;
             projectData["assetsFolder"] = "Assets";
             projectData["engineVersion"] = engineVersion; // set before OpenProject() below so the pinned version is the one launched
+            projectData["levels"] = json::array();
 
             std::ofstream file(dataPath);
 
@@ -283,9 +285,13 @@ namespace ProjectManager {
 
         // The order of the game's levels; the first is the one it opens.
         currentLevelOrder.clear();
-        if (const auto levels = projectData.find("levels"); levels != projectData.end() && levels->is_array())
+        currentHasLevelOrder = false;
+        if (const auto levels = projectData.find("levels"); levels != projectData.end() && levels->is_array()) {
+            currentHasLevelOrder = true;
+
             for (const json& level : *levels)
                 if (level.is_string()) currentLevelOrder.push_back(level.get<std::string>());
+        }
 
         currentUIReferenceHeight = (std::max)(1.0f, projectData.value("uiReferenceHeight", DEFAULT_UI_REFERENCE_HEIGHT));
 
@@ -542,6 +548,10 @@ namespace ProjectManager {
         return currentLevelOrder;
     }
 
+    bool HasLevelOrder() {
+        return currentHasLevelOrder;
+    }
+
     bool SetLevelOrder(const std::vector<std::string>& levelNames) {
         if (currentProjectFile.empty()) {
             spdlog::error("Cannot set level order - no project is currently loaded.");
@@ -576,6 +586,7 @@ namespace ProjectManager {
         outFile.close();
 
         currentLevelOrder = levelNames;
+        currentHasLevelOrder = true;
 
         return true;
     }

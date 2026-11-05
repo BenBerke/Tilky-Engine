@@ -7,16 +7,16 @@ into a game someone else can play.
 
 The game plays levels in a list that you control.
 
-1. Open **Project Settings** and find **Levels**. Every level in your project is listed, and a new one
-   joins the bottom by itself.
+1. Open **Project Settings** and find **Levels**. A new level isn't listed until you add it: drag it here
+   from the **Asset Browser**.
 2. Drag the list into the order you want.
 
 The top level opens first, so keep **Main Menu** there. **New Game** and every exit switch go to the next
 level down, so put your first level straight under the menu.
 
 The examples can stay below your last level. Its **End Game Switch** ends the game, so the player never
-reaches them, and they'll be handy to look at later. When you want them gone, click **Del** next to a level.
-That deletes the file, and it can't be undone.
+reaches them, and they'll be handy to look at later. When you want them gone, click **Remove** next to a
+level. That only takes it off the list. To delete the file too, do it in the **Asset Browser**.
 
 The main menu's **Select Level** buttons are made for the example levels. Edit or delete them in the
 **Main Menu** layout.

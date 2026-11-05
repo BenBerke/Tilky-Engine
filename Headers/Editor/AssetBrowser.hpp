@@ -438,6 +438,10 @@ public:
     // string.
     static const char* DragDropPayloadTypeFor(AssetKind kind);
 
+    // The payload of everything without a field-reference type, levels and
+    // folders included. Same data: the absolute path.
+    static const char* MoveEntryPayloadType();
+
     // Converts an absolute path into the reference string a field of the
     // given kind should store (relative-with-extension for textures;
     // relative-without-extension for sounds/scripts).

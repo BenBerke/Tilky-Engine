@@ -335,9 +335,9 @@ namespace {
     // itself (dropped onto a folder tile, the "^ Up" button, or a
     // breadcrumb segment - see AssetBrowser::DrawMoveDropTarget()). Kept
     // separate from AssetBrowser::DragDropPayloadTypeFor(), the public
-    // per-AssetKind type field widgets elsewhere accept: this one is a
-    // purely internal implementation detail, so it never needs to be
-    // visible outside this file. A Texture/Sound/Script file is dragged
+    // per-AssetKind type field widgets elsewhere accept. Outside this file
+    // only the Levels list reads it, through AssetBrowser::MoveEntryPayloadType().
+    // A Texture/Sound/Script file is dragged
     // with its usual field-reference payload instead of this one (an entry
     // never offers both at once - see DrawEntryTile) and still moves
     // correctly, because DrawMoveDropTarget() also accepts each of those
@@ -1969,6 +1969,10 @@ const char* AssetBrowser::DragDropPayloadTypeFor(const AssetKind kind) {
         case AssetKind::Prefab:  return "TILKY_ASSET_PREFAB";
         default:                 return "TILKY_ASSET_OTHER";
     }
+}
+
+const char* AssetBrowser::MoveEntryPayloadType() {
+    return kMoveEntryPayloadType;
 }
 
 std::string AssetBrowser::ToAssetReference(const std::filesystem::path& absolutePath, const AssetKind kind) {

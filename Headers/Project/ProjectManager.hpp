@@ -257,8 +257,12 @@ namespace ProjectManager {
 
     // The project's level order as saved ("levels" in project.tilky), plain
     // level names like GetLastOpenLevelName(). It can name levels that no
-    // longer exist and miss new ones: use LevelManager::OrderedLevelNames().
+    // longer exist: use LevelManager::OrderedLevelNames().
     const std::vector<std::string>& GetLevelOrder();
+
+    // False for a project saved before it had a level list. An empty list is
+    // not the same thing: its project has no level in the list on purpose.
+    bool HasLevelOrder();
 
     // Patches "levels" into the loaded project's project.tilky, the same
     // one-field patch as SetLastOpenLevelName().

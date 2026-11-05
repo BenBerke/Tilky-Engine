@@ -39,8 +39,8 @@ namespace LevelManager {
     // such as the background texture.
     bool LoadLevelFromFile(const std::filesystem::path& levelFile, LevelSerialization::LevelExtraData* outExtraData = nullptr);
     bool LoadLevelByName(const std::string& levelName);
-    // Every level in the project, in the project's order: the saved order
-    // without levels that no longer exist, then any level it doesn't list yet.
+    // The project's level list without levels that no longer exist. Every
+    // level, for a project saved before it had a list.
     std::vector<std::string> OrderedLevelNames();
     // The level after the current one in that order, the first level after
     // the last. Empty when the project has no levels.

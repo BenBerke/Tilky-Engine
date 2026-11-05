@@ -1518,8 +1518,11 @@ namespace {
     // Delete / remove confirmation modal
     // ============================================================================
     void DrawDeleteConfirmModal() {
+        const std::string popupTitle =
+            Localisation::Get("launcher.confirm_delete_title") + "###delete_confirm_modal";
+
         if (wantOpenDeleteConfirmPopup) {
-            ImGui::OpenPopup("##delete_confirm_modal");
+            ImGui::OpenPopup(popupTitle.c_str());
             wantOpenDeleteConfirmPopup = false;
         }
 
@@ -1527,7 +1530,7 @@ namespace {
         const ImGuiIO& io = ImGui::GetIO();
         ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 
-        if (ImGui::BeginPopupModal(Localisation::Get("launcher.confirm_delete_title").c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::BeginPopupModal(popupTitle.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
             const std::string message = projectPendingDeleteIsImported
                 ? Localisation::Get("launcher.confirm_remove_message")
                 : Localisation::Get("launcher.confirm_delete_message");

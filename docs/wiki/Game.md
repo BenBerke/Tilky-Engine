@@ -670,9 +670,13 @@ Switches to the level after the current one in **Project Settings > Levels**, th
 one level, that restarts it. The **Load Level** dispatch does the same with its level set to
 **(Next Level)**.
 
-The list is the project's level order: drag a row to move it. The game opens the top level, new
-levels join the bottom, and renaming a level keeps its place. A level loaded by name carries on
-from wherever it is in the list.
+The list is the project's level order. Drag a level into it from the Asset Browser, and drag a row
+to move it. The game opens the top level, and renaming a level keeps its place. A new level isn't
+in the list until you drag it in, and exporting needs at least one level there.
+
+A level that's not in the list still ships with the game and still loads by name. From one,
+`LoadNextLevel` goes to the top of the list. A level loaded by name carries on from wherever it is
+in the list.
 
 ```lua
 -- Scripts/Flow/Exit.lua (trigger at the end of the level)

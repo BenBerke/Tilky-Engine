@@ -655,8 +655,6 @@ namespace {
 
     // Confirmation guards
     bool shutdownConfirmOpen = false;
-    bool deleteLevelConfirmOpen = false;
-    std::string deleteLevelPending;
 
     // Hierarchy search
     char hierarchySearchBuf[64] = "";
@@ -1787,14 +1785,29 @@ namespace {
     // =========================================================================
 
     // The game's levels in order: it opens the top one, Load Next Level goes
-    // down the list. Dragging a row moves it; saved when it's let go.
+    // down the list. Levels get in by being dropped from the Asset Browser.
     void DrawLevelsChildPanel() {
+        // A copy, so a row being dragged is only saved when it's let go. The
+        // Load button's save can change the project's list mid-loop, too.
+        static std::vector<std::string> levels;
         static bool levelOrderChanged = false;
+
+        if (!levelOrderChanged) levels = ProjectManager::GetLevelOrder();
+
+        const auto saveLevels = [] {
+            if (!ProjectManager::SetLevelOrder(levels))
+                ShowNotification(Get("editor.project.level_order_failed").c_str(), /*isError=*/true);
+        };
+
         int draggedRow = -1;
         int draggedToRow = -1;
+        int removedRow = -1;
+        std::vector<float> rowTops;
+        rowTops.reserve(levels.size());
 
+        // At least two rows high, so an empty list is still easy to drop on.
         const float childHeight = std::min(
-            static_cast<float>(Editor::maps.size()) * ImGui::GetFrameHeightWithSpacing() +
+            static_cast<float>(std::max<std::size_t>(levels.size(), 2)) * ImGui::GetFrameHeightWithSpacing() +
             ImGui::GetStyle().WindowPadding.y * 2.0f,
             180.0f
         );
@@ -1805,22 +1818,24 @@ namespace {
         ImGui::PushStyleColor(ImGuiCol_ChildBg, listBackground);
         ImGui::BeginChild("##LevelsList", ImVec2(0.0f, childHeight), /*border=*/true);
 
-        if (Editor::maps.empty()) {
-            ImGui::TextDisabled("%s", Get("levels.none_found").c_str());
+        if (levels.empty()) {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("%s", Get("levels.drop_hint").c_str());
+            ImGui::PopTextWrapPos();
         }
 
         // Name column stretches and clips; the buttons keep their own column,
         // so a long level name can no longer run underneath them.
-        if (!Editor::maps.empty() && ImGui::BeginTable("##LevelsTable", 2, ImGuiTableFlags_None)) {
-            constexpr float buttonWidth = 52.0f;
+        if (!levels.empty() && ImGui::BeginTable("##LevelsTable", 2, ImGuiTableFlags_None)) {
+            constexpr float buttonWidth = 58.0f;
 
             ImGui::TableSetupColumn("##Name", ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("##Actions", ImGuiTableColumnFlags_WidthFixed,
                                     buttonWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x);
 
-            for (int i = 0; i < static_cast<int>(Editor::maps.size()); ++i) {
+            for (int i = 0; i < static_cast<int>(levels.size()); ++i) {
                 // By name, not row: the row being dragged stays the active item as it moves.
-                const std::string &name = Editor::maps[i];
+                const std::string &name = levels[i];
                 ImGui::PushID(name.c_str());
 
                 const bool isCurrent = (Editor::currentMap == name);
@@ -1836,6 +1851,8 @@ namespace {
 
                 if (isCurrent) ImGui::PopStyleColor();
 
+                rowTops.push_back(ImGui::GetItemRectMin().y);
+
                 if (ImGui::IsItemActive()) {
                     ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
 
@@ -1845,7 +1862,7 @@ namespace {
                     const float halfRow = ImGui::GetFrameHeightWithSpacing() * 0.5f;
                     const int step = offset < -halfRow ? -1 : offset > halfRow ? 1 : 0;
 
-                    if (step != 0 && i + step >= 0 && i + step < static_cast<int>(Editor::maps.size())) {
+                    if (step != 0 && i + step >= 0 && i + step < static_cast<int>(levels.size())) {
                         draggedRow = i;
                         draggedToRow = i + step;
                     }
@@ -1864,13 +1881,8 @@ namespace {
 
                 ImGui::SameLine();
 
-                PushDangerStyle();
-                if (ImGui::Button(Get("levels.delete_short").c_str(), ImVec2(buttonWidth, 0.0f))) {
-                    deleteLevelPending = name;
-                    deleteLevelConfirmOpen = true;
-                }
-                PopDangerStyle();
-                HoverTooltip(Get("levels.tooltip.delete").c_str());
+                if (ImGui::Button(Get("levels.remove_short").c_str(), ImVec2(buttonWidth, 0.0f))) removedRow = i;
+                HoverTooltip(Get("levels.tooltip.remove").c_str());
 
                 ImGui::PopID();
             }
@@ -1881,65 +1893,58 @@ namespace {
         ImGui::EndChild();
         ImGui::PopStyleColor();
 
+        // Only a level: the browser uses this payload for folders and other files too.
+        const ImGuiPayload* draggedAsset = ImGui::GetDragDropPayload();
+
+        if (draggedAsset != nullptr && draggedAsset->IsDataType(AssetBrowser::MoveEntryPayloadType()) &&
+            fs::path(static_cast<const char*>(draggedAsset->Data)).extension() == ".bson" &&
+            ImGui::BeginDragDropTarget()) {
+            const ImVec2 listMin = ImGui::GetItemRectMin();
+            const ImVec2 listMax = ImGui::GetItemRectMax();
+            const float mouseY = ImGui::GetIO().MousePos.y;
+            const float rowSpacing = ImGui::GetFrameHeightWithSpacing();
+
+            // Above the first row whose middle is below the mouse.
+            int dropRow = 0;
+            while (dropRow < static_cast<int>(rowTops.size()) && rowTops[dropRow] + rowSpacing * 0.5f < mouseY) ++dropRow;
+
+            if (!rowTops.empty()) {
+                const float lineY = std::clamp(dropRow < static_cast<int>(rowTops.size()) ? rowTops[dropRow] : rowTops.back() + rowSpacing,
+                                               listMin.y, listMax.y);
+
+                ImGui::GetForegroundDrawList()->AddLine(ImVec2(listMin.x, lineY), ImVec2(listMax.x, lineY),
+                                                        ImGui::GetColorU32(ImGuiCol_DragDropTarget), 2.0f);
+            }
+
+            if (const ImGuiPayload* dropped = ImGui::AcceptDragDropPayload(AssetBrowser::MoveEntryPayloadType())) {
+                const std::string levelName = fs::path(static_cast<const char*>(dropped->Data)).stem().string();
+
+                // A level already in the list moves there instead of showing twice.
+                if (const auto existing = std::ranges::find(levels, levelName); existing != levels.end()) {
+                    if (existing - levels.begin() < dropRow) --dropRow;
+                    levels.erase(existing);
+                }
+
+                levels.insert(levels.begin() + dropRow, levelName);
+                saveLevels();
+            }
+
+            ImGui::EndDragDropTarget();
+        }
+
+        if (removedRow >= 0) {
+            levels.erase(levels.begin() + removedRow);
+            saveLevels();
+        }
+
         if (draggedRow >= 0) {
-            std::swap(Editor::maps[draggedRow], Editor::maps[draggedToRow]);
+            std::swap(levels[draggedRow], levels[draggedToRow]);
             levelOrderChanged = true;
         }
 
         if (levelOrderChanged && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             levelOrderChanged = false;
-
-            if (!ProjectManager::SetLevelOrder(Editor::maps))
-                ShowNotification(Get("editor.project.level_order_failed").c_str(), /*isError=*/true);
-        }
-
-        // Delete confirmation modal
-        if (deleteLevelConfirmOpen) {
-            ImGui::OpenPopup("##DeleteLevelConfirm");
-            deleteLevelConfirmOpen = false;
-        }
-
-        if (ImGui::BeginPopupModal("##DeleteLevelConfirm", nullptr,
-                                   ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text(Get("levels.delete_confirm").c_str(), deleteLevelPending.c_str());
-            ImGui::TextDisabled("%s", Get("common.cannot_be_undone").c_str());
-            ImGui::Spacing();
-
-            PushDangerStyle();
-            if (ImGui::Button(Get("common.delete").c_str(), ImVec2(90.0f, 0.0f))) {
-                Editor::WaitForAutoSave();
-                const std::filesystem::path path = LevelSerialization::FindLevelPath(deleteLevelPending);
-
-                try {
-                    if (!path.empty() && std::filesystem::remove(path)) {
-                        spdlog::info("Deleted level: {}", path.string());
-                        if (Editor::currentMap == deleteLevelPending) Editor::currentMap = "";
-                        UpdateLevels();
-                        ShowNotification(Get("levels.notification.deleted").c_str());
-                    }
-                    else {
-                        spdlog::error("File not found: {}", path.string());
-                        ShowNotification(Get("levels.notification.delete_failed_file_not_found").c_str(), /*isError=*/
-                                         true);
-                    }
-                } catch (const std::filesystem::filesystem_error &e) {
-                    spdlog::error("Failed to delete level: {}", e.what());
-                    ShowNotification(Get("levels.notification.delete_failed_check_logs").c_str(), /*isError=*/true);
-                }
-
-                deleteLevelPending.clear();
-                ImGui::CloseCurrentPopup();
-            }
-            PopDangerStyle();
-
-            ImGui::SameLine();
-
-            if (ImGui::Button(Get("common.cancel").c_str(), ImVec2(90.0f, 0.0f))) {
-                deleteLevelPending.clear();
-                ImGui::CloseCurrentPopup();
-            }
-
-            ImGui::EndPopup();
+            saveLevels();
         }
     }
 
@@ -3098,6 +3103,11 @@ namespace {
     }
 
     void ShowGameExportDialog() {
+        if (LevelManager::OrderedLevelNames().empty()) {
+            ShowNotification(Get("editor.notification.export_failed_no_levels").c_str(), true);
+            return;
+        }
+
         const std::string defaultPath = ProjectManager::GetProjectFolder().parent_path().string();
         SDL_ShowOpenFolderDialog(&GameExportFolderPicked, nullptr, window, defaultPath.c_str(), false);
     }
@@ -6411,7 +6421,10 @@ namespace MapEditorInternal {
 
 namespace Editor {
     void OpenLevel(const std::string& levelName) {
+        // Before saving: Save() rebuilds Editor::maps, which levelName may point into.
+        const std::string cleanName = LevelSerialization::CleanLevelName(levelName);
+
         if (!currentMap.empty()) MapEditorInternal::Save(currentMap);
-        MapEditorInternal::QueueLevelLoad(LevelSerialization::CleanLevelName(levelName));
+        MapEditorInternal::QueueLevelLoad(cleanName);
     }
 }

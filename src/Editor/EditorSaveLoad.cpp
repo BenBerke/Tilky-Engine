@@ -604,11 +604,15 @@ namespace MapEditorInternal {
             else seen.push_back(std::move(levelName));
         }
 
-        Editor::maps = LevelManager::OrderedLevelNames();
+        Editor::maps = std::move(seen);
 
-        // New levels join the bottom of the saved order, deleted ones leave it.
-        if (ProjectManager::HasProject() && Editor::maps != ProjectManager::GetLevelOrder())
-            ProjectManager::SetLevelOrder(Editor::maps);
+        if (!ProjectManager::HasProject()) return;
+
+        // Deleted levels leave the list. A project from before the list gets
+        // one with all its levels, so its game keeps working the same.
+        const std::vector<std::string> levelOrder = LevelManager::OrderedLevelNames();
+        if (!ProjectManager::HasLevelOrder() || levelOrder != ProjectManager::GetLevelOrder())
+            ProjectManager::SetLevelOrder(levelOrder);
     }
 
     bool Save(const std::string& saveTo) {

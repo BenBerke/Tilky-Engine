@@ -34,6 +34,7 @@
 #include <vector>
 
 #include <SDL3/SDL.h>
+#include <nlohmann/json.hpp>
 #include <sol/sol.hpp>
 
 #include "Headers/Map/LevelSerialization.hpp"
@@ -438,6 +439,28 @@ static bool StripEditorDataFromLevels(const fs::path& assetsDest, std::vector<st
 // Main
 // ---------------------------------------------------------------------------
 
+// The game opens the first level in project.tilky's list that exists. A project
+// with no "levels" at all is older than the list: it opens any level it has.
+static bool HasStartLevel(const fs::path& metadataPath, const fs::path& assetsPath) {
+    std::ifstream metadataFile(metadataPath);
+    const nlohmann::json metadata = nlohmann::json::parse(metadataFile, nullptr, false);
+
+    if (!metadata.is_object()) return true;
+
+    const auto levels = metadata.find("levels");
+    if (levels == metadata.end() || !levels->is_array()) return true;
+
+    std::set<std::string> listed;
+    for (const nlohmann::json& level : *levels)
+        if (level.is_string()) listed.insert(level.get<std::string>());
+
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(assetsPath, ec), end; !ec && it != end; it.increment(ec))
+        if (it->path().extension() == ".bson" && listed.contains(it->path().stem().string())) return true;
+
+    return false;
+}
+
 int main(int argc, char** argv) {
     if (argc != 4) {
         std::cerr << "Usage: tilky_exporter <project_metadata_path> "
@@ -451,6 +474,13 @@ int main(int argc, char** argv) {
 
     const fs::path projectDir   = metadataPath.parent_path();
     const fs::path standaloneDir = standaloneExePath.parent_path();
+
+    // Before the export folder gets cleared.
+    if (!HasStartLevel(metadataPath, projectDir / "Assets")) {
+        std::cerr << "Export failed: the project's Levels list is empty. "
+                     "Drag a level into it in Project Settings.\n";
+        return 1;
+    }
 
     MeasureFolderWork(projectDir / "Assets", true);
     MeasureFolderWork(standaloneDir / "EngineAssets", false);
