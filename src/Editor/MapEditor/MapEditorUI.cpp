@@ -5073,6 +5073,31 @@ namespace MapEditorInternal {
         if (ImGui::Button((Get("editor.user_settings.default") + "##EditorGridSizeDefault").c_str())) GRID_SIZE = DEFAULT_GRID_SIZE;
         ImGui::EndDisabled();
 
+        {
+            // Same order as GridStyle.
+            static constexpr const char* labelKeys[] = {
+                "editor.grid.style.dots",
+                "editor.grid.style.lines",
+            };
+            static_assert(std::size(labelKeys) == static_cast<size_t>(GridStyle::Count));
+
+            const int current = static_cast<int>(gridStyle);
+
+            ImGui::SetNextItemWidth(110.0f);
+            if (ImGui::BeginCombo((Get("editor.grid.style") + "##EditorGridStyle").c_str(), Get(labelKeys[current]).c_str())) {
+                for (int style = 0; style < static_cast<int>(GridStyle::Count); ++style) {
+                    const bool selected = style == current;
+                    if (ImGui::Selectable(Get(labelKeys[style]).c_str(), selected)) {
+                        gridStyle = static_cast<GridStyle>(style);
+                        SaveUserSettings();
+                    }
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            HoverTooltip(Get("editor.tooltip.grid.style").c_str());
+        }
+
         ImGui::Checkbox(Get("editor.grid.snap_to_grid").c_str(), &gridSnapEnabled);
         HoverTooltip(Get("editor.tooltip.grid.snap_to_grid").c_str());
 

@@ -453,7 +453,7 @@ namespace MapEditorInternal {
     // EditorState.cpp.
     //
     // The UI canvas renders full-screen via UIEditorDraw() (the same way
-    // DrawGridDots()/DrawWalls()/DrawEntities() etc. draw the Map Editor's
+    // DrawGrid()/DrawWalls()/DrawEntities() etc. draw the Map Editor's
     // view directly onto the SDL window, unclipped, with ImGui panels
     // floating on top) rather than into a bounded ImGui child panel — so
     // uiCanvasPan/uiCanvasZoom play exactly the role cameraPos/editorZoom
@@ -711,6 +711,15 @@ namespace MapEditorInternal {
 
     extern EntityMarkerMode entityMarkerMode;
 
+    // How the 2D editor draws its grid. Only changes the look, never snapping.
+    enum class GridStyle {
+        Dots,
+        Lines,
+        Count
+    };
+
+    extern GridStyle gridStyle;
+
     // Component foldouts the user collapsed in the entity / UI inspectors,
     // by Prefab::ComponentKey. Every other type starts open.
     extern std::set<std::string> collapsedComponentTypes;
@@ -918,7 +927,7 @@ namespace MapEditorInternal {
 
     [[nodiscard]] bool IsPointInsidePolygon(const std::vector<Vector2>& polygon, const Vector2& point);
 
-    // Render-only: the grid-dot spacing DrawGridDots() should iterate
+    // Render-only: the grid-dot spacing DrawGrid() should iterate
     // at, so dots don't smear into an unreadable mass when zoomed out.
     // This is GRID_SIZE doubled as many times as needed to keep the
     // on-screen spacing above a minimum pixel threshold - it deliberately
@@ -984,7 +993,7 @@ namespace MapEditorInternal {
     // Defined in MapEditorInput.cpp, next to the box selection it draws.
     // Call after DrawEntities().
     void DrawSelectionBox();
-    void DrawGridDots();
+    void DrawGrid();
 
     // The level's background image, under everything else.
     void DrawBackgroundImage();

@@ -153,7 +153,7 @@ namespace MapEditorInternal {
     }
 
     // BUG FIX: this used to snap against GetActiveGridSize(), which
-    // doubles as the camera zooms out (to keep DrawGridDots() from
+    // doubles as the camera zooms out (to keep DrawGrid() from
     // rendering an unreadably dense mass of dots). That's exactly right
     // for *rendering*, but using the same value here meant the actual
     // snapping interval silently changed with zoom - panning/zooming

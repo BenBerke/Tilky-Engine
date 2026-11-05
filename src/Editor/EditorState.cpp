@@ -246,6 +246,7 @@ namespace MapEditorInternal {
     bool commentsVisible = false;
     bool runtimeCommentsVisible = false;
     EntityMarkerMode entityMarkerMode = EntityMarkerMode::Always;
+    GridStyle gridStyle = GridStyle::Dots;
     std::set<std::string> collapsedComponentTypes;
 
     // In EditorKeyBind order.

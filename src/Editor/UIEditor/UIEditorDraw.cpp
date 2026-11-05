@@ -28,7 +28,7 @@
 /// This script is responsible for drawing the UI objects onto the screen.
 /// It should not change any values. Only read and draw.
 ///
-/// Renders full-screen via direct SDL calls, the same way DrawGridDots() /
+/// Renders full-screen via direct SDL calls, the same way DrawGrid() /
 /// DrawDots() / DrawWalls() / DrawExistingSectors() / DrawEntities() render
 /// the Map Editor's view in MapEditorDrawing.cpp.
 ///

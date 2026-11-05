@@ -330,7 +330,7 @@ namespace Editor {
 
             DrawBackgroundImage();
             DrawExistingSectors();
-            DrawGridDots();
+            DrawGrid();
             DrawWalls();
             DrawLinedefs();
 

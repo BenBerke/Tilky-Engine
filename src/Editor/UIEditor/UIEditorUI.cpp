@@ -1218,7 +1218,7 @@ namespace {
     // (same role as DrawMode()'s block in DrawEditorUI()), not a separate
     // window. Actual canvas content (checkerboard/grid/entities/gizmos)
     // is rendered full-screen by UIEditorDraw(), the same way
-    // DrawGridDots()/DrawWalls()/DrawEntities() render the Map Editor's view.
+    // DrawGrid()/DrawWalls()/DrawEntities() render the Map Editor's view.
     // ---------------------------------------------------------------------
 
     void DrawUICanvasViewControls() {

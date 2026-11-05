@@ -1608,7 +1608,7 @@ namespace MapEditorInternal {
         SDL_SetTextureAlphaModFloat(texture, 1.0f);
     }
 
-    void DrawGridDots() {
+    void DrawGrid() {
         constexpr float minorDotSize = 3.0f;
         constexpr float majorDotSize = 5.0f;
 
@@ -1651,30 +1651,58 @@ namespace MapEditorInternal {
 
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-        for (float gridX = startX; gridX <= rightGrid; gridX += activeGridSize) {
-            const bool majorX = IsOnMajorGridLine(gridX);
+        if (gridStyle == GridStyle::Lines) {
+            // Solid lines cover far more of the canvas than dots do, so the
+            // minor ones sit back at half the Grid Color's alpha.
+            constexpr float MINOR_LINE_ALPHA_SCALE = 0.5f;
 
-            for (float gridY = startY; gridY <= topGrid; gridY += activeGridSize) {
-                const bool major = majorX && IsOnMajorGridLine(gridY);
-                const float dotSize = major ? majorDotSize : minorDotSize;
-                const Uint8 alpha = major ? 255 : minorAlpha;
+            const auto drawLine = [](const Vector2& startGrid, const Vector2& endGrid, const bool major) {
+                const float alpha = major ? gridColor.a : gridColor.a * MINOR_LINE_ALPHA_SCALE;
 
                 SDL_SetRenderDrawColor(renderer,
                     static_cast<Uint8>(gridColor.r * 255.0f),
                     static_cast<Uint8>(gridColor.g * 255.0f),
                     static_cast<Uint8>(gridColor.b * 255.0f),
-                    static_cast<Uint8>(gridColor.a * 255.0f));
+                    static_cast<Uint8>(alpha * 255.0f));
 
-                const Vector2 screenPos = WorldToScreen(GridToWorld({gridX, gridY}), cameraPos);
+                const Vector2 start = WorldToScreen(GridToWorld(startGrid), cameraPos);
+                const Vector2 end = WorldToScreen(GridToWorld(endGrid), cameraPos);
 
-                SDL_FRect dotRect = {
-                    screenPos.x - dotSize * 0.5f,
-                    screenPos.y - dotSize * 0.5f,
-                    dotSize,
-                    dotSize
-                };
+                SDL_RenderLine(renderer, start.x, start.y, end.x, end.y);
+            };
 
-                SDL_RenderFillRect(renderer, &dotRect);
+            for (float gridX = startX; gridX <= rightGrid; gridX += activeGridSize)
+                drawLine({gridX, bottomGrid}, {gridX, topGrid}, IsOnMajorGridLine(gridX));
+
+            for (float gridY = startY; gridY <= topGrid; gridY += activeGridSize)
+                drawLine({leftGrid, gridY}, {rightGrid, gridY}, IsOnMajorGridLine(gridY));
+        }
+        else {
+            for (float gridX = startX; gridX <= rightGrid; gridX += activeGridSize) {
+                const bool majorX = IsOnMajorGridLine(gridX);
+
+                for (float gridY = startY; gridY <= topGrid; gridY += activeGridSize) {
+                    const bool major = majorX && IsOnMajorGridLine(gridY);
+                    const float dotSize = major ? majorDotSize : minorDotSize;
+                    const Uint8 alpha = major ? 255 : minorAlpha;
+
+                    SDL_SetRenderDrawColor(renderer,
+                        static_cast<Uint8>(gridColor.r * 255.0f),
+                        static_cast<Uint8>(gridColor.g * 255.0f),
+                        static_cast<Uint8>(gridColor.b * 255.0f),
+                        static_cast<Uint8>(gridColor.a * 255.0f));
+
+                    const Vector2 screenPos = WorldToScreen(GridToWorld({gridX, gridY}), cameraPos);
+
+                    SDL_FRect dotRect = {
+                        screenPos.x - dotSize * 0.5f,
+                        screenPos.y - dotSize * 0.5f,
+                        dotSize,
+                        dotSize
+                    };
+
+                    SDL_RenderFillRect(renderer, &dotRect);
+                }
             }
         }
 

@@ -266,6 +266,11 @@ namespace MapEditorInternal {
                 0,
                 static_cast<int>(EntityMarkerMode::Count) - 1
             ));
+            gridStyle = static_cast<GridStyle>(std::clamp(
+                settings.value("gridStyle", static_cast<int>(GridStyle::Dots)),
+                0,
+                static_cast<int>(GridStyle::Count) - 1
+            ));
 
             collapsedComponentTypes.clear();
             if (settings.contains("collapsedComponents") && settings["collapsedComponents"].is_array())
@@ -535,6 +540,7 @@ namespace MapEditorInternal {
                 {"showCommentIcons", Comments::showIcons},
 #endif
                 {"entityMarkerMode", static_cast<int>(entityMarkerMode)},
+                {"gridStyle", static_cast<int>(gridStyle)},
                 {"collapsedComponents", collapsedComponentTypes},
                 {"keyBindings", SerializeKeyBindings()},
                 {"comboBindings", SerializeComboBindings()},
