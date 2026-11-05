@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <optional>
 #include <vector>
 
 #include "../EditorInternal.hpp"
@@ -17,6 +18,7 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Map/MapTopology.hpp"
 #include "Headers/Math/Geometry/Geometry.hpp"
+#include "Headers/Editor/EventLinks.hpp"
 #include "Headers/Math/Vector/Vector2Math.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Editor/ImGuiDrawFunctions.hpp"
@@ -218,6 +220,11 @@ namespace MapEditorInternal {
             const float radius = paintSelectRadius / std::max(editorZoom, 0.0001f);
             const float radiusSq = radius * radius;
 
+            const bool layerOn = currentMode == MODE_GEOMETRY
+                ? (linedefMode ? canvasLayerLinedefs : canvasLayerWalls)
+                : currentMode == MODE_SECTOR ? canvasLayerSectors : canvasLayerEntities;
+            if (!layerOn) return;
+
             switch (currentMode) {
                 case MODE_GEOMETRY:
                     if (linedefMode) {
@@ -381,10 +388,18 @@ namespace MapEditorInternal {
     }
 
     namespace {
+        // Snap to Wall picks a target rather than selecting, so the Walls
+        // layer being off doesn't stop it.
+        ID WallSnapTargetAt(const Vector2& mouseWorld) {
+            const Level& level = LevelManager::CurrentLevel();
+            const int index = GetWallAtPoint(mouseWorld);
+            return index >= 0 && index < static_cast<int>(level.walls.size()) ? level.walls[index].id : INVALID_ID;
+        }
+
         // Right-click while Snap to Wall waits for a wall: a wall finishes
         // it (one undo step, snaps included), anything else cancels it.
         void HandleWallSnapRightClick(Level& level, const Vector2& mouseWorld) {
-            const ID wallID = PickWallAt(mouseWorld);
+            const ID wallID = WallSnapTargetAt(mouseWorld);
             const Wall* wall = nullptr;
 
             for (const Wall& candidate : level.walls)
@@ -1101,6 +1116,11 @@ namespace MapEditorInternal {
             return index >= 0 ? level.sectors[index].id : INVALID_ID;
         }
 
+        // The sector a press can carry onto a panel: none on a layer that's off.
+        ID DraggableSectorIDAt(const Vector2& point) {
+            return canvasLayerSectors ? SectorIDAt(point) : INVALID_ID;
+        }
+
         // ---- Box selection --------------------------------------------------
         // A left drag that starts on empty canvas in Geometry or Entity Mode
         // draws a box; on release everything it touches is selected - walls
@@ -1129,7 +1149,7 @@ namespace MapEditorInternal {
             const ID wallID = PickWallAt(mouseWorld);
 
             if (wallID != INVALID_ID) BeginCanvasRefPress(CanvasPressAction::BOX_SELECT, WALL_REF_PAYLOAD, wallID, CaptureSelection());
-            else BeginCanvasRefPress(CanvasPressAction::BOX_SELECT, SECTOR_REF_PAYLOAD, SectorIDAt(mouseWorld), CaptureSelection());
+            else BeginCanvasRefPress(CanvasPressAction::BOX_SELECT, SECTOR_REF_PAYLOAD, DraggableSectorIDAt(mouseWorld), CaptureSelection());
         }
 
         // Liang-Barsky: does any part of segment a-b lie in the box?
@@ -1176,6 +1196,8 @@ namespace MapEditorInternal {
             if (!additive) ClearSelectionForMode(boxSelectMode);
 
             if (boxSelectMode == MODE_GEOMETRY && linedefMode) {
+                if (!canvasLayerLinedefs) return;
+
                 for (const Linedef& linedef : level.linedefs) {
                     if (!SegmentTouchesBox(linedef.start, linedef.end, boxMin, boxMax)) continue;
                     if (std::ranges::find(selectedLinedefs, linedef.id) != selectedLinedefs.end()) continue;
@@ -1189,6 +1211,8 @@ namespace MapEditorInternal {
             }
 
             if (boxSelectMode == MODE_GEOMETRY) {
+                if (!canvasLayerWalls) return;
+
                 for (const Wall& wall : level.walls) {
                     if (!SegmentTouchesBox(wall.start, wall.end, boxMin, boxMax)) continue;
                     if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end()) continue;
@@ -1203,7 +1227,7 @@ namespace MapEditorInternal {
                 return;
             }
 
-            if (boxSelectMode == MODE_ENTITY) {
+            if (boxSelectMode == MODE_ENTITY && canvasLayerEntities) {
                 for (Entity& entity : level.entities) {
                     // Filtered-out entities can't be clicked either; UI
                     // entities live in the UI Editor's space, not this one.
@@ -1622,84 +1646,279 @@ namespace MapEditorInternal {
         if (keep != EventOwnerKind::ENTITY) ClearEntitySelection();
     }
 
+    std::vector<CanvasPick> CanvasPicksAt(const Vector2& mouseWorld) {
+        const Level& level = LevelManager::CurrentLevel();
+        std::vector<CanvasPick> picks;
+
+        // Last drawn first, so that of two at the same distance the one on top wins.
+        if (canvasLayerEntities) {
+            for (auto entity = level.entities.rbegin(); entity != level.entities.rend(); ++entity) {
+                if (!EntityPassesFilter(*entity)) continue;
+
+                const ComponentTransform* transform = level.transforms.Get(entity->id);
+                if (transform == nullptr) continue;
+
+                const Vector2 offset = {mouseWorld.x - transform->position.x, mouseWorld.y - transform->position.z};
+                if (std::abs(offset.x) > ENTITY_SIZE * 0.5f || std::abs(offset.y) > ENTITY_SIZE * 0.5f) continue;
+
+                picks.push_back({EventOwnerKind::ENTITY, entity->id, std::sqrt(offset.x * offset.x + offset.y * offset.y)});
+            }
+        }
+
+        const float lineRadius = WALL_PICK_RADIUS_PIXELS / std::max(editorZoom, 0.0001f);
+
+        if (canvasLayerWalls) {
+            for (const Wall& wall : level.walls) {
+                // Filtered out in the Geometry Mode panel: never picked there.
+                if (currentMode == MODE_GEOMETRY && !WallPassesFilter(wall)) continue;
+
+                const float distanceSq = DistancePointToSegmentSq(mouseWorld, wall.start, wall.end);
+                if (distanceSq <= lineRadius * lineRadius) picks.push_back({EventOwnerKind::LINE, wall.id, std::sqrt(distanceSq)});
+            }
+        }
+
+        if (canvasLayerLinedefs) {
+            for (const Linedef& linedef : level.linedefs) {
+                const float distanceSq = DistancePointToSegmentSq(mouseWorld, linedef.start, linedef.end);
+                if (distanceSq <= lineRadius * lineRadius) picks.push_back({EventOwnerKind::LINEDEF, linedef.id, std::sqrt(distanceSq)});
+            }
+        }
+
+        if (canvasLayerSectors) {
+            // The sector the rest of the editor treats as the one at this
+            // point goes first; any it's nested in or overlapping follow.
+            const ID mainSector = SectorIDAt(mouseWorld);
+            constexpr float SECTOR_DISTANCE = std::numeric_limits<float>::max();
+
+            if (mainSector != INVALID_ID) picks.push_back({EventOwnerKind::SECTOR, mainSector, SECTOR_DISTANCE});
+
+            for (auto sector = level.sectors.rbegin(); sector != level.sectors.rend(); ++sector)
+                if (sector->id != mainSector && Geometry::IsPointInPolygon(sector->vertices, sector->innerLoops, mouseWorld))
+                    picks.push_back({EventOwnerKind::SECTOR, sector->id, SECTOR_DISTANCE});
+        }
+
+        const EventOwnerKind modeKind = currentMode == MODE_ENTITY ? EventOwnerKind::ENTITY
+            : currentMode == MODE_SECTOR ? EventOwnerKind::SECTOR
+            : linedefMode ? EventOwnerKind::LINEDEF : EventOwnerKind::LINE;
+
+        std::ranges::stable_sort(picks, [modeKind](const CanvasPick& a, const CanvasPick& b) {
+            const bool aMode = a.kind == modeKind;
+            const bool bMode = b.kind == modeKind;
+            if (aMode != bMode) return aMode;
+            return a.distance < b.distance;
+        });
+
+        return picks;
+    }
+
+    namespace {
+        // ---- Stepping through what's under the cursor ---------------------------
+        // Right clicking the same spot again opens the next object there. The
+        // list is kept from the first click, so that the few pixels a hand
+        // moves between clicks can't reorder it and repeat an object.
+
+        constexpr float PICK_CYCLE_SLOP_PIXELS = 4.0f;
+
+        struct PickCycle {
+            std::vector<CanvasPick> picks;
+            std::size_t index = 0;
+            Vector2 screenPosition = {0.0f, 0.0f};
+        };
+
+        PickCycle pickCycle;
+
+        std::vector<CanvasPick> pickMenuItems;
+        Vector2 pickMenuScreenPosition = {0.0f, 0.0f}; // where it was asked for
+        bool pickMenuRequested = false;
+        std::optional<CanvasPick> pickMenuHovered;
+
+        // Filled by UpdateCanvasHover for the UI pass.
+        std::optional<CanvasPick> pickLabelTarget;
+        int pickLabelOthers = 0;
+
+        bool SamePick(const CanvasPick& a, const CanvasPick& b) {
+            return a.kind == b.kind && a.id == b.id;
+        }
+
+        bool WithinCycleSlop(const Vector2& screenPosition) {
+            const float dx = screenPosition.x - pickCycle.screenPosition.x;
+            const float dy = screenPosition.y - pickCycle.screenPosition.y;
+            return dx * dx + dy * dy <= PICK_CYCLE_SLOP_PIXELS * PICK_CYCLE_SLOP_PIXELS;
+        }
+
+        bool IsPickInspected(const CanvasPick& pick) {
+            switch (pick.kind) {
+                case EventOwnerKind::ENTITY: return editingEntity && !selectedEntities.empty() && selectedEntity.id == pick.id;
+                case EventOwnerKind::LINE: return editingWall && selectedWallID == pick.id;
+                case EventOwnerKind::LINEDEF: return editingLinedef && selectedLinedefID == pick.id;
+                case EventOwnerKind::SECTOR: return editingSector && selectedSectorID == pick.id;
+                default: return false;
+            }
+        }
+
+        // True while the next click here continues the cycle: same spot, the
+        // same objects, and what it last opened is still open (Escape or
+        // clicking something else starts over).
+        bool PickCycleContinues(const std::vector<CanvasPick>& picks, const Vector2& screenPosition) {
+            if (pickCycle.picks.size() < 2 || pickCycle.picks.size() != picks.size()) return false;
+            if (!WithinCycleSlop(screenPosition)) return false;
+            if (!std::ranges::is_permutation(picks, pickCycle.picks, SamePick)) return false;
+
+            return IsPickInspected(pickCycle.picks[pickCycle.index]);
+        }
+
+        void SelectCanvasPick(const CanvasPick& pick, const bool toggle) {
+            switch (pick.kind) {
+                case EventOwnerKind::ENTITY:
+                    ClearSelectionsExcept(EventOwnerKind::ENTITY);
+
+                    if (toggle) {
+                        ToggleEntitySelection(pick.id);
+                        editingEntity = !selectedEntities.empty();
+                        return;
+                    }
+
+                    SelectEntity(pick.id);
+                    editingEntity = true;
+                    return;
+
+                case EventOwnerKind::LINEDEF:
+                    ClearSelectionsExcept(EventOwnerKind::LINEDEF);
+
+                    if (toggle) {
+                        ToggleLinedefSelection(pick.id);
+                        return;
+                    }
+
+                    // Right clicking a linedef that is already part of a
+                    // multi-selection keeps that selection, so the inspector edits
+                    // all of it.
+                    if (std::ranges::find(selectedLinedefs, pick.id) == selectedLinedefs.end()) SelectLinedef(pick.id);
+
+                    selectedLinedefID = pick.id;
+                    editingLinedef = true;
+                    return;
+
+                case EventOwnerKind::LINE:
+                    ClearSelectionsExcept(EventOwnerKind::LINE);
+
+                    if (toggle) {
+                        ToggleWallSelection(pick.id);
+                        return;
+                    }
+
+                    if (std::ranges::find(selectedWalls, pick.id) == selectedWalls.end()) SelectWall(pick.id);
+
+                    selectedWallID = pick.id;
+                    editingWall = true;
+                    return;
+
+                case EventOwnerKind::SECTOR:
+                    ClearSelectionsExcept(EventOwnerKind::SECTOR);
+
+                    if (toggle) {
+                        ToggleSectorSelection(pick.id);
+
+                        // Deselecting the last one already closed the inspector.
+                        if (selectedSectorID != INVALID_ID) editingSector = true;
+                        return;
+                    }
+
+                    SelectSector(pick.id);
+                    editingSector = true;
+                    return;
+
+                default:
+                    return;
+            }
+        }
+
+        bool PickStillExists(const Level& level, const CanvasPick& pick) {
+            switch (pick.kind) {
+                case EventOwnerKind::ENTITY: return level.GetEntity(pick.id) != nullptr;
+                case EventOwnerKind::LINE: return level.wallIDToIndex.contains(pick.id);
+                case EventOwnerKind::LINEDEF: return level.GetLinedef(pick.id) != nullptr;
+                case EventOwnerKind::SECTOR: return level.GetSector(pick.id) != nullptr;
+                default: return false;
+            }
+        }
+    }
+
     void HandleCanvasRightClick(const Vector2& mouseWorld) {
         const bool toggle = MultiSelectModifierHeld();
+        const Vector2 screenPosition = InputManager::GetMousePosition();
+        std::vector<CanvasPick> picks = CanvasPicksAt(mouseWorld);
 
-        if (const Entity* entity = EntityAt(mouseWorld)) {
-            const ID entityID = entity->id;
-            ClearSelectionsExcept(EventOwnerKind::ENTITY);
+        if (picks.empty()) {
+            pickCycle = {};
 
-            if (toggle) {
-                ToggleEntitySelection(entityID);
-                editingEntity = !selectedEntities.empty();
-                return;
-            }
-
-            SelectEntity(entityID);
-            editingEntity = true;
+            // Nothing there: the inspector closes, the selection stays.
+            editingWall = false;
+            editingSector = false;
+            editingLinedef = false;
+            editingEntity = false;
             return;
         }
 
-        // Linedefs are drawn over the walls in Linedef Mode, so they win
-        // there; anywhere else the wall does.
-        const ID wallID = PickWallAt(mouseWorld);
-        const ID linedefID = PickLinedefAt(mouseWorld);
-        const bool pickLinedef = linedefID != INVALID_ID && (wallID == INVALID_ID || (currentMode == MODE_GEOMETRY && linedefMode));
-
-        if (pickLinedef) {
-            ClearSelectionsExcept(EventOwnerKind::LINEDEF);
-
-            if (toggle) {
-                ToggleLinedefSelection(linedefID);
-                return;
-            }
-
-            // Right clicking a linedef that is already part of a
-            // multi-selection keeps that selection, so the inspector edits
-            // all of it.
-            if (std::ranges::find(selectedLinedefs, linedefID) == selectedLinedefs.end()) SelectLinedef(linedefID);
-
-            selectedLinedefID = linedefID;
-            editingLinedef = true;
+        // Ctrl toggles what's on top, so a second Ctrl click takes it back out.
+        if (toggle) {
+            pickCycle = {};
+            SelectCanvasPick(picks.front(), true);
             return;
         }
 
-        if (wallID != INVALID_ID) {
-            ClearSelectionsExcept(EventOwnerKind::LINE);
-
-            if (toggle) {
-                ToggleWallSelection(wallID);
-                return;
-            }
-
-            if (std::ranges::find(selectedWalls, wallID) == selectedWalls.end()) SelectWall(wallID);
-
-            selectedWallID = wallID;
-            editingWall = true;
+        if (GetKeyBind(KEYBIND_PICK_MENU) && picks.size() > 1) {
+            pickMenuItems = std::move(picks);
+            pickMenuScreenPosition = screenPosition;
+            pickMenuRequested = true;
             return;
         }
 
-        if (const ID sectorID = SectorIDAt(mouseWorld); sectorID != INVALID_ID) {
-            ClearSelectionsExcept(EventOwnerKind::SECTOR);
+        if (PickCycleContinues(picks, screenPosition)) pickCycle.index = (pickCycle.index + 1) % pickCycle.picks.size();
+        else pickCycle = {std::move(picks), 0, screenPosition};
 
-            if (toggle) {
-                ToggleSectorSelection(sectorID);
+        SelectCanvasPick(pickCycle.picks[pickCycle.index], false);
+    }
 
-                // Deselecting the last one already closed the inspector.
-                if (selectedSectorID != INVALID_ID) editingSector = true;
-                return;
-            }
+    void DrawCanvasPickUI() {
+        constexpr const char* MENU_ID = "##CanvasPickMenu";
 
-            SelectSector(sectorID);
-            editingSector = true;
-            return;
+        const Level& level = LevelManager::CurrentLevel();
+
+        if (pickMenuRequested) {
+            ImGui::OpenPopup(MENU_ID);
+            pickMenuRequested = false;
         }
 
-        // Nothing there: the inspector closes, the selection stays.
-        editingWall = false;
-        editingSector = false;
-        editingLinedef = false;
-        editingEntity = false;
+        pickMenuHovered.reset();
+
+        if (ImGui::BeginPopup(MENU_ID)) {
+            for (std::size_t i = 0; i < pickMenuItems.size(); ++i) {
+                const CanvasPick pick = pickMenuItems[i];
+                if (!PickStillExists(level, pick)) continue;
+
+                ImGui::PushID(static_cast<int>(i));
+                const bool chosen = ImGui::MenuItem(EventLinks::OwnerLabel(level, pick.kind, pick.id).c_str());
+                if (ImGui::IsItemHovered()) pickMenuHovered = pick;
+                ImGui::PopID();
+
+                if (chosen) {
+                    SelectCanvasPick(pick, false);
+
+                    // Clicking this spot again carries on from the chosen one.
+                    pickCycle = {pickMenuItems, i, pickMenuScreenPosition};
+                }
+            }
+
+            ImGui::EndPopup();
+        }
+        else if (pickLabelTarget.has_value() && pickLabelOthers > 0 && !ImGui::GetIO().WantCaptureMouse && PickStillExists(level, *pickLabelTarget)) {
+            ImGui::SetTooltip(
+                Localisation::Get("editor.canvas_pick.label").c_str(),
+                EventLinks::OwnerLabel(level, pickLabelTarget->kind, pickLabelTarget->id).c_str(),
+                pickLabelOthers
+            );
+        }
     }
 
     // Copies the clipboard's entities that still exist. The primary lands
@@ -2309,8 +2528,31 @@ namespace MapEditorInternal {
             if (!wallsOwnHover) hoveredWallID = INVALID_ID;
             if (!linedefsOwnHover) hoveredLinedefID = INVALID_ID;
 
+            pickLabelTarget.reset();
+            pickLabelOthers = 0;
+
+            const auto hover = [](const CanvasPick& pick) {
+                hoveredWallID = INVALID_ID;
+                hoveredLinedefID = INVALID_ID;
+
+                switch (pick.kind) {
+                    case EventOwnerKind::ENTITY: hoveredEntityID = pick.id; break;
+                    case EventOwnerKind::LINE: hoveredWallID = pick.id; break;
+                    case EventOwnerKind::LINEDEF: hoveredLinedefID = pick.id; break;
+                    case EventOwnerKind::SECTOR:
+                        if (currentMode == MODE_SECTOR || hoverSectorsInEveryMode) hoveredSectorID = pick.id;
+                        break;
+                    default: break;
+                }
+            };
+
+            // The pick menu's row under the mouse lights up its object.
+            if (pickMenuHovered.has_value()) {
+                hover(*pickMenuHovered);
+                return;
+            }
+
             if (mouseBlockedByImGui) return;
-            if (hoveredWallID != INVALID_ID || hoveredLinedefID != INVALID_ID) return;
 
             // While something is being drawn, dragged or picked, only the
             // mode's own hover (above) shows.
@@ -2319,18 +2561,24 @@ namespace MapEditorInternal {
                               WallSnap::IsPicking() || IsPaintSelectActive(mouseBlockedByImGui);
             if (busy) return;
 
-            if (const Entity* entity = EntityAt(mouseWorld)) {
-                hoveredEntityID = entity->id;
-                return;
-            }
+            const std::vector<CanvasPick> picks = CanvasPicksAt(mouseWorld);
+            if (picks.empty()) return;
 
-            // The mode's own kind was already asked, by its own rules.
-            const ID wallID = wallsOwnHover ? INVALID_ID : PickWallAt(mouseWorld);
-            const ID linedefID = linedefsOwnHover ? INVALID_ID : PickLinedefAt(mouseWorld);
+            // What a right click here would open, so a repeat click's next
+            // object shows before it's clicked.
+            const Vector2 screenPosition = InputManager::GetMousePosition();
+            const CanvasPick& next = PickCycleContinues(picks, screenPosition)
+                ? pickCycle.picks[(pickCycle.index + 1) % pickCycle.picks.size()]
+                : picks.front();
 
-            if (wallID != INVALID_ID) hoveredWallID = wallID;
-            else if (linedefID != INVALID_ID) hoveredLinedefID = linedefID;
-            else if (currentMode == MODE_SECTOR || hoverSectorsInEveryMode) hoveredSectorID = SectorIDAt(mouseWorld);
+            // A wall or linedef the mode already hovered stays unless a cycle
+            // is heading somewhere else.
+            const bool ownHoverIsNext = (next.kind == EventOwnerKind::LINE && hoveredWallID == next.id) ||
+                                        (next.kind == EventOwnerKind::LINEDEF && hoveredLinedefID == next.id);
+            if (!ownHoverIsNext) hover(next);
+
+            pickLabelTarget = next;
+            pickLabelOthers = static_cast<int>(picks.size()) - 1;
         }
     }
 
@@ -2451,7 +2699,7 @@ namespace MapEditorInternal {
             (currentMode != MODE_ENTITY || (!keyboardBlockedByImgui && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE))))
             WallSnap::CancelPicking();
 
-        wallSnapHoveredWallID = WallSnap::IsPicking() && !mouseBlockedByImGui ? PickWallAt(mouseWorld) : INVALID_ID;
+        wallSnapHoveredWallID = WallSnap::IsPicking() && !mouseBlockedByImGui ? WallSnapTargetAt(mouseWorld) : INVALID_ID;
 
         // Geometry editing is gated entirely on Geometry Mode being active
         // and ImGui not having the mouse: a click that lands on a panel
@@ -2505,7 +2753,7 @@ namespace MapEditorInternal {
                     HandleSectorDrawClick(mouseWorld);
 
                     if (startsDrawing)
-                        BeginCanvasRefPress(CanvasPressAction::SECTOR_DRAWING, SECTOR_REF_PAYLOAD, SectorIDAt(mouseWorld), std::move(selectionBefore));
+                        BeginCanvasRefPress(CanvasPressAction::SECTOR_DRAWING, SECTOR_REF_PAYLOAD, DraggableSectorIDAt(mouseWorld), std::move(selectionBefore));
                 }
                 else if (currentMode == MODE_ENTITY) {
                     // The gizmo sits on top of everything, so it is tested

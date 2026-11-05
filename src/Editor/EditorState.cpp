@@ -228,6 +228,10 @@ namespace MapEditorInternal {
     bool rememberCameraPosition = true;
 
     bool hoverSectorsInEveryMode = true;
+    bool canvasLayerEntities = true;
+    bool canvasLayerWalls = true;
+    bool canvasLayerLinedefs = true;
+    bool canvasLayerSectors = true;
 
     float textureFieldSize = DEFAULT_TEXTURE_FIELD_SIZE;
 
@@ -297,6 +301,7 @@ namespace MapEditorInternal {
         {"constrain_angle",  "editor.key.constrain_angle",  "editor.key_group.modifiers",  KEYSCOPE_MAP, {SDL_SCANCODE_LSHIFT, SDL_SCANCODE_RSHIFT}},
         {"split_wall",       "editor.key.split_wall",       "editor.key_group.modifiers",  KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
         {"paint_select",     "editor.key.paint_select",     "editor.key_group.modifiers",  KEYSCOPE_MAP, {SDL_SCANCODE_B}},
+        {"pick_menu",        "editor.key.pick_menu",        "editor.key_group.modifiers",  KEYSCOPE_MAP, {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT}},
 
         {"assign_group_modifier", "editor.key.assign_group_modifier", "editor.key_group.modifiers", KEYSCOPE_MAP, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}},
 

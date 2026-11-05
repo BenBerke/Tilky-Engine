@@ -65,6 +65,8 @@ namespace MapEditorInternal {
     // Entities are drawn as ENTITY_SIZE squares whatever their scale, so that
     // square is what gets picked. Last drawn is on top, so it's asked first.
     Entity* EntityAt(const Vector2& mouseClick) {
+        if (!canvasLayerEntities) return nullptr;
+
         Level& level = LevelManager::CurrentLevel();
 
         for (auto entity = level.entities.rbegin(); entity != level.entities.rend(); ++entity) {
@@ -2230,6 +2232,8 @@ namespace MapEditorInternal {
     }
 
     ID PickWallAt(const Vector2& mouseWorld) {
+        if (!canvasLayerWalls) return INVALID_ID;
+
         const Level& level = LevelManager::CurrentLevel();
 
         const int index = GetWallAtPoint(mouseWorld);
@@ -2362,6 +2366,8 @@ namespace MapEditorInternal {
     }
 
     ID PickLinedefAt(const Vector2& mouseWorld) {
+        if (!canvasLayerLinedefs) return INVALID_ID;
+
         const Level& level = LevelManager::CurrentLevel();
 
         const float safeZoom = std::max(editorZoom, 0.0001f);
@@ -4475,6 +4481,7 @@ namespace MapEditorInternal {
 
         if (currentMode == MODE_GEOMETRY && linedefMode) {
             ClearLinedefSelection();
+            if (!canvasLayerLinedefs) return;
 
             for (const Linedef& linedef : level.linedefs) {
                 selectedLinedefs.push_back(linedef.id);
@@ -4483,6 +4490,7 @@ namespace MapEditorInternal {
         }
         else if (currentMode == MODE_GEOMETRY) {
             ClearWallSelection();
+            if (!canvasLayerWalls) return;
 
             for (const Wall& wall : level.walls) {
                 if (!WallPassesFilter(wall)) continue;
@@ -4493,6 +4501,7 @@ namespace MapEditorInternal {
         }
         else if (currentMode == MODE_ENTITY) {
             ClearEntitySelection();
+            if (!canvasLayerEntities) return;
 
             for (const Entity& entity : level.entities) {
                 if (!EntityPassesFilter(entity) || level.transforms.Get(entity.id) == nullptr) continue;
@@ -4503,6 +4512,7 @@ namespace MapEditorInternal {
         }
         else if (currentMode == MODE_SECTOR) {
             ClearSectorSelection();
+            if (!canvasLayerSectors) return;
 
             for (const Sector& sector : level.sectors) {
                 if (selectedSectors.empty()) SelectSector(sector.id);

@@ -238,6 +238,10 @@ namespace MapEditorInternal {
             );
             rememberCameraPosition = settings.value("rememberCameraPosition", true);
             hoverSectorsInEveryMode = settings.value("hoverSectorsInEveryMode", true);
+            canvasLayerEntities = settings.value("canvasLayerEntities", true);
+            canvasLayerWalls = settings.value("canvasLayerWalls", true);
+            canvasLayerLinedefs = settings.value("canvasLayerLinedefs", true);
+            canvasLayerSectors = settings.value("canvasLayerSectors", true);
             textureFieldSize = std::clamp(
                 settings.value("textureFieldSize", DEFAULT_TEXTURE_FIELD_SIZE),
                 MIN_TEXTURE_FIELD_SIZE,
@@ -511,6 +515,10 @@ namespace MapEditorInternal {
                 {"runtimeCameraFov", runtimeCameraFov},
                 {"rememberCameraPosition", rememberCameraPosition},
                 {"hoverSectorsInEveryMode", hoverSectorsInEveryMode},
+                {"canvasLayerEntities", canvasLayerEntities},
+                {"canvasLayerWalls", canvasLayerWalls},
+                {"canvasLayerLinedefs", canvasLayerLinedefs},
+                {"canvasLayerSectors", canvasLayerSectors},
                 {"textureFieldSize", textureFieldSize},
                 {"editorDesign", EditorStyle::ActiveDesign()},
                 {"hierarchyVisible", hierarchyVisible},

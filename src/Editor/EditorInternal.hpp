@@ -631,6 +631,14 @@ namespace MapEditorInternal {
     // Mode fills it). Off: sectors only hover in Sector Mode.
     extern bool hoverSectorsInEveryMode;
 
+    // The 2D canvas's layer toggles. A layer that's off is dimmed and ignores
+    // the mouse (hover, clicks, box and paint select, Select All). Hierarchy
+    // rows and everything already selected keep working.
+    extern bool canvasLayerEntities;
+    extern bool canvasLayerWalls;
+    extern bool canvasLayerLinedefs;
+    extern bool canvasLayerSectors;
+
     extern Vector3 snapIndicatorColor;
 
     // The event -> dispatch lines drawn for the selected object, in the map
@@ -1538,6 +1546,7 @@ namespace MapEditorInternal {
         KEYBIND_CONSTRAIN_ANGLE,
         KEYBIND_SPLIT_WALL,
         KEYBIND_PAINT_SELECT,     // held while dragging
+        KEYBIND_PICK_MENU,        // held with right click: list what's under the cursor
 
         // Held with a selection group shortcut: store the selection in it
         // (both editors).
@@ -2211,12 +2220,30 @@ namespace MapEditorInternal {
     // and hierarchy rows. Defined in MapEditorInput.cpp.
     void ClearSelectionsExcept(EventOwnerKind keep);
 
-    // Right click in any mode: opens whatever is under the cursor -
-    // entity, then wall or linedef (linedef first in Linedef Mode), then
-    // the sector containing the point. Ctrl adds to / removes from the
-    // selection of that kind. Nothing under the cursor closes the
-    // inspector. Defined in MapEditorInput.cpp.
+    // One object under the cursor. `distance` is from the cursor to an
+    // entity's centre or a line, in world units; sectors are areas, so theirs
+    // is the largest float.
+    struct CanvasPick {
+        EventOwnerKind kind = EventOwnerKind::ENTITY;
+        ID id = INVALID_ID;
+        float distance = 0.0f;
+    };
+
+    // Everything under the cursor on clickable layers, in pick order: the
+    // current mode's kind first, then the closest, sectors last.
+    // Defined in MapEditorInput.cpp.
+    [[nodiscard]] std::vector<CanvasPick> CanvasPicksAt(const Vector2& mouseWorld);
+
+    // Right click in any mode: opens the first of CanvasPicksAt. Clicking the
+    // same spot again steps to the next one, and KEYBIND_PICK_MENU lists them
+    // instead. Ctrl adds to / removes from the selection of that kind, without
+    // stepping. Nothing under the cursor closes the inspector.
+    // Defined in MapEditorInput.cpp.
     void HandleCanvasRightClick(const Vector2& mouseWorld);
+
+    // Called once per frame from the UI pass: the pick menu and the label by
+    // the cursor when more than one object is under it.
+    void DrawCanvasPickUI();
     
     // Safe to call unconditionally - it no-ops if the drop didn't land on
     // the Asset Browser panel, or if the Map Editor window isn't the one

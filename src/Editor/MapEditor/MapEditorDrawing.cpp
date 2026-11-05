@@ -818,6 +818,10 @@ namespace MapEditorInternal {
                     sectorColor = *viewColor;
             }
 
+            // Layer off: faded like the other layers, unless it's selected.
+            const bool layerDimmed = !canvasLayerSectors && !selected;
+            if (layerDimmed) sectorColor.a *= 0.35f;
+
             SDL_Texture *floorTexture = nullptr;
 
             if (IsTextureViewShowingTextures(textureViewMode) && !sector.floors.empty()) {
@@ -831,7 +835,8 @@ namespace MapEditorInternal {
 
             for (const Triangle& triangle : sector.triangles) {
                 if (floorTexture != nullptr) {
-                    if (hovered) DrawFilledTriangleTextured(triangle,floorTexture, hoveredTexturedSectorTint);
+                    if (layerDimmed) DrawFilledTriangleTextured(triangle, floorTexture, {0.35f, 0.35f, 0.35f, 1.0f});
+                    else if (hovered) DrawFilledTriangleTextured(triangle,floorTexture, hoveredTexturedSectorTint);
                     else DrawFilledTriangleTextured(triangle,floorTexture, {1.0f, 1.0f, 1.0f, 1.0f});
                 }
                 else DrawFilledTriangle(triangle, sectorColor);
@@ -1228,6 +1233,14 @@ namespace MapEditorInternal {
         }
     }
 
+    namespace {
+        // A layer that's off: fainter than anything else that's merely not
+        // being edited, so it reads as off in every mode.
+        Uint8 LayerAlpha(const Uint8 alpha, const bool layerOn) {
+            return layerOn ? alpha : static_cast<Uint8>(std::min<int>(alpha, filteredAlpha / 2));
+        }
+    }
+
     void DrawWalls() {
         const Level& level = LevelManager::CurrentLevel();
 
@@ -1239,7 +1252,7 @@ namespace MapEditorInternal {
 
             // Filtered out in the Geometry Mode panel, or not editable in
             // Linedef Mode: still there, but faint.
-            const Uint8 alpha = (currentMode == MODE_GEOMETRY && (linedefMode || !WallPassesFilter(wall))) || currentMode != MODE_GEOMETRY ? filteredAlpha : 255;
+            const Uint8 alpha = LayerAlpha((currentMode == MODE_GEOMETRY && (linedefMode || !WallPassesFilter(wall))) || currentMode != MODE_GEOMETRY ? filteredAlpha : 255, canvasLayerWalls);
 
             // A selected wall is drawn by DrawGeometryEditOverlay instead.
             if (std::find(selectedWalls.begin(), selectedWalls.end(), wall.id) != selectedWalls.end() &&
@@ -1258,7 +1271,7 @@ namespace MapEditorInternal {
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
         // Faint wherever they can't be edited, like walls outside Geometry Mode.
-        const Uint8 alpha = currentMode == MODE_GEOMETRY && linedefMode ? 255 : static_cast<Uint8>(filteredAlpha);
+        const Uint8 alpha = LayerAlpha(currentMode == MODE_GEOMETRY && linedefMode ? 255 : static_cast<Uint8>(filteredAlpha), canvasLayerLinedefs);
 
         const float squareSize = static_cast<float>(linedefEndpointSize);
 
@@ -1391,7 +1404,7 @@ namespace MapEditorInternal {
             Vector3 entityColor = normalEntityColor;
 
             // Filtered out in the Entity Mode panel: still there, but faint.
-            const Uint8 alpha = (currentMode == MODE_ENTITY && !EntityPassesFilter(entity)) || currentMode != MODE_ENTITY ? filteredAlpha : 255;
+            const Uint8 alpha = LayerAlpha((currentMode == MODE_ENTITY && !EntityPassesFilter(entity)) || currentMode != MODE_ENTITY ? filteredAlpha : 255, canvasLayerEntities);
 
             // Texture View Mode for entities with a sprite.
             // Falls back to the existing color-block rendering whenever the

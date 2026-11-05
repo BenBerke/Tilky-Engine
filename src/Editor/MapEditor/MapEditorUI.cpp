@@ -6079,6 +6079,25 @@ namespace MapEditorInternal {
             HoverTooltip(FormatKeyBinds(Get("editor.tooltip.texture_view_mode")).c_str());
         }
 
+        // ---- Layers: what the mouse can reach on the canvas ---------------
+        {
+            ImGui::TextUnformatted(Get("editor.canvas_layers").c_str());
+            HoverTooltip(Get("editor.tooltip.canvas_layers").c_str());
+
+            const std::pair<const char*, bool*> layers[] = {
+                {"editor.canvas_layers.entities", &canvasLayerEntities},
+                {"editor.canvas_layers.walls", &canvasLayerWalls},
+                {"editor.canvas_layers.linedefs", &canvasLayerLinedefs},
+                {"editor.canvas_layers.sectors", &canvasLayerSectors},
+            };
+
+            for (const auto& [labelKey, enabled] : layers) {
+                ImGui::SameLine();
+                ImGui::Checkbox(Get(labelKey).c_str(), enabled);
+                HoverTooltip(Get("editor.tooltip.canvas_layers").c_str());
+            }
+        }
+
         // ---- Grid & snapping (visible in every mode - Geometry Mode's
         // wall/endpoint dragging and every Sector drawing tool both
         // read GRID_SIZE/gridSnapEnabled/vertexSnapEnabled) -----------------
@@ -6287,6 +6306,7 @@ namespace MapEditorInternal {
         DrawDockSpace();
         SubmitCanvasEntityDragSource();
         SubmitCanvasRefDragSource();
+        DrawCanvasPickUI();
 
         Level &level = LevelManager::CurrentLevel();
 

@@ -45,7 +45,7 @@ namespace CommandPalette {
             switch (bind) {
                 case KEYBIND_PAN_UP: case KEYBIND_PAN_DOWN: case KEYBIND_PAN_LEFT: case KEYBIND_PAN_RIGHT:
                 case KEYBIND_DISABLE_SNAP: case KEYBIND_MULTI_SELECT: case KEYBIND_RANGE_SELECT:
-                case KEYBIND_CONSTRAIN_ANGLE: case KEYBIND_SPLIT_WALL: case KEYBIND_PAINT_SELECT:
+                case KEYBIND_CONSTRAIN_ANGLE: case KEYBIND_SPLIT_WALL: case KEYBIND_PAINT_SELECT: case KEYBIND_PICK_MENU:
                 case KEYBIND_ASSIGN_GROUP_MODIFIER:
                 case KEYBIND_RT_FLY_FORWARD: case KEYBIND_RT_FLY_BACK: case KEYBIND_RT_FLY_LEFT: case KEYBIND_RT_FLY_RIGHT:
                 case KEYBIND_RT_FLY_UP: case KEYBIND_RT_FLY_DOWN: case KEYBIND_RT_RESET_SPEED:
