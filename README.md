@@ -529,6 +529,10 @@ Contributions are welcome. Bug reports, feature requests, documentation improvem
 
 **Author:** Berke Memioğlu
 
+## Sponsors
+
+RagnarRandom - 25$
+
 ### Assets
 
 * **Çağla Çıralı** — Logo
