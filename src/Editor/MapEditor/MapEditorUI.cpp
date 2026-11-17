@@ -647,6 +647,7 @@ namespace {
 
     bool projectSettingsOpen = false;
     bool userSettingsOpen = false;
+    bool userSettingsWasOpen = false;
 
     bool layoutMenuOpen = false;
     bool engineSettingsOpen = false;
@@ -2729,8 +2730,6 @@ namespace {
         else if (IsUserSettingsKeySlot(keyBindBeingListened)) keyBindBeingListened = nullptr;
 
         ImGui::End();
-
-        SaveUserSettings();
     }
 
     // =========================================================================
@@ -3292,6 +3291,10 @@ namespace {
         if (projectSettingsOpen) DrawProjectSettingsWindow();
         if (userSettingsOpen) DrawUserSettingsWindow();
         else if (IsUserSettingsKeySlot(keyBindBeingListened)) keyBindBeingListened = nullptr;
+        // Save once when the window closes (its X or the menu toggle), not
+        // every frame it is open. Quitting the editor saves as well.
+        if (userSettingsWasOpen && !userSettingsOpen) SaveUserSettings();
+        userSettingsWasOpen = userSettingsOpen;
         if (layoutMenuOpen) DrawLayoutMenu();
         if (engineSettingsOpen) DrawEngineSettingsWindow();
 
