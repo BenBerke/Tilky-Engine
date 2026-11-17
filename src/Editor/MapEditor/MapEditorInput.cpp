@@ -2395,23 +2395,20 @@ namespace MapEditorInternal {
             return true;
         }
 
-        // True when it took the key press. In Entity Mode that is only while
-        // the cursor is on an entity with a sprite, so Ctrl+C / Ctrl+V still
-        // copy and paste entities everywhere else.
+        // True when it took the key press. In Entity Mode Ctrl+C / Ctrl+V are
+        // always entity copy/paste; only the placement combos (Alt+C/V) act
+        // on the hovered entity's sprite texture.
         bool HandleCanvasTextureShortcuts(Level& level, const Vector2& mouseWorld, const bool mouseBlockedByImGui) {
+            const bool entityMode = currentMode == MODE_ENTITY;
             const bool copyWithPlacement = GetComboDown(COMBO_RT_COPY_TEXTURE_PLACEMENT);
-            const bool copy = copyWithPlacement || GetComboDown(COMBO_RT_COPY_TEXTURE);
+            const bool copy = copyWithPlacement || (!entityMode && GetComboDown(COMBO_RT_COPY_TEXTURE));
             const bool pasteWithPlacement = GetComboDown(COMBO_RT_PASTE_TEXTURE_PLACEMENT);
-            const bool paste = pasteWithPlacement || GetComboDown(COMBO_RT_PASTE_TEXTURE);
+            const bool paste = pasteWithPlacement || (!entityMode && GetComboDown(COMBO_RT_PASTE_TEXTURE));
 
             if (!copy && !paste) return false;
 
             const ID hovered = mouseBlockedByImGui ? INVALID_ID : HoveredCanvasItem(level, mouseWorld);
-            if (currentMode == MODE_ENTITY && hovered == INVALID_ID) return false;
-
-            // With no texture copied yet, Ctrl+V on an entity still pastes entities.
-            const bool clipboardEmpty = canvasTextureClipboard.source == CanvasTextureClipboard::Source::None;
-            if (currentMode == MODE_ENTITY && !copy && clipboardEmpty) return false;
+            if (entityMode && hovered == INVALID_ID) return false;
 
             if (copy) {
                 ID source = hovered;

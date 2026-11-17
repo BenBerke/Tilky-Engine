@@ -320,6 +320,12 @@ namespace Editor {
         const bool keyboardBlockedByImgui = io.WantTextInput || keyBindBeingListened != nullptr || CommandPalette::IsOpen();
 
         if (currentState == STATE_MAP) {
+            // ImGui only drops window focus on a left-click on empty space,
+            // but the canvas picks with right-click too. A panel left focused
+            // (the asset browser) would keep Ctrl+C/V from the canvas.
+            if (!mouseBlockedByImGui && (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsMouseClicked(ImGuiMouseButton_Middle)))
+                ImGui::SetWindowFocus(nullptr);
+
             const bool teleporterPickTookMouse = HandleTeleporterPick(mouseBlockedByImGui, keyboardBlockedByImgui);
             HandleEditorInput(mouseBlockedByImGui || teleporterPickTookMouse, keyboardBlockedByImgui);
             HandleEditorShortcuts(keyboardBlockedByImgui);

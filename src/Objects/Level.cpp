@@ -274,14 +274,19 @@ ID Level::CreateEntity(Entity& copy) {
     // after duplication rather than being remapped to the new copy - the
     // same "self-reference doesn't retarget" caveat most engines have for
     // duplicate/copy-paste.
-    for (const ComponentScript* originalScript : copy.GetScripts()) {
+    // Copied by value first: AddScript grows the script storage, which
+    // would leave pointers to the originals dangling.
+    std::vector<ComponentScript> originalScripts;
+    for (const ComponentScript* originalScript : copy.GetScripts()) originalScripts.push_back(*originalScript);
+
+    for (const ComponentScript& originalScript : originalScripts) {
         ComponentScript& s = entity.AddScript();
 
-        s.fileName = originalScript->fileName;
-        s.enabled = originalScript->enabled;
-        s.publicValues = originalScript->publicValues;
-        s.schemaHash = originalScript->schemaHash;
-        s.takeFromLevelCopy = originalScript->takeFromLevelCopy;
+        s.fileName = originalScript.fileName;
+        s.enabled = originalScript.enabled;
+        s.publicValues = originalScript.publicValues;
+        s.schemaHash = originalScript.schemaHash;
+        s.takeFromLevelCopy = originalScript.takeFromLevelCopy;
     }
 
     // A copy of a prefab instance is an instance too, with the same
