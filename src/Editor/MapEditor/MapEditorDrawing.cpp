@@ -1385,6 +1385,91 @@ namespace MapEditorInternal {
         }
     }
 
+    namespace {
+        // A closed loop of world points (map x, map y) drawn as a thick line
+        // with a dark edge under it, so it reads on any background or sprite.
+        void DrawColliderLoop(const std::vector<Vector2>& worldPoints, const Vector3& color, const Uint8 alpha) {
+            std::vector<Vector2> screen;
+            screen.reserve(worldPoints.size());
+            for (const Vector2& point : worldPoints) screen.push_back(WorldToScreen(point, cameraPos));
+
+            SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+            const float thickness = colliderOutlineThickness;
+
+            for (int pass = 0; pass < 2; ++pass) {
+                if (pass == 0) SDL_SetRenderDrawColor(renderer, 0, 0, 0, alpha);
+                else SDL_SetRenderDrawColor(renderer, color.x, color.y, color.z, alpha);
+
+                const float width = pass == 0 ? thickness + 2.0f : thickness;
+
+                for (size_t i = 0; i < screen.size(); ++i) {
+                    const Vector2& a = screen[i];
+                    const Vector2& b = screen[(i + 1) % screen.size()];
+                    DrawThickLine(renderer, a, b, width);
+                }
+            }
+        }
+
+        void DrawColliderOutline(const ComponentCollider& collider, const ComponentTransform& transform, Uint8 alpha) {
+            if (!collider.isActive) alpha = static_cast<Uint8>(alpha / 2);
+
+            const Vector3& color = collider.isTrigger ? triggerOutlineColor : colliderOutlineColor;
+            const Vector3 base3 = collider.Base(transform);
+            const Vector2 base = {base3.x, base3.z};
+
+            std::vector<Vector2> points;
+
+            if (collider.IsRound()) {
+                const float radius = collider.Radius(transform);
+                if (radius * editorZoom < 0.5f) return;
+
+                // Enough points that it stays round when zoomed in.
+                const int pointCount = std::clamp(static_cast<int>(radius * editorZoom * 0.5f), 24, 128);
+                points.reserve(pointCount);
+
+                for (int i = 0; i < pointCount; ++i) {
+                    const float angle = static_cast<float>(i) / static_cast<float>(pointCount) * Constants::TwoPi;
+                    points.push_back({base.x + std::cos(angle) * radius, base.y + std::sin(angle) * radius});
+                }
+            }
+            else {
+                // An AABB: it doesn't turn with the entity, in physics either.
+                const Vector3 size = collider.WorldSize(transform);
+                const float halfX = size.x * 0.5f;
+                const float halfZ = size.z * 0.5f;
+                if ((halfX + halfZ) * editorZoom < 0.5f) return;
+
+                points = {
+                    {base.x - halfX, base.y - halfZ},
+                    {base.x + halfX, base.y - halfZ},
+                    {base.x + halfX, base.y + halfZ},
+                    {base.x - halfX, base.y + halfZ},
+                };
+            }
+
+            DrawColliderLoop(points, color, alpha);
+        }
+
+        // After every square, so no square covers another entity's outline.
+        void DrawColliderOutlines() {
+            if (!showColliderOutlines) return;
+
+            Level& level = LevelManager::CurrentLevel();
+
+            for (const Entity& entity : level.entities) {
+                const ComponentTransform* transform = level.transforms.Get(entity.id);
+                if (transform == nullptr || !level.colliders.Has(entity.id)) continue;
+
+                // Faded the same way as the entity's square.
+                const Uint8 alpha = LayerAlpha((currentMode == MODE_ENTITY && !EntityPassesFilter(entity)) || currentMode != MODE_ENTITY ? filteredAlpha : 255, canvasLayerEntities);
+
+                for (const ComponentCollider* collider : level.colliders.GetAll(entity.id))
+                    if (collider != nullptr) DrawColliderOutline(*collider, *transform, alpha);
+            }
+        }
+    }
+
     void DrawEntities() {
         Level& level = LevelManager::CurrentLevel();
 
@@ -1395,13 +1480,14 @@ namespace MapEditorInternal {
 
             const Vector2 screenPos = WorldToScreen({transform->position.x, transform->position.z}, cameraPos);
 
-            const float screenEntitySize = ENTITY_SIZE * editorZoom;
+            // True size: sprite width, else collider size (see EntityHalfSize).
+            const Vector2 half = EntityHalfSize(level, entity.id);
 
             SDL_FRect rect = {
-                screenPos.x - screenEntitySize * 0.5f,
-                screenPos.y - screenEntitySize * 0.5f,
-                screenEntitySize,
-                screenEntitySize
+                screenPos.x - half.x * editorZoom,
+                screenPos.y - half.y * editorZoom,
+                half.x * editorZoom * 2.0f,
+                half.y * editorZoom * 2.0f
             };
 
             Vector3 entityColor = normalEntityColor;
@@ -1453,6 +1539,8 @@ namespace MapEditorInternal {
                 }
             }
         }
+
+        DrawColliderOutlines();
     }
 
     namespace {

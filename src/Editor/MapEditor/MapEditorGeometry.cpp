@@ -62,8 +62,19 @@ namespace MapEditorInternal {
         return Vector2Math::DistanceSquared(a, b) < radius * radius;
     }
 
-    // Entities are drawn as ENTITY_SIZE squares whatever their scale, so that
-    // square is what gets picked. Last drawn is on top, so it's asked first.
+    Vector2 EntityHalfSize(const Level& level, const ID entityID) {
+        const ComponentTransform* transform = level.transforms.Get(entityID);
+        if (transform == nullptr) return {ENTITY_SIZE * 0.5f, ENTITY_SIZE * 0.5f};
+
+        // The map shows x across and z down, so those two scale axes.
+        return {
+            std::max(std::abs(transform->scale.x), ENTITY_SIZE) * 0.5f,
+            std::max(std::abs(transform->scale.z), ENTITY_SIZE) * 0.5f
+        };
+    }
+
+    // Entities are drawn as EntityHalfSize rectangles, so that rectangle is
+    // what gets picked. Last drawn is on top, so it's asked first.
     Entity* EntityAt(const Vector2& mouseClick) {
         if (!canvasLayerEntities) return nullptr;
 
@@ -77,8 +88,9 @@ namespace MapEditorInternal {
             const ComponentTransform* transform = level.transforms.Get(entity->id);
             if (transform == nullptr) continue;
 
-            if (std::abs(mouseClick.x - transform->position.x) <= ENTITY_SIZE * 0.5f &&
-                std::abs(mouseClick.y - transform->position.z) <= ENTITY_SIZE * 0.5f) return &*entity;
+            const Vector2 half = EntityHalfSize(level, entity->id);
+            if (std::abs(mouseClick.x - transform->position.x) <= half.x &&
+                std::abs(mouseClick.y - transform->position.z) <= half.y) return &*entity;
         }
 
         return nullptr;

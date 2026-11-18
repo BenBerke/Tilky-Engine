@@ -204,6 +204,8 @@ namespace MapEditorInternal {
             LoadColor3("gizmoXColor", gizmoXColor);
             LoadColor3("gizmoYColor", gizmoYColor);
             LoadColor3("gizmoZColor", gizmoZColor);
+            LoadColor3("colliderOutlineColor", colliderOutlineColor);
+            LoadColor3("triggerOutlineColor", triggerOutlineColor);
             LoadColor3("themeTextColor", themeTextColor);
             LoadColor4("gridColor", gridColor);
             LoadColor3("backgroundColor", backgroundColor);
@@ -279,6 +281,12 @@ namespace MapEditorInternal {
 
             autoSaveInSeconds = std::max(0.0, settings.value("autoSaveInSeconds", autoSaveInSeconds));
             filteredAlpha = settings.value("filteredAlpha", 60);
+            showColliderOutlines = settings.value("showColliderOutlines", true);
+            colliderOutlineThickness = std::clamp(
+                settings.value("colliderOutlineThickness", DEFAULT_COLLIDER_OUTLINE_THICKNESS),
+                MIN_COLLIDER_OUTLINE_THICKNESS,
+                MAX_COLLIDER_OUTLINE_THICKNESS
+            );
             eventLinkThickness = std::clamp(
                 settings.value("eventLinkThickness", DEFAULT_EVENT_LINK_THICKNESS),
                 MIN_EVENT_LINK_THICKNESS,
@@ -506,6 +514,12 @@ namespace MapEditorInternal {
                     {"gizmoZColor",
                      SerializeColor(gizmoZColor)},
 
+                    {"colliderOutlineColor",
+                     SerializeColor(colliderOutlineColor)},
+
+                    {"triggerOutlineColor",
+                     SerializeColor(triggerOutlineColor)},
+
                     {"themeTextColor",
                      SerializeColor(themeTextColor)},
 
@@ -550,6 +564,8 @@ namespace MapEditorInternal {
                 {"autoSaveInSeconds", autoSaveInSeconds},
                 {"filteredAlpha", filteredAlpha},
                 {"eventLinkThickness", eventLinkThickness},
+                {"showColliderOutlines", showColliderOutlines},
+                {"colliderOutlineThickness", colliderOutlineThickness},
                 {"linedefThickness", linedefThickness},
                 {"linedefEndpointSize", linedefEndpointSize}
             };

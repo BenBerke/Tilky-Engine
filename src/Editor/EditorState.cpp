@@ -23,7 +23,7 @@ namespace MapEditorInternal {
     ImFont* editorIconFont = nullptr;
 
     float editorZoom = 1.0f;
-    float GRID_SIZE = DEFAULT_GRID_SIZE; // fixed world-space grid/snap spacing; adjustable at runtime via the Grid & Snapping panel (see DrawEditorUI)
+    double GRID_SIZE = DEFAULT_GRID_SIZE; // fixed world-space grid/snap spacing; adjustable at runtime via the Grid & Snapping panel (see DrawEditorUI)
 
     Vector2 cameraPos = {0.0f, 0.0f};
 
@@ -197,6 +197,10 @@ namespace MapEditorInternal {
 
     Vector3 eventLinkColor = {255, 0, 0};
     float eventLinkThickness = DEFAULT_EVENT_LINK_THICKNESS;
+    bool showColliderOutlines = true;
+    Vector3 colliderOutlineColor = {255, 220, 0};
+    Vector3 triggerOutlineColor = {0, 255, 140};
+    float colliderOutlineThickness = DEFAULT_COLLIDER_OUTLINE_THICKNESS;
 
     Vector3 kValidLineColor = {255, 220, 80};
     Vector3 kInvalidLineColor = {230, 70, 70};

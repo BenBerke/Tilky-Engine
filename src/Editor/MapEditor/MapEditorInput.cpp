@@ -259,7 +259,6 @@ namespace MapEditorInternal {
                 }
 
                 case MODE_ENTITY: {
-                    const float entityRadius = radius + ENTITY_SIZE * 0.5f;
                     ID primary = selectedEntities.empty() ? INVALID_ID : selectedEntity.id;
 
                     for (const ComponentTransform& transform : level.transforms.components) {
@@ -267,6 +266,8 @@ namespace MapEditorInternal {
                         if (entity == nullptr || level.ui_transforms.Has(entity->id) || !EntityPassesFilter(*entity)) continue;
 
                         const Vector2 position = {transform.position.x, transform.position.z};
+                        const Vector2 half = EntityHalfSize(level, entity->id);
+                        const float entityRadius = radius + std::max(half.x, half.y);
                         if (Vector2Math::DistanceSquared(position, mouseWorld) > entityRadius * entityRadius) continue;
 
                         PaintInto(selectedEntities, primary, entity->id, remove);
@@ -1237,11 +1238,11 @@ namespace MapEditorInternal {
                     if (transform == nullptr) continue;
 
                     // The same footprint EntityAt picks with.
-                    const float half = ENTITY_SIZE * 0.5f;
+                    const Vector2 half = EntityHalfSize(level, entity.id);
 
                     const bool overlaps =
-                        transform->position.x - half <= boxMax.x && transform->position.x + half >= boxMin.x &&
-                        transform->position.z - half <= boxMax.y && transform->position.z + half >= boxMin.y;
+                        transform->position.x - half.x <= boxMax.x && transform->position.x + half.x >= boxMin.x &&
+                        transform->position.z - half.y <= boxMax.y && transform->position.z + half.y >= boxMin.y;
 
                     if (!overlaps) continue;
                     if (std::find(selectedEntities.begin(), selectedEntities.end(), entity.id) != selectedEntities.end()) continue;
@@ -1659,7 +1660,8 @@ namespace MapEditorInternal {
                 if (transform == nullptr) continue;
 
                 const Vector2 offset = {mouseWorld.x - transform->position.x, mouseWorld.y - transform->position.z};
-                if (std::abs(offset.x) > ENTITY_SIZE * 0.5f || std::abs(offset.y) > ENTITY_SIZE * 0.5f) continue;
+                const Vector2 half = EntityHalfSize(level, entity->id);
+                if (std::abs(offset.x) > half.x || std::abs(offset.y) > half.y) continue;
 
                 picks.push_back({EventOwnerKind::ENTITY, entity->id, std::sqrt(offset.x * offset.x + offset.y * offset.y)});
             }
@@ -1977,7 +1979,10 @@ namespace MapEditorInternal {
 
         if (anchor == nullptr) return;
 
-        const Vector2 target = {anchor->position.x + GRID_SIZE, anchor->position.z + GRID_SIZE};
+        const Vector2 target = {
+            static_cast<float>(anchor->position.x + GRID_SIZE),
+            static_cast<float>(anchor->position.z + GRID_SIZE)
+        };
 
         // Through the paste, without touching what Ctrl+C copied.
         std::swap(entityClipboard, clipboard);
@@ -2013,18 +2018,21 @@ namespace MapEditorInternal {
     bool GetEntityGizmoLayout(EntityGizmoLayout* layout) {
         if (currentMode != MODE_ENTITY || selectedEntities.empty()) return false;
 
-        const ComponentTransform* transform = LevelManager::CurrentLevel().transforms.Get(selectedEntity.id);
+        const Level& level = LevelManager::CurrentLevel();
+        const ComponentTransform* transform = level.transforms.Get(selectedEntity.id);
         if (transform == nullptr) return false;
 
         const Vector2 origin = WorldToScreen({transform->position.x, transform->position.z}, cameraPos);
-        const float start = ENTITY_SIZE * editorZoom * 0.5f + GIZMO_GAP;
+        const Vector2 half = EntityHalfSize(level, selectedEntity.id);
+        const float startX = half.x * editorZoom + GIZMO_GAP;
+        const float startZ = half.y * editorZoom + GIZMO_GAP;
 
         // World +Z is screen-down on this canvas, so the Z arrow points down.
-        layout->xStart = {origin.x + start, origin.y};
-        layout->xTip = {origin.x + start + GIZMO_ARROW_LENGTH, origin.y};
-        layout->zStart = {origin.x, origin.y + start};
-        layout->zTip = {origin.x, origin.y + start + GIZMO_ARROW_LENGTH};
-        layout->square = {origin.x + start, origin.y + start, GIZMO_SQUARE_SIZE, GIZMO_SQUARE_SIZE};
+        layout->xStart = {origin.x + startX, origin.y};
+        layout->xTip = {origin.x + startX + GIZMO_ARROW_LENGTH, origin.y};
+        layout->zStart = {origin.x, origin.y + startZ};
+        layout->zTip = {origin.x, origin.y + startZ + GIZMO_ARROW_LENGTH};
+        layout->square = {origin.x + startX, origin.y + startZ, GIZMO_SQUARE_SIZE, GIZMO_SQUARE_SIZE};
 
         return true;
     }
@@ -2963,8 +2971,8 @@ namespace MapEditorInternal {
             const bool gridLarger = GetKeyBindDown(KEYBIND_GRID_LARGER);
 
             if (gridSmaller != gridLarger) {
-                constexpr float MAX_GRID_SIZE = 1024.0f;
-                GRID_SIZE = std::clamp(gridLarger ? GRID_SIZE * 2.0f : GRID_SIZE * 0.5f, MIN_GRID_SIZE, MAX_GRID_SIZE);
+                constexpr double MAX_GRID_SIZE = 1024.0;
+                GRID_SIZE = std::clamp(gridLarger ? GRID_SIZE * 2.0 : GRID_SIZE * 0.5, MIN_GRID_SIZE, MAX_GRID_SIZE);
 
                 char message[128];
                 std::snprintf(message, sizeof(message), Localisation::Get("editor.toast.grid_size").c_str(), GRID_SIZE);

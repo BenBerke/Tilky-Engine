@@ -178,6 +178,8 @@ namespace {
     constexpr Vector3 defaultHighlightedSectorColor = {40, 40, 220};
 
     constexpr Vector3 defaultEventLinkColor = {255, 0, 0};
+    constexpr Vector3 defaultColliderOutlineColor = {255, 220, 0};
+    constexpr Vector3 defaultTriggerOutlineColor = {0, 255, 140};
 
     constexpr Vector3 defaultKValidLineColor = {255, 220, 80};
     constexpr Vector3 defaultKInvalidLineColor = {230, 70, 70};
@@ -2447,6 +2449,18 @@ namespace {
                         gizmoZColor,
                         defaultGizmoZColor
                     );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.collider_outline_color",
+                        colliderOutlineColor,
+                        defaultColliderOutlineColor
+                    );
+
+                    DrawColor3Setting(
+                        "editor.user_settings.trigger_outline_color",
+                        triggerOutlineColor,
+                        defaultTriggerOutlineColor
+                    );
                 }
             );
 
@@ -2613,6 +2627,13 @@ namespace {
             ImGui::Spacing();
 
             ImGui::SliderInt(Get("editor.user_settings.filtered_alpha").c_str(), &filteredAlpha, 0, 255);
+
+            ImGui::Checkbox(Get("editor.user_settings.show_collider_outlines").c_str(), &showColliderOutlines);
+            HoverTooltip(Get("editor.tooltip.user_settings.show_collider_outlines").c_str());
+
+            ImGui::SliderFloat(Get("editor.user_settings.collider_outline_thickness").c_str(), &colliderOutlineThickness,
+                               MIN_COLLIDER_OUTLINE_THICKNESS, MAX_COLLIDER_OUTLINE_THICKNESS, "%.1f");
+            HoverTooltip(Get("editor.tooltip.user_settings.collider_outline_thickness").c_str());
 
             ImGui::SliderFloat(Get("editor.user_settings.event_link_thickness").c_str(), &eventLinkThickness,
                                MIN_EVENT_LINK_THICKNESS, MAX_EVENT_LINK_THICKNESS, "%.1f");
@@ -5070,11 +5091,11 @@ namespace MapEditorInternal {
         ImGui::Spacing();
 
         ImGui::SetNextItemWidth(110.0f);
-        if (ImGui::InputFloat(
+        if (ImGui::InputDouble(
             (Get("editor.grid.size") + "##EditorGridSize").c_str(),
             &GRID_SIZE,
-            1.0f,
-            8.0f,
+            1.0,
+            8.0,
             "%.1f"
         ))
             GRID_SIZE = std::max(GRID_SIZE, MIN_GRID_SIZE);

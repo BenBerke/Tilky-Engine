@@ -34,11 +34,11 @@ namespace MapEditorInternal {
     extern int screenHeight;
 
     extern float editorZoom;
-    extern float GRID_SIZE; // fixed world-space grid/snap spacing - NOT affected by editorZoom. Adjustable at runtime via the Grid & Snapping panel.
+    extern double GRID_SIZE; // fixed world-space grid/snap spacing - NOT affected by editorZoom. Adjustable at runtime via the Grid & Snapping panel.
     constexpr float MIN_EDITOR_ZOOM = 0.0001f;
     constexpr float MAX_EDITOR_ZOOM = 100000.00f;
-    constexpr float MIN_GRID_SIZE = .001f;
-    constexpr float DEFAULT_GRID_SIZE = 12.0f;
+    constexpr double MIN_GRID_SIZE = .001;
+    constexpr double DEFAULT_GRID_SIZE = 12.0;
 
     constexpr float ENTITY_SIZE = 10.0f;
 
@@ -479,6 +479,10 @@ namespace MapEditorInternal {
     constexpr float MIN_EVENT_LINK_THICKNESS = 1.0f;
     constexpr float MAX_EVENT_LINK_THICKNESS = 10.0f;
 
+    constexpr float DEFAULT_COLLIDER_OUTLINE_THICKNESS = 3.0f;
+    constexpr float MIN_COLLIDER_OUTLINE_THICKNESS = 1.0f;
+    constexpr float MAX_COLLIDER_OUTLINE_THICKNESS = 10.0f;
+
     constexpr float DEFAULT_LINEDEF_THICKNESS = 2.0f;
     constexpr float MIN_LINEDEF_THICKNESS = 1.0f;
     constexpr float MAX_LINEDEF_THICKNESS = 10.0f;
@@ -646,6 +650,12 @@ namespace MapEditorInternal {
     extern Vector3 eventLinkColor;
     extern float eventLinkThickness;
 
+    // Collider outlines on the 2D map, drawn over the entity squares.
+    extern bool showColliderOutlines;
+    extern Vector3 colliderOutlineColor;
+    extern Vector3 triggerOutlineColor;
+    extern float colliderOutlineThickness;
+
     extern Vector3 kValidLineColor;
     extern Vector3 kInvalidLineColor;
     extern Vector3 kAnchorColor;
@@ -740,6 +750,11 @@ namespace MapEditorInternal {
 
     [[nodiscard]] bool SamePoint(const Vector2& a, const Vector2& b);
     [[nodiscard]] bool WithinRadius(const Vector2& a, const Vector2& b, float radius);
+    // Half the width (x) and depth (y) of an entity's square on the 2D map:
+    // its Transform's scale.x by scale.z, never smaller than ENTITY_SIZE.
+    // Drawing and every kind of picking use this.
+    [[nodiscard]] Vector2 EntityHalfSize(const Level& level, ID entityID);
+
     [[nodiscard]] Entity* EntityAt(const Vector2& mouseClick);
     [[nodiscard]] bool HasLineBetween(const Vector2& a, const Vector2& b);
 
