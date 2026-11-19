@@ -200,6 +200,21 @@ private:
     std::string textureReference;
 };
 
+// .prefab files. When the prefab's entity has a Sprite, its tile shows that
+// sprite's north texture - drawn as a framed card with a prefab badge (see
+// AssetBrowser::DrawEntryTile) so it never looks like a plain image file.
+class PrefabEntry final : public GenericFileEntry {
+public:
+    PrefabEntry(std::filesystem::path absolutePath, std::filesystem::path relativePath, std::string displayName);
+
+    // Looked up every frame through Prefab::Get's cache, so a saved prefab
+    // edit shows straight away.
+    [[nodiscard]] std::optional<std::string> GetThumbnailReference() const override;
+
+private:
+    std::string prefabReference; // AssetBrowser::ToAssetReference(absolutePath, AssetKind::Prefab)
+};
+
 // Level files - AssetBrowser::kLevelFileExtension (".bson"). Double-
 // clicking one opens it through Editor::OpenLevel rather than treating it as a
 // field-reference asset; see LevelEntry::OnDoubleClick in AssetBrowser.cpp.

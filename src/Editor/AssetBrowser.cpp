@@ -1902,6 +1902,21 @@ void TextureEntry::DrawContextMenu(AssetBrowser& browser) {
     DrawRenameAndDeleteMenuItems(browser);
 }
 
+PrefabEntry::PrefabEntry(std::filesystem::path absolutePath, std::filesystem::path relativePath, std::string displayName)
+    : GenericFileEntry(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Prefab)
+    , prefabReference(AssetBrowser::ToAssetReference(absolutePath, AssetKind::Prefab)) {}
+
+std::optional<std::string> PrefabEntry::GetThumbnailReference() const {
+    const Level* prefab = Prefab::Get(prefabReference);
+    if (prefab == nullptr || prefab->entities.empty()) return std::nullopt;
+
+    // The prefab entity's first Sprite, north slot (slot 0).
+    const ComponentSprite* sprite = prefab->sprites.Get(Prefab::RootOf(*prefab).id);
+    if (sprite == nullptr || sprite->textureFileNames[0].empty()) return std::nullopt;
+
+    return sprite->textureFileNames[0];
+}
+
 void LevelEntry::OnDoubleClick(AssetBrowser& browser) {
     browser.RequestOpenLevel(GetPath());
 }
@@ -1944,7 +1959,7 @@ std::unique_ptr<AssetEntry> CreateAssetEntry(
         case RegisteredExtensionKind::Font:
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Font);
         case RegisteredExtensionKind::Prefab:
-            return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::Prefab);
+            return std::make_unique<PrefabEntry>(absolutePath, std::move(relativePath), std::move(displayName));
         case RegisteredExtensionKind::UILayout:
             return std::make_unique<GenericFileEntry>(absolutePath, std::move(relativePath), std::move(displayName), AssetKind::UILayout);
         case RegisteredExtensionKind::Level:
@@ -2665,7 +2680,49 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
             );
     };
 
-    if (texture != ImTextureID{}) drawList->AddImage(texture, topLeft, boxMax);
+    if (texture != ImTextureID{} && entry.GetAssetKind() == AssetKind::Prefab) {
+        // A prefab's sprite: a card in the prefab colour, the sprite inset
+        // on a checkerboard, a coloured frame and a cube badge in the corner,
+        // so it can't be mistaken for the .png it uses.
+        const ImU32 accent = IM_COL32(90, 190, 210, 255);
+        const float inset = std::max(4.0f, tileSize * 0.1f);
+        const ImVec2 imageMin = {topLeft.x + inset, topLeft.y + inset};
+        const ImVec2 imageMax = {boxMax.x - inset, boxMax.y - inset};
+
+        drawList->AddRectFilled(topLeft, boxMax, EntryTileTint(entry), 6.0f);
+
+        const float cell = std::max(4.0f, (imageMax.x - imageMin.x) / 8.0f);
+        drawList->PushClipRect(imageMin, imageMax, true);
+        for (float y = imageMin.y; y < imageMax.y; y += cell)
+            for (float x = imageMin.x; x < imageMax.x; x += cell) {
+                const bool dark = (static_cast<int>((x - imageMin.x) / cell) + static_cast<int>((y - imageMin.y) / cell)) % 2 == 0;
+                drawList->AddRectFilled({x, y}, {x + cell, y + cell}, dark ? IM_COL32(30, 52, 58, 255) : IM_COL32(40, 66, 74, 255));
+            }
+        drawList->PopClipRect();
+
+        drawList->AddImage(texture, imageMin, imageMax);
+        drawList->AddRect(topLeft, boxMax, accent, 6.0f, 0, 2.0f);
+
+        // Badge: a filled corner tab with the prefab glyph (or "P" without the icon font).
+        const float badgeSize = std::max(14.0f, tileSize * 0.3f);
+        const ImVec2 badgeMin = {boxMax.x - badgeSize, boxMax.y - badgeSize};
+        drawList->AddRectFilled(badgeMin, boxMax, accent, 6.0f, ImDrawFlags_RoundCornersTopLeft | ImDrawFlags_RoundCornersBottomRight);
+
+        const char* badgeGlyph = iconFont != nullptr ? ICON_FA_CUBES : "P";
+        ImFont* badgeFont = iconFont != nullptr ? iconFont : ImGui::GetFont();
+        const float badgeFontSize = badgeSize * 0.6f;
+        ImGui::PushFont(badgeFont, badgeFontSize);
+        const ImVec2 glyphSize = ImGui::CalcTextSize(badgeGlyph);
+        ImGui::PopFont();
+        drawList->AddText(
+            badgeFont,
+            badgeFontSize,
+            {badgeMin.x + (badgeSize - glyphSize.x) * 0.5f, badgeMin.y + (badgeSize - glyphSize.y) * 0.5f},
+            IM_COL32(20, 30, 34, 255),
+            badgeGlyph
+        );
+    }
+    else if (texture != ImTextureID{}) drawList->AddImage(texture, topLeft, boxMax);
     else if (isDirectory) {
         if (iconFont != nullptr) drawTileIcon(ICON_FA_FOLDER, IM_COL32(232, 188, 84, 255), nullptr);
         else {
