@@ -27,6 +27,7 @@ namespace {
             {"CurrentAmmo", 0},      // what the HUD's big ammo number shows
             {"IncomingDamage", 0},   // how much the next "Take Damage" does
             {"MenuState", 0},        // 0 playing, 1 pause menu open, 2 any other screen
+            {"PistolStart", 0},      // 1: the next level start gives a Pistol Start (Restart Level sets it)
             {"GoreLevel", 1},        // Options menu: 0 off, 1 normal, 2 extra
             // The screen between levels: what's shown so far, counting up.
             {"TallyKills", 0}, {"TallyItems", 0}, {"TallySecrets", 0}, {"TallyMinutes", 0}, {"TallySeconds", 0},

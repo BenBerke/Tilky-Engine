@@ -1,0 +1,220 @@
+name: Publish Templates
+
+# Publishes the project templates under Templates/ for the launcher to download,
+# so a kit change reaches users without a launcher or engine release.
+#
+# Runs on every push to main that touches Templates/, or by hand from the
+# Actions tab. For each Templates/<id>/ with a project/project.tilky:
+#
+#   1. The build version is the git tree hash of Templates/<id> (12 chars), so
+#      a template that didn't change is skipped.
+#   2. project/ is zipped (dot-files left out, like the CMake bundling) and
+#      uploaded to the "templates" GitHub release as <id>-<version>.zip.
+#   3. templates.json at the repository root gets the new build appended
+#      (format: Headers/Launcher/OnlineTemplates.hpp). A previous build with the
+#      same engine range is replaced, and its ZIP deleted from the release.
+#
+# Engine range: "minEngineVersion" / "maxEngineVersion" in Templates/<id>/template.json.
+# Without a minimum, the newest stable engine in versions.json is used. Raise
+# minEngineVersion when the template starts needing engine features newer than
+# that, so older engines keep getting the previous build.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Templates/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-templates
+  cancel-in-progress: false
+
+env:
+  MANIFEST_BRANCH: main
+  MANIFEST_PATH: templates.json
+  RELEASE_TAG: templates
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Make sure the templates release exists
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if ! gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            # --latest=false: the engine's own releases stay "Latest" on GitHub.
+            gh release create "$RELEASE_TAG" \
+              --repo "${{ github.repository }}" \
+              --target "${{ github.sha }}" \
+              --title "Project templates" \
+              --notes "Project templates the Tilky launcher downloads. Managed by the Publish Templates workflow; see templates.json." \
+              --latest=false
+          fi
+
+      - name: Package and upload changed templates
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          REPO="${{ github.repository }}"
+          SHA="${{ github.sha }}"
+
+          if [ ! -f "$MANIFEST_PATH" ]; then
+            echo '{"manifestVersion":1,"templates":[]}' > "$MANIFEST_PATH"
+          fi
+
+          LATEST_STABLE="$(jq -r '.versions[] | select(.channel == "stable") | .version' versions.json | sort -V | tail -n 1)"
+          echo "Newest stable engine: $LATEST_STABLE"
+
+          mkdir -p out
+          : > superseded.txt
+
+          for DIR in Templates/*/; do
+            ID="$(basename "$DIR")"
+            [ -f "Templates/$ID/project/project.tilky" ] || continue
+
+            BUILD="$(git rev-parse "HEAD:Templates/$ID" | cut -c1-12)"
+
+            if jq -e --arg id "$ID" --arg build "$BUILD" \
+                 '.templates[] | select(.id == $id) | .builds[] | select(.version == $build)' \
+                 "$MANIFEST_PATH" >/dev/null; then
+              echo "$ID: build $BUILD is already published"
+              continue
+            fi
+
+            META="Templates/$ID/template.json"
+            [ -f "$META" ] || echo '{}' > "$META"
+            NAME="$(jq -r --arg id "$ID" '.name // $id' "$META")"
+            DESCRIPTION="$(jq -r '.description // ""' "$META")"
+            MIN="$(jq -r --arg latest "$LATEST_STABLE" '.minEngineVersion // $latest' "$META")"
+            MAX="$(jq -r '.maxEngineVersion // ""' "$META")"
+
+            THUMBNAIL_URL=""
+            if [ -f "Templates/$ID/thumbnail.png" ]; then
+              THUMBNAIL_URL="https://raw.githubusercontent.com/$REPO/$SHA/Templates/$ID/thumbnail.png"
+            fi
+
+            ZIP="$ID-$BUILD.zip"
+            (
+              cd "Templates/$ID/project"
+              # project.tilky + Assets/ at the ZIP root; no dot-files or dot-folders.
+              zip -r -X -q "$GITHUB_WORKSPACE/out/$ZIP" . -x '.*' -x '*/.*'
+            )
+
+            SHA256="$(sha256sum "out/$ZIP" | cut -d ' ' -f1)"
+            SIZE="$(stat -c%s "out/$ZIP")"
+            URL="https://github.com/$REPO/releases/download/$RELEASE_TAG/$ZIP"
+
+            gh release upload "$RELEASE_TAG" "out/$ZIP" --repo "$REPO" --clobber
+            echo "$ID: uploaded $ZIP ($SIZE bytes, engine $MIN..${MAX:-any})"
+
+            # Builds with the same range are replaced: the launcher would never
+            # pick them again.
+            jq -r --arg id "$ID" --arg min "$MIN" --arg max "$MAX" \
+              '.templates[] | select(.id == $id) | .builds[]
+               | select((.minEngineVersion // "") == $min and (.maxEngineVersion // "") == $max)
+               | "\($id)-\(.version).zip"' \
+              "$MANIFEST_PATH" >> superseded.txt
+
+            jq \
+              --arg id "$ID" --arg name "$NAME" --arg description "$DESCRIPTION" \
+              --arg thumbnail "$THUMBNAIL_URL" --arg build "$BUILD" \
+              --arg min "$MIN" --arg max "$MAX" --arg url "$URL" \
+              --argjson size "$SIZE" --arg sha256 "$SHA256" \
+              '
+                .manifestVersion = 1
+                | (.templates // []) as $all
+                | ([$all[] | select(.id == $id)][0] // {id: $id, builds: []}) as $old
+                | .templates = (
+                    [$all[] | select(.id != $id)]
+                    + [{
+                        id: $id,
+                        name: $name,
+                        description: $description,
+                        thumbnailUrl: $thumbnail,
+                        builds: (
+                          [$old.builds[]
+                           | select(((.minEngineVersion // "") == $min and (.maxEngineVersion // "") == $max) | not)]
+                          + [{
+                              version: $build,
+                              minEngineVersion: $min,
+                              maxEngineVersion: $max,
+                              downloadUrl: $url,
+                              size: $size,
+                              sha256: $sha256
+                            }]
+                        )
+                      }]
+                  )
+              ' "$MANIFEST_PATH" > "$MANIFEST_PATH.tmp"
+            mv "$MANIFEST_PATH.tmp" "$MANIFEST_PATH"
+          done
+
+      - name: Commit templates.json
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- "$MANIFEST_PATH" && git ls-files --error-unmatch "$MANIFEST_PATH" >/dev/null 2>&1; then
+            echo "templates.json is already up to date."
+            exit 0
+          fi
+
+          cp "$MANIFEST_PATH" "$RUNNER_TEMP/templates.json"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # main may have moved (another push, or the engine release workflow
+          # updating versions.json): retry on top of it.
+          for ATTEMPT in 1 2 3 4 5; do
+            git fetch origin "$MANIFEST_BRANCH"
+            git checkout -B publish-templates "origin/$MANIFEST_BRANCH"
+            cp "$RUNNER_TEMP/templates.json" "$MANIFEST_PATH"
+            git add "$MANIFEST_PATH"
+            if git diff --cached --quiet; then
+              echo "templates.json is already up to date."
+              exit 0
+            fi
+            git commit -m "Publish project templates to templates.json [skip ci]"
+            if git push origin "HEAD:$MANIFEST_BRANCH"; then
+              exit 0
+            fi
+            echo "Push failed (attempt $ATTEMPT), retrying..."
+            sleep 5
+          done
+
+          echo "::error::Could not push templates.json"
+          exit 1
+
+      - name: Delete superseded ZIPs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # After the manifest push, so the launcher never sees a URL that's gone.
+          # Cached copies on users' machines are unaffected.
+          while read -r ASSET; do
+            [ -n "$ASSET" ] || continue
+            echo "Deleting $ASSET"
+            gh release delete-asset "$RELEASE_TAG" "$ASSET" --repo "${{ github.repository }}" --yes || true
+          done < superseded.txt

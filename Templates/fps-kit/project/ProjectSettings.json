@@ -20,6 +20,11 @@
     ],
     "eventVariables": [
         {
+            "id": 2147483696,
+            "name": "PistolStart",
+            "value": 0.0
+        },
+        {
             "id": 2147483695,
             "name": "TallySkip",
             "value": 0.0
@@ -256,7 +261,7 @@
         }
     ],
     "formatVersion": 1,
-    "nextEventVariableId": 48,
+    "nextEventVariableId": 49,
     "nextTagId": 38,
     "tagToId": {
         "Bleeds": 3,

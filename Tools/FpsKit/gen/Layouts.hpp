@@ -348,7 +348,7 @@ inline void BuildPause(LayoutB& p) {
         {Dp("Go", PayloadDispatchResume{}), Dp("Go", SetVar("MenuState", 0))}, {Tagged("Pause Menu", "Hide")}, tags, false));
 
     shown.push_back(p.Button("Restart Level", kMenuX, MenuY(64, 1), "Restart Level",
-        {Dp("Go", PayloadDispatchResume{}), Dp("Go", SetVar("Health", 0)), Dp("Go", PayloadDispatchEntityCallFunction{"RestartThisLevel"})}, {Tagged("Pause Menu", "Hide")}, tags, false));
+        {Dp("Go", PayloadDispatchResume{}), Dp("Go", SetVar("PistolStart", 1)), Dp("Go", PayloadDispatchEntityCallFunction{"RestartThisLevel"})}, {Tagged("Pause Menu", "Hide")}, tags, false));
     AddLua(p.At(shown.back()), "Scripts/UI/RestartLevel");
 
     shown.push_back(p.Button("Options", kMenuX, MenuY(64, 2), "Options", {},

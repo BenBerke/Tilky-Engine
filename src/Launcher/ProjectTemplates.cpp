@@ -10,6 +10,7 @@
 #include <spdlog/spdlog.h>
 
 #include "Headers/Launcher/ArchiveInstaller.hpp"
+#include "Headers/Launcher/OnlineTemplates.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
 using json = nlohmann::json;
@@ -20,6 +21,29 @@ namespace ProjectTemplates {
         // folder, so a failed extraction can't show up as a broken project.
         fs::path WorkFolder() {
             return ProjectManager::GetEngineFolder() / "TemplateWork";
+        }
+
+        // An online build that fits engineVersion replaces the bundled template
+        // with the same id; the bundled one stays the offline fallback.
+        void AddOnlineTemplates(const std::string& engineVersion, std::vector<TemplateInfo>& result) {
+            for (const OnlineTemplates::Offer& offer : OnlineTemplates::Manager::Instance().GetOffers(engineVersion)) {
+                TemplateInfo info;
+                info.id = offer.id;
+                info.name = offer.name.empty() ? offer.id : offer.name;
+                info.description = offer.description;
+                info.zipFile = offer.zipFile;
+                info.online = true;
+                info.needsDownload = !offer.cached;
+                info.downloadSize = offer.build.sizeBytes;
+
+                const auto bundled = std::ranges::find(result, offer.id, &TemplateInfo::id);
+                // No online thumbnail yet: keep showing the bundled one.
+                info.thumbnailFile = !offer.thumbnailFile.empty() ? offer.thumbnailFile
+                                   : bundled != result.end() ? bundled->thumbnailFile : fs::path();
+
+                if (bundled != result.end()) *bundled = std::move(info);
+                else result.push_back(std::move(info));
+            }
         }
     }
 
@@ -38,7 +62,11 @@ namespace ProjectTemplates {
         std::error_code ec;
         fs::path folder = GetTemplatesFolder(engineVersion);
         if (!fs::is_directory(folder, ec)) folder = GetTemplatesFolder(std::string());
-        if (!fs::is_directory(folder, ec)) return result;
+        if (!fs::is_directory(folder, ec)) {
+            AddOnlineTemplates(engineVersion, result);
+            std::ranges::sort(result, [](const TemplateInfo& a, const TemplateInfo& b) { return a.name < b.name; });
+            return result;
+        }
 
         for (const fs::directory_entry& entry : fs::directory_iterator(folder, ec)) {
             if (!entry.is_regular_file() || entry.path().extension() != ".zip") continue;
@@ -65,6 +93,8 @@ namespace ProjectTemplates {
             result.push_back(std::move(info));
         }
 
+        AddOnlineTemplates(engineVersion, result);
+
         std::ranges::sort(result, [](const TemplateInfo& a, const TemplateInfo& b) { return a.name < b.name; });
         return result;
     }
@@ -76,6 +106,11 @@ namespace ProjectTemplates {
         const fs::path workDir = WorkFolder() / (projectName + "-creating");
 
         std::error_code ec;
+        if (info.needsDownload || !fs::exists(info.zipFile, ec)) {
+            error = "the template hasn't been downloaded";
+            return false;
+        }
+
         if (fs::exists(destination, ec)) {
             error = "a folder called " + projectName + " already exists";
             return false;

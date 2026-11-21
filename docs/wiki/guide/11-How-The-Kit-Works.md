@@ -68,6 +68,7 @@ value from one level to the next.
 | `CurrentAmmo` | The ammo of the weapon in your hands, for the HUD |
 | `IncomingDamage` | A hit waiting to be applied. See "How damage works" below. |
 | `MenuState` | 0 is no menu, 1 is the pause menu, and 2 is another screen that Esc must not interrupt |
+| `PistolStart` | 1 when the next level start must give a Pistol Start. Restart Level sets it. |
 | `Tally...` | Used by the Intermission screen while it counts up |
 
 ## The tags
@@ -144,6 +145,7 @@ has a **Health** field and handles its own pain and death.
      |
      +-- Player's On Start  --> "New Level": clears Kills, Time, keys and powerups
      +-- if Health <= 0     --> "Pistol Start": full health and a pistol
+     +-- if PistolStart = 1 --> "Pistol Start" too (Restart Level sets it)
      |
    You play
      |
@@ -153,9 +155,12 @@ has a **Health** field and handles its own pain and death.
      +-- Exit Switch  --> the Intermission shows, then Load Level goes to the next one
 ```
 
-The **New Game** and **Select Level** buttons set `Health` to 0 before they load a level, and so does **Restart
-Level** on the pause menu. That's how they get you a fresh pistol and 50 bullets: to the player, it looks just like
-coming back from the dead.
+The **New Game** and **Select Level** buttons set `Health` to 0 before they load a level. That's how they get you a
+fresh pistol and 50 bullets: to the player, it looks just like coming back from the dead.
+
+**Restart Level** on the pause menu can't do the same. The player is still in the level when you click it, so
+`Health` 0 would set off **Die** and the death screen. It sets `PistolStart` to 1 instead, and Pistol Start sets it
+back to 0.
 
 Pressing **P** in the editor skips those buttons. The game then uses the starting values in **Project Settings > Global
 Event Variables**, where `Health` is 100, so Pistol Start doesn't run.

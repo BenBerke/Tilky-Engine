@@ -40,6 +40,7 @@ The player has only a few events. All 65 dispatches are started by these, or cal
 |---|---|---|
 | **On Start** | New Level | Every time a level starts |
 | **On Start**, if `Health <= 0` | Pistol Start | New game, or after dying |
+| **On Start**, if `PistolStart = 1` | Pistol Start | After **Restart Level** on the pause menu |
 | **Timer**, every second | Tick | All the time |
 | **Condition Met**, `Bullets > MaxBullets` | Cap Bullets | When you have too many. There's one for each ammo type. |
 | **Condition Met**, `Health <= 0` | Die, and "Show" on the Death Screen | When you die |
@@ -62,7 +63,7 @@ Each one is a **Change Variable** that sets a variable to 0. These variables mus
 lit, but the player in each level is a new entity, so the key **tag** that doors check for would be gone. Also add
 an **On Start** event with the Condition `HasRedKey` equals 1, calling **Get Red Key**, and the same for the other two.
 
-### Pistol Start (23 dispatches)
+### Pistol Start (24 dispatches)
 
 These set up a new life. This is where you decide what the player starts with:
 
@@ -80,6 +81,7 @@ These set up a new life. This is where you decide what the player starts with:
 | `HasBackpack` | 0 |
 | `HasFist`, `HasPistol` | 1 |
 | All the other `Has...` weapons | 0 |
+| `PistolStart` | 0, so the next level start doesn't give another one |
 
 **Try it:** find the Pistol Start row for `HasShotgun`, change its value to 1, and find the one for
 `Shells` and change it to 20. Now every new game starts with a loaded shotgun.

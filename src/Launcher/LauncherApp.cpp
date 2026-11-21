@@ -21,6 +21,7 @@
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Launcher/EngineVersionManager.hpp"
 #include "Headers/Launcher/ProjectTemplates.hpp"
+#include "Headers/Launcher/OnlineTemplates.hpp"
 #include "Headers/Launcher/SampleProjectManager.hpp"
 
 #include <SDL3/SDL.h>
@@ -52,6 +53,11 @@ namespace {
     // Same idea for the sample-project installer.
     SampleProjectManager::SampleProjectManager& Samples() {
         return SampleProjectManager::SampleProjectManager::Instance();
+    }
+
+    // And for the online project templates.
+    OnlineTemplates::Manager& OnlineTemplateManager() {
+        return OnlineTemplates::Manager::Instance();
     }
 
     // ============================================================================
@@ -167,8 +173,8 @@ namespace {
 
     // ============================================================================
     // Create Project window: Blank, the templates bundled with the chosen engine
-    // version (see ProjectTemplates) and the downloadable showcase project (see
-    // SampleProjectManager)
+    // version or downloaded (see ProjectTemplates, OnlineTemplates) and the
+    // downloadable showcase project (see SampleProjectManager)
     // ============================================================================
     // samples.json entry the "Showcase Project" button installs.
     constexpr const char* SHOWCASE_SAMPLE_ID = "tilky-showcase";
@@ -176,6 +182,16 @@ namespace {
     std::vector<ProjectTemplates::TemplateInfo> newProjectTemplates;
     // Engine version newProjectTemplates was read for; empty optional = read again.
     std::optional<std::string> newProjectTemplatesVersion;
+    // OnlineTemplates revision newProjectTemplates was read at.
+    std::uint64_t newProjectTemplatesRevision = 0;
+    // Create was pressed on an online template that wasn't downloaded yet: the
+    // project is created when its download finishes. Empty templateId = none.
+    struct PendingTemplateCreate {
+        std::string templateId;
+        std::string projectName;
+        std::string engineVersion;
+    };
+    PendingTemplateCreate pendingTemplateCreate;
     std::string newProjectSelectedTemplateId; // empty = Blank
     std::map<fs::path, SDL_Texture*> templateThumbnails; // nullptr = failed to load
     bool closeNewProjectPopupRequested = false;
@@ -1114,9 +1130,13 @@ namespace {
     void DrawTemplateTiles() {
         // The tiles follow the engine-version picker: each version offers the
         // templates it shipped with.
-        if (newProjectTemplatesVersion != newProjectSelectedVersion) {
+        // Online templates arrive (and download) in the background: read again
+        // when they change too.
+        const std::uint64_t onlineRevision = OnlineTemplateManager().GetRevision();
+        if (newProjectTemplatesVersion != newProjectSelectedVersion || newProjectTemplatesRevision != onlineRevision) {
             newProjectTemplates = ProjectTemplates::DiscoverTemplates(newProjectSelectedVersion);
             newProjectTemplatesVersion = newProjectSelectedVersion;
+            newProjectTemplatesRevision = onlineRevision;
             ReleaseTemplateThumbnails();
 
             const bool stillOffered = std::ranges::any_of(newProjectTemplates,
@@ -1125,6 +1145,16 @@ namespace {
         }
 
         ImGui::TextUnformatted(Localisation::Get("launcher.templates_heading").c_str());
+        if (OnlineTemplateManager().IsManifestLoading()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", Localisation::Get("launcher.templates_checking_online").c_str());
+        } else if (const std::optional<std::string> onlineError = OnlineTemplateManager().GetManifestError()) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", Localisation::Get("launcher.templates_offline").c_str());
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", onlineError->c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton(Localisation::Get("launcher.evm_retry").c_str())) OnlineTemplateManager().RefreshManifestAsync();
+        }
 
         constexpr ImVec2 thumbSize(144.0f, 81.0f);
         const float tileWidth = thumbSize.x + 8.0f;
@@ -1169,7 +1199,13 @@ namespace {
 
         std::string description = Localisation::Get("launcher.template_blank_description");
         for (const ProjectTemplates::TemplateInfo& info : newProjectTemplates) {
-            if (info.id == newProjectSelectedTemplateId) description = info.description;
+            if (info.id != newProjectSelectedTemplateId) continue;
+            description = info.description;
+            if (info.needsDownload) {
+                std::string note = Localisation::Get("launcher.template_needs_download");
+                if (info.downloadSize > 0) note += " (" + FormatFileSize(info.downloadSize) + ")";
+                description += description.empty() ? note : "\n" + note;
+            }
         }
         if (!description.empty()) {
             // Wrapped to the tile row, or a long description would widen the
@@ -1246,6 +1282,60 @@ namespace {
         }
     }
 
+    // The success path of creating a project from a template that's on disk.
+    void CreateFromTemplateAndClose(const ProjectTemplates::TemplateInfo& info, const std::string& projectName,
+                                    const std::string& engineVersion) {
+        fs::path projectPath;
+        std::string error;
+
+        if (!ProjectTemplates::CreateProjectFromTemplate(info, projectName, engineVersion, projectPath, error)) {
+            spdlog::error("Creating project '{}' from template {} failed: {}", projectName, info.id, error);
+            newProjectValidationError = Localisation::Get("launcher.template_create_failed") + " " + error;
+            return;
+        }
+
+        WriteLuaAutocompleteConfig(projectPath);
+        ProjectManager::OpenProject(projectPath);
+
+        PushToast(Localisation::Get("launcher.toast_project_created"), ToastLevel::Success);
+
+        std::ranges::fill(newProjectNameBuffer, '\0');
+
+        newProjectValidationError.clear();
+        selectedProjectPath = projectPath;
+        projectListDirty = true;
+        ImGui::CloseCurrentPopup();
+    }
+
+    // Next to the Create button while an online template downloads; creates the
+    // project once the download is done. Called inside the Create Project popup.
+    void DrawPendingTemplateCreate() {
+        for (const OnlineTemplates::DownloadOutcomeEvent& event : OnlineTemplateManager().PollDownloadEvents()) {
+            if (event.id != pendingTemplateCreate.templateId) continue;
+
+            const PendingTemplateCreate pending = pendingTemplateCreate;
+            pendingTemplateCreate = {};
+
+            if (!event.success) {
+                newProjectValidationError = Localisation::Get("launcher.template_download_failed") + " " + event.errorMessage;
+                continue;
+            }
+
+            const std::vector<ProjectTemplates::TemplateInfo> templates = ProjectTemplates::DiscoverTemplates(pending.engineVersion);
+            const auto info = std::ranges::find(templates, pending.templateId, &ProjectTemplates::TemplateInfo::id);
+            if (info == templates.end() || info->needsDownload) {
+                newProjectValidationError = Localisation::Get("launcher.template_download_failed") + " " + pending.templateId;
+                continue;
+            }
+            CreateFromTemplateAndClose(*info, pending.projectName, pending.engineVersion);
+        }
+
+        if (pendingTemplateCreate.templateId.empty()) return;
+
+        ImGui::SameLine();
+        DrawVersionProgressInline(OnlineTemplateManager().GetDownloadProgress(pendingTemplateCreate.templateId));
+    }
+
     void DrawNewProjectModal() {
     constexpr const char* popupId = "Create Project###new_project_modal";
 
@@ -1259,6 +1349,7 @@ namespace {
         newProjectTemplatesVersion.reset();
         newProjectSelectedTemplateId.clear();
         Samples().RefreshManifestAsync(); // no-op if a fetch is already in flight
+        OnlineTemplateManager().RefreshManifestAsync();
     }
 
     if (!ImGui::IsPopupOpen(popupId) && !templateThumbnails.empty()) ReleaseTemplateThumbnails();
@@ -1278,6 +1369,10 @@ namespace {
             closeNewProjectPopupRequested = false;
             ImGui::CloseCurrentPopup();
         }
+
+        // Nothing can change while an online template downloads for Create.
+        const bool waitingForDownload = !pendingTemplateCreate.templateId.empty();
+        ImGui::BeginDisabled(waitingForDownload);
 
         DrawTemplateTiles();
 
@@ -1345,7 +1440,8 @@ namespace {
 
         ImGui::Spacing();
 
-        const bool triggerCreate = enterPressed || ImGui::Button(Localisation::Get("launcher.create").c_str());
+        const bool triggerCreate = (enterPressed || ImGui::Button(Localisation::Get("launcher.create").c_str())) && !waitingForDownload;
+        ImGui::EndDisabled();
 
         if (triggerCreate) {
             const std::string typedName = newProjectNameBuffer.data();
@@ -1356,27 +1452,16 @@ namespace {
                                                           &ProjectTemplates::TemplateInfo::id);
 
             if (!validationMessage.empty()) newProjectValidationError = validationMessage;
-            else if (chosenTemplate != newProjectTemplates.end()) {
-                fs::path projectPath;
-                std::string error;
-
-                if (!ProjectTemplates::CreateProjectFromTemplate(*chosenTemplate, typedName, newProjectSelectedVersion,
-                                                                 projectPath, error)) {
-                    spdlog::error("Creating project '{}' from template {} failed: {}", typedName, chosenTemplate->id, error);
-                    newProjectValidationError = Localisation::Get("launcher.template_create_failed") + " " + error;
-                } else {
-                    WriteLuaAutocompleteConfig(projectPath);
-                    ProjectManager::OpenProject(projectPath);
-
-                    PushToast(Localisation::Get("launcher.toast_project_created"), ToastLevel::Success);
-
-                    std::ranges::fill(newProjectNameBuffer, '\0');
-
-                    newProjectValidationError.clear();
-                    selectedProjectPath = projectPath;
-                    projectListDirty = true;
-                    ImGui::CloseCurrentPopup();
+            else if (chosenTemplate != newProjectTemplates.end() && chosenTemplate->needsDownload) {
+                // Downloaded first; DrawPendingTemplateCreate finishes the job.
+                newProjectValidationError.clear();
+                pendingTemplateCreate = {chosenTemplate->id, typedName, newProjectSelectedVersion};
+                for (const OnlineTemplates::Offer& offer : OnlineTemplateManager().GetOffers(newProjectSelectedVersion)) {
+                    if (offer.id == chosenTemplate->id) OnlineTemplateManager().Download(offer);
                 }
+            }
+            else if (chosenTemplate != newProjectTemplates.end()) {
+                CreateFromTemplateAndClose(*chosenTemplate, typedName, newProjectSelectedVersion);
             }
             else {
                 // Pinned to whichever installed version the user chose in the picker
@@ -1401,11 +1486,15 @@ namespace {
             }
         }
 
+        DrawPendingTemplateCreate();
+
         ImGui::SameLine();
 
         if (ImGui::Button(Localisation::Get("common.cancel").c_str())) {
             std::ranges::fill(newProjectNameBuffer, '\0');
 
+            if (waitingForDownload) OnlineTemplateManager().CancelDownload(pendingTemplateCreate.templateId);
+            pendingTemplateCreate = {};
             newProjectValidationError.clear();
             newProjectSelectedVersion.clear();
             ImGui::CloseCurrentPopup();
@@ -2313,6 +2402,7 @@ namespace LauncherApp {
 
         EVM().Initialize();
         Samples().Initialize();
+        OnlineTemplateManager().Initialize();
 
         launcherStarted = true;
     }
@@ -2420,6 +2510,7 @@ namespace LauncherApp {
         // function runs.
         EVM().Shutdown();
         Samples().Shutdown();
+        OnlineTemplateManager().Shutdown();
 
         if (logo != nullptr) {
             SDL_DestroyTexture(logo);

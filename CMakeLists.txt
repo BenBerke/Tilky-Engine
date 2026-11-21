@@ -916,6 +916,7 @@ set(TILKY_LAUNCHER_SOURCES
         src/Launcher/ArchiveInstaller.cpp
         src/Launcher/SampleProjectManager.cpp
         src/Launcher/ProjectTemplates.cpp
+        src/Launcher/OnlineTemplates.cpp
         src/Launcher/Sha256.cpp
 
         Headers/Launcher/LauncherApp.hpp
@@ -923,6 +924,7 @@ set(TILKY_LAUNCHER_SOURCES
         Headers/Launcher/ArchiveInstaller.hpp
         Headers/Launcher/SampleProjectManager.hpp
         Headers/Launcher/ProjectTemplates.hpp
+        Headers/Launcher/OnlineTemplates.hpp
         Headers/Launcher/Sha256.hpp
         Headers/Runtime/Scripting/IScripting.hpp
 )

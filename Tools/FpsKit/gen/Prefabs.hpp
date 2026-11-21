@@ -960,14 +960,18 @@ inline void MakePlayer(const std::vector<Str>& weaponViews) {
                               "HasRedKey", "HasBlueKey", "HasYellowKey", "Berserk", "Invulnerable", "RadSuit"})
             add(Dp("New Level", SetVar(v, 0)));
 
-        // ── Dead last time (or a new game)? Start again with a pistol ──
+        // ── Dead last time, a new game, or Restart Level? Start again with a pistol ──
+        // Restart Level sets PistolStart instead of Health: Health 0 would kill
+        // the player (the Die event below) before the level reloads.
         e.events.push_back(Ev(PayloadOnStart{}, {Self("Pistol Start")}, If("Health", LE, 0)));
+        e.events.push_back(Ev(PayloadOnStart{}, {Self("Pistol Start")}, If("PistolStart", EQ, 1)));
         const std::vector<std::pair<const char*, float>> fresh = {
             {"Health", 100}, {"Armor", 0}, {"ArmorType", 0}, {"Bullets", 50}, {"Shells", 0}, {"Rockets", 0}, {"Cells", 0}, {"Grenades", 2},
             {"MaxBullets", 200}, {"MaxShells", 50}, {"MaxRockets", 50}, {"MaxCells", 300}, {"MaxGrenades", 20}, {"HasBackpack", 0}, {"HasFist", 1},
             {"HasPistol", 1}, {"HasChainsaw", 0}, {"HasShotgun", 0}, {"HasSuperShotgun", 0}, {"HasMinigun", 0},
             {"HasRocketLauncher", 0}, {"HasPlasmaRifle", 0}, {"HasSKAG", 0}};
         for (const auto& [v, value] : fresh) add(Dp("Pistol Start", SetVar(v, value)));
+        add(Dp("Pistol Start", SetVar("PistolStart", 0)));
 
         // ── Time on the intermission screen ──
         PayloadTimer second;
