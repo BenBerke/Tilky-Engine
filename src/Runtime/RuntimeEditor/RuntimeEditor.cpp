@@ -244,7 +244,7 @@ namespace {
                 const float toCameraLength = std::sqrt(toCamera.x * toCamera.x + toCamera.y * toCamera.y);
 
                 right = toCameraLength > 0.001f
-                    ? Vector3{-toCamera.y / toCameraLength, 0.0f, toCamera.x / toCameraLength}
+                    ? Vector3{toCamera.y / toCameraLength, 0.0f, -toCamera.x / toCameraLength}
                     : Vector3{1.0f, 0.0f, 0.0f};
                 up = {0.0f, 1.0f, 0.0f};
             }

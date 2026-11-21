@@ -470,7 +470,10 @@ vec3 GetYawOnlySpriteRight(vec3 spriteWorldPos) {
 
     toCamera = normalize(toCamera);
 
-    return vec3(-toCamera.y, 0.0, toCamera.x);
+    // The camera's screen right: LookAt's cross(forward, up) with forward =
+    // -toCamera. The opposite sign drew every billboard mirrored, which also
+    // swapped the left and right views of directional sprites.
+    return vec3(toCamera.y, 0.0, -toCamera.x);
 }
 
 vec3 RotateByQuaternion(vec3 value, vec4 quaternion) {
