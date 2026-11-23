@@ -1760,6 +1760,39 @@ namespace MapEditorInternal {
         return tagName;
     }
 
+    bool SetGatewayLink(Level& level, const ID wallID, ID targetID, const bool twoWay) {
+        Wall* wall = MapQueries::GetWallByID(level, wallID);
+        if (wall == nullptr) return false;
+
+        if (targetID == wallID || MapQueries::GetWallByID(level, targetID) == nullptr) targetID = INVALID_ID;
+
+        GeometrySnapshot before = CaptureGeometrySnapshot(level);
+        bool changed = false;
+
+        // The old target's link back goes with the link, or with two-way.
+        if (Wall* oldTarget = MapQueries::GetWallByID(level, wall->gatewayTarget);
+            oldTarget != nullptr && oldTarget->gatewayTarget == wallID && (oldTarget->id != targetID || !twoWay)) {
+            oldTarget->gatewayTarget = INVALID_ID;
+            changed = true;
+        }
+
+        if (wall->gatewayTarget != targetID) {
+            wall->gatewayTarget = targetID;
+            changed = true;
+        }
+
+        if (Wall* target = MapQueries::GetWallByID(level, targetID); target != nullptr && twoWay && target->gatewayTarget != wallID) {
+            target->gatewayTarget = wallID;
+            changed = true;
+        }
+
+        if (!changed) return false;
+
+        PushGeometryUndoSnapshot(std::move(before), "editor.history.gateway");
+        MarkUnsavedChanges();
+        return true;
+    }
+
     std::string MakeTeleporter(Level& level, const ID sectorID, const int floorIndex, const ID destinationID) {
         Sector* sector = level.GetSector(sectorID);
         if (sector == nullptr || level.GetSector(destinationID) == nullptr || sectorID == destinationID) return {};

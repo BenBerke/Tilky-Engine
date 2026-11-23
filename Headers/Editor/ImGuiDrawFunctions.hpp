@@ -80,10 +80,23 @@ namespace ImGuiDrawFunctions {
     // Editor's single inspector. Null keeps each kind in its own window.
     bool DrawSectorEditor   (Sector &sector, bool *open, bool draggable, bool *copyRequested = nullptr,
                              MakeDoorRequest *makeDoorRequest = nullptr, const char *windowId = nullptr);
+    // The wall inspector's Gateway section. The inspector never changes the
+    // link itself (two-way changes the other wall too, which the inspector's
+    // own undo step wouldn't hold): the caller applies a set request with
+    // MapEditorInternal::SetGatewayLink, and starts the pick on the map.
+    struct GatewayRequest {
+        bool pickAllowed = false; // in: the 2D map can pick the target with a click
+        bool pick = false;        // out: Pick on Map was pressed
+        bool set = false;         // out: link `target` (INVALID_ID: remove it)
+        ID target = INVALID_ID;
+        bool twoWay = true;       // with set and pick
+    };
+
     // A non-null openSectorRequest adds buttons for the wall's sectors under
-    // the header; it is set to the pressed one's ID on that frame.
+    // the header; it is set to the pressed one's ID on that frame. A
+    // non-null gatewayRequest adds the Gateway section.
     bool DrawWallEditor     (Wall   &wall,   bool *open, bool draggable, const char *windowId = nullptr,
-                             ID *openSectorRequest = nullptr);
+                             ID *openSectorRequest = nullptr, GatewayRequest *gatewayRequest = nullptr);
     bool DrawLinedefEditor  (Linedef &linedef, bool *open, bool draggable, const char *windowId = nullptr);
     // The level's own Events and Dispatches sections (World Settings).
     void DrawLevelEventSections(Level &level, bool draggable);

@@ -22,6 +22,7 @@
 #include "Headers/Math/Vector/Vector2.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Math/Vector/Vector4.hpp"
+#include "Headers/Map/Gateways.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/Level.hpp"
 
@@ -37,6 +38,7 @@ namespace OpenGLRendererInternal {
     inline constexpr int RENDER_MODEL = 5;
     inline constexpr int RENDER_ENTITY_MARKER = 6;
     inline constexpr int RENDER_EDITOR_GIZMO = 7;
+    inline constexpr int RENDER_GATEWAY = 8;
 
     inline constexpr int ATLAS_SIZE = 4096;
     inline constexpr int ATLAS_PADDING = 2;
@@ -453,6 +455,15 @@ private:
     std::vector<Vector4> flatSectorBounds;
     GLint flatInstanceOffsetUniform = -1;
 
+    // This frame's working gateways.
+    std::vector<Gateways::Opening> gatewayOpenings;
+    GLint clipPlaneUniform = -1;
+    GLint gatewayCornersUniform = -1;
+    GLint gatewayFarDepthUniform = -1;
+
+    // The window got a stencil buffer. Without one gateways draw black.
+    bool hasStencil = false;
+
     // Visibility culling, decided each frame by UpdateVisibleSectors. Only on
     // with the game camera (Play and the standalone game); the runtime
     // editor's camera always draws everything.
@@ -530,10 +541,39 @@ private:
 
     // OpenGLUpdate.cpp: visibility culling.
     void UpdateVisibleSectors(const Level& level, const ComponentCamera& camera, const ComponentTransform& renderCameraTransform);
+    // The same from a given sector (a gateway's exit room) and view.
+    void UpdateVisibleSectorsFrom(const Level& level, int startSector, const Matrix4& viewProjection);
     [[nodiscard]] bool IsSectorCulled(int sectorIndex) const;
     [[nodiscard]] bool IsWallCulled(const Level& level, const Wall& wall) const;
     [[nodiscard]] bool IsEntityCulled(const ComponentTransform& transform) const;
     void DrawFlats() const;
+
+    // OpenGLUpdate.cpp: one view of the world - the camera's own, or one
+    // seen through a gateway. The view's uniforms, then flats, walls,
+    // models and sprites as the current visibility allows.
+    void SetSceneCamera(const ComponentCamera& camera, const Vector3& eye) const;
+    void SetupSceneShader(const Level& level, const ComponentCamera& camera, const Vector3& eye);
+    void DrawSceneGeometry();
+
+    // OpenGLGateway.cpp: everything seen through the gateways visible in
+    // the view (recursively, Rendering > Gateway Depth deep), into the
+    // stencil buffer's `stencilRef` area of the screen.
+    struct GatewayView {
+        ComponentCamera camera;           // matrices already built
+        Vector3 eye;
+        const Wall* exitWall = nullptr;   // the wall this view looks out of
+        Vector4 clipPlane;                // world (x, y, z, 1) dot plane >= 0 is kept
+        bool clipped = false;
+        int depth = 0;                    // gateways gone through
+        int scissor[4] = {0, 0, 0, 0};    // x, y, width, height in pixels
+    };
+
+    void DrawGatewayViews(const Level& level, const GatewayView& view, int stencilRef, int& passesLeft);
+    // The opening as a box reaching a little behind its wall, so a camera
+    // right at the wall still has its view through it. farDepth puts it at
+    // the far plane instead of where it is. Not whole: its front face alone.
+    void DrawGatewayBox(const Gateways::Opening& opening, float depthBehind, bool farDepth, bool whole) const;
+    void SetGatewayClip(const GatewayView& view) const;
 
     // In game, when there's no active camera or its entity is disabled: a
     // black screen saying so.

@@ -53,6 +53,10 @@ namespace PhysicsSystem {
     // Not deduplicated - the caller may run physics several times per frame.
     void Run(Level& level, Contacts& contacts, float deltaTime);
 
+    // The entity was just moved through a gateway: the next Run doesn't
+    // sweep its move (it would cross walls on the way from the old side).
+    void MarkTeleported(ID entityID);
+
     // How many sub-steps (at most `maxSubsteps`) this frame needs so that
     // no body moves more than a fraction of its own size per step. Faster
     // than that, a body could get past a wall's line in one step and be

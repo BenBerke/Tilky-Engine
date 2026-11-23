@@ -408,6 +408,9 @@ bool OpenGL::CreateMap() {
     modelBaseColorUniform = glGetUniformLocation(projectionShader->ID, "uModelBaseColor");
     modelHasTextureUniform = glGetUniformLocation(projectionShader->ID, "uModelHasTexture");
     modelTextureUniform = glGetUniformLocation(projectionShader->ID, "uModelTexture");
+    clipPlaneUniform = glGetUniformLocation(projectionShader->ID, "uClipPlane");
+    gatewayCornersUniform = glGetUniformLocation(projectionShader->ID, "uGatewayCorners");
+    gatewayFarDepthUniform = glGetUniformLocation(projectionShader->ID, "uGatewayFarDepth");
 
     spdlog::info("OpenGL renderer map creation completed successfully");
 

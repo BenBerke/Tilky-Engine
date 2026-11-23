@@ -35,6 +35,7 @@
 #include "Headers/Editor/AssetBrowser.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/Gateways.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/ComponentRegistry.hpp"
@@ -4593,7 +4594,136 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Wall Editor
     // ─────────────────────────────────────────────────────────────────────────
-    bool DrawWallEditor(Wall &wall, bool *open, const bool draggable, const char *windowId, ID *openSectorRequest) {
+    namespace {
+        const char* GatewayProblemKey(const Gateways::Problem problem) {
+            switch (problem) {
+                case Gateways::Problem::NO_TARGET: return "wall.gateway.problem.no_target";
+                case Gateways::Problem::SAME_WALL: return "wall.gateway.problem.same_wall";
+                case Gateways::Problem::NO_ROOM: return "wall.gateway.problem.no_room";
+                case Gateways::Problem::TARGET_NO_ROOM: return "wall.gateway.problem.target_no_room";
+                case Gateways::Problem::CLOSED: return "wall.gateway.problem.closed";
+                case Gateways::Problem::NONE: break;
+            }
+            return "";
+        }
+
+        // Two-way for the next link made, while the wall has none.
+        bool gatewayTwoWayDefault = true;
+
+        void DrawGatewaySection(Wall &wall, ImGuiDrawFunctions::GatewayRequest &request) {
+            if (!InspectorSection(Get("wall.gateway"), "Gateway")) return;
+
+            Level &level = LevelManager::CurrentLevel();
+            const Wall *target = MapQueries::GetWallByID(level, wall.gatewayTarget);
+            const bool linked = target != nullptr;
+            const bool twoWay = linked ? target->gatewayTarget == wall.id : gatewayTwoWayDefault;
+
+            ImGui::PushID("Gateway");
+
+            ID picked = wall.gatewayTarget;
+            const std::string preview = linked ? DescribeWall(*target) : "(None)";
+            const std::string label = Get("wall.gateway.target");
+
+            const bool targetChanged = DrawLevelObjectRefField(
+                label.c_str(), picked, preview,
+                MapEditorInternal::WALL_REF_PAYLOAD, "editor.tooltip.wall.gateway.target",
+                [&level, &wall](ID &id, bool &changed) {
+                    for (const Wall &candidate : level.walls) {
+                        if (candidate.id == wall.id) continue;
+
+                        const bool isSelected = candidate.id == id;
+
+                        if (ImGui::Selectable(DescribeWall(candidate).c_str(), isSelected)) {
+                            id = candidate.id;
+                            changed = true;
+                        }
+
+                        if (isSelected) ImGui::SetItemDefaultFocus();
+                    }
+                }
+            );
+
+            if (targetChanged && picked != wall.gatewayTarget) {
+                request.set = true;
+                request.target = picked;
+                request.twoWay = twoWay;
+            }
+
+            if (request.pickAllowed) {
+                if (ImGui::Button(Get("wall.gateway.pick").c_str())) {
+                    request.pick = true;
+                    request.twoWay = twoWay;
+                }
+                Tooltip(Get("editor.tooltip.wall.gateway.pick").c_str());
+
+                if (linked) ImGui::SameLine();
+            }
+
+            if (linked) {
+                if (ImGui::Button(Get("wall.gateway.remove").c_str())) {
+                    request.set = true;
+                    request.target = INVALID_ID;
+                    request.twoWay = false;
+                }
+                Tooltip(Get("editor.tooltip.wall.gateway.remove").c_str());
+            }
+
+            bool twoWayChecked = twoWay;
+            if (ImGui::Checkbox(Get("wall.gateway.two_way").c_str(), &twoWayChecked)) {
+                if (linked) {
+                    request.set = true;
+                    request.target = wall.gatewayTarget;
+                    request.twoWay = twoWayChecked;
+                }
+                else gatewayTwoWayDefault = twoWayChecked;
+            }
+            Tooltip(Get("editor.tooltip.wall.gateway.two_way").c_str());
+
+            // Only a wall with a sector on each side has a choice. An
+            // ordinary field: the inspector's own undo step holds it.
+            const bool twoSided = MapQueries::GetSectorByID(level, wall.frontSector) != nullptr &&
+                                  MapQueries::GetSectorByID(level, wall.backSector) != nullptr;
+
+            if (twoSided) {
+                static constexpr const char *SIDE_KEYS[] = {
+                    "wall.gateway.side.both", "wall.gateway.side.front", "wall.gateway.side.back"
+                };
+                const int current = std::clamp(static_cast<int>(wall.gatewaySide), 0, 2);
+
+                ImGui::TextUnformatted(Get("wall.gateway.side").c_str());
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+
+                if (ImGui::BeginCombo("##GatewaySide", Get(SIDE_KEYS[current]).c_str())) {
+                    for (int side = 0; side < 3; ++side) {
+                        if (ImGui::Selectable(Get(SIDE_KEYS[side]).c_str(), side == current))
+                            wall.gatewaySide = static_cast<GatewaySide>(side);
+                        if (side == current) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+                Tooltip(Get("editor.tooltip.wall.gateway.side").c_str());
+            }
+
+            // Why a link doesn't work yet, or what the opening is.
+            if (wall.gatewayTarget != INVALID_ID) {
+                std::array<Gateways::Opening, 2> openings;
+                Gateways::Problem problem = Gateways::Problem::NONE;
+
+                if (Gateways::Compute(level, wall, openings, &problem) > 0) {
+                    const Gateways::Opening &opening = openings[0];
+                    const float width = (opening.endT - opening.startT) * wall.length;
+                    ImGui::TextDisabled("%s %.2f x %.2f", Get("wall.gateway.opening").c_str(), width, opening.top - opening.bottom);
+                }
+                else ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s", Get(GatewayProblemKey(problem)).c_str());
+            }
+
+            ImGui::PopID();
+        }
+    }
+
+    bool DrawWallEditor(Wall &wall, bool *open, const bool draggable, const char *windowId, ID *openSectorRequest,
+                        GatewayRequest *gatewayRequest) {
         bool deleteRequested = false;
 
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
@@ -4720,6 +4850,8 @@ namespace ImGuiDrawFunctions {
 
         ImGui::Checkbox(Get("wall.blocks_sound").c_str(), &wall.blocksSound);
         Tooltip(Get("editor.tooltip.wall.blocks_sound").c_str());
+
+        if (gatewayRequest != nullptr) DrawGatewaySection(wall, *gatewayRequest);
 
         // ── Tags ─────────────────────────────────────────────────────────────
         if (InspectorSection(Get("wall.tags"), "Tags", static_cast<int>(wall.tagIds.size()), false)) {

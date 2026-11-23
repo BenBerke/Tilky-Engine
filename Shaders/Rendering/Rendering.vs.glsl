@@ -7,6 +7,7 @@
 #define RENDER_MODEL 5
 #define RENDER_ENTITY_MARKER 6
 #define RENDER_EDITOR_GIZMO 7
+#define RENDER_GATEWAY 8
 
 // Entity marker quad, in pixels from its centre to an edge: a ring of radius
 // 6 and 2 wide, plus a pixel to fade out. Same value in Rendering.fs.glsl.
@@ -205,6 +206,21 @@ uniform int uModelInstanceOffset;
 uniform int uFlatInstanceOffset;
 uniform mat4 uModelLocal;
 uniform mat3 uModelLocalNormal;
+
+// A view through a gateway keeps only what is in front of the exit wall:
+// dot(vec4(world, 1), uClipPlane) >= 0, a hair behind it so what touches the
+// wall reaches the opening's edges. Walls on the exit wall's line are left
+// out instead. Not a gateway view: (0, 0, 0, 1).
+uniform vec4 uClipPlane;
+
+// How near the exit wall's line a wall's ends must be to be left out.
+#define GATEWAY_EXIT_LINE 0.01
+
+// Gateway box: corners 0-3 the opening on its wall (bottom start, bottom
+// end, top end, top start), 4-7 the same a little behind it. uGatewayFarDepth
+// puts it on the far plane (reverse Z: depth 0).
+uniform vec4 uGatewayCorners[8];
+uniform int uGatewayFarDepth;
 
 out vec2 vWallUV;
 out vec2 vFlatUV;
@@ -702,6 +718,13 @@ void renderWall() {
     vec2 wallStart2D = wall.startEnd.xy;
     vec2 wallEnd2D = wall.startEnd.zw;
 
+    // In a view through a gateway, the wall it is looked out of.
+    if (abs(dot(vec4(wallStart2D.x, 0.0, wallStart2D.y, 1.0), uClipPlane)) < GATEWAY_EXIT_LINE &&
+        abs(dot(vec4(wallEnd2D.x, 0.0, wallEnd2D.y, 1.0), uClipPlane)) < GATEWAY_EXIT_LINE) {
+        gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+        return;
+    }
+
     // Heights are stored per end of the wall so a piece can follow a
     // sloped floor or ceiling instead of being a flat-topped quad.
     // heights.xy = bottom/top at the start point
@@ -861,6 +884,28 @@ void RenderEditorGizmoVertex() {
     gl_Position = uProjection * uView * vec4(gizmoVertex.position.xyz, 1.0);
 }
 
+// Six faces of the box around a gateway's opening, two triangles each.
+void RenderGatewayVertex() {
+    const int INDICES[36] = int[36](
+        0, 1, 2, 0, 2, 3, // front: the opening itself
+        4, 6, 5, 4, 7, 6, // back
+        0, 4, 5, 0, 5, 1, // bottom
+        3, 2, 6, 3, 6, 7, // top
+        0, 3, 7, 0, 7, 4, // start side
+        1, 5, 6, 1, 6, 2  // end side
+    );
+
+    vec3 worldPos = uGatewayCorners[INDICES[gl_VertexID]].xyz;
+
+    vColor = vec4(0.0, 0.0, 0.0, 1.0);
+    vWorldPos = worldPos;
+    vSurfaceCoord = vec2(0.0);
+    vSurfaceSize = vec2(1.0);
+
+    gl_Position = uProjection * uView * vec4(worldPos, 1.0);
+    if (uGatewayFarDepth != 0) gl_Position.z = 0.0;
+}
+
 void main() {
     vSurfaceMetaData = 0;
 
@@ -871,5 +916,8 @@ void main() {
     else if (renderMode == RENDER_MODEL) renderModel();
     else if (renderMode == RENDER_ENTITY_MARKER) RenderEntityMarkerVertex();
     else if (renderMode == RENDER_EDITOR_GIZMO) RenderEditorGizmoVertex();
+    else if (renderMode == RENDER_GATEWAY) RenderGatewayVertex();
     else gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+
+    gl_ClipDistance[0] = dot(vec4(vWorldPos, 1.0), uClipPlane);
 }

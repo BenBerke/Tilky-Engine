@@ -11,15 +11,19 @@
 namespace GameFunctions {
     // `ignoredEntity` is also who cast it. A ray of any `type` but GENERAL
     // fires the Receive Ray events of what it hits (EventSystem::ReportRay).
+    // It goes through gateways (Headers/Map/Gateways.hpp): the hit's
+    // distance is the whole way, its position where it really is.
     std::optional<RayHit> Raycast(Level &level, Vector3 pos, const Vector3 &dir, float length, ID ignoredEntity, bool requireCollider,
                                   RayType type = RayType::GENERAL);
 
     // True when nothing solid is between `from` and `to`: walls, floors and
     // ceilings block it, entities don't. One ray, however many entities are
-    // in the way.
+    // in the way. A gateway's opening blocks it like the wall it is in:
+    // the line from one point to the other doesn't go through gateways.
     bool LineOfSight(Level &level, const Vector3 &from, const Vector3 &to);
 
-    // Raycast that only hits walls, floors and ceilings - entities are passed through.
+    // Raycast that only hits walls, floors and ceilings - entities are passed
+    // through. Goes through gateways like Raycast.
     std::optional<RayHit> RaycastGeometry(Level &level, Vector3 pos, const Vector3 &dir, float length);
 }
 

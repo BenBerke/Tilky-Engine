@@ -168,7 +168,13 @@ struct RendererSettings {
     // the cap, the oldest are removed to make room.
     int maxParticles = 2048;
     int maxStains = 256;
+
+    // How many gateways deep a view goes: 1 shows through a gateway but not
+    // through a gateway seen in it. Openings past it are drawn black.
+    int gatewayDepth = 2;
 };
+
+constexpr int MAX_GATEWAY_DEPTH = 8;
 
 constexpr float MAX_WALL_CONTRAST = 64.0f;
 

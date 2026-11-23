@@ -671,6 +671,8 @@ namespace {
                 rendererSettingsJson.value("distanceLightDarkest", RendererSettings{}.distanceLightDarkest), 0.0f, 1.0f);
             rendererSettings.maxParticles = std::max(rendererSettingsJson.value("maxParticles", RendererSettings{}.maxParticles), 0);
             rendererSettings.maxStains = std::max(rendererSettingsJson.value("maxStains", RendererSettings{}.maxStains), 0);
+            rendererSettings.gatewayDepth = std::clamp(
+                rendererSettingsJson.value("gatewayDepth", RendererSettings{}.gatewayDepth), 0, MAX_GATEWAY_DEPTH);
         }
 
         if (levelStatsJson.contains("sky") && levelStatsJson["sky"].is_object()) LoadSky(levelStatsJson["sky"], level.sky);
@@ -714,7 +716,8 @@ namespace {
                     {"distanceLightEnd", rendererSettings.distanceLightEnd},
                     {"distanceLightDarkest", rendererSettings.distanceLightDarkest},
                     {"maxParticles", rendererSettings.maxParticles},
-                    {"maxStains", rendererSettings.maxStains}
+                    {"maxStains", rendererSettings.maxStains},
+                    {"gatewayDepth", rendererSettings.gatewayDepth}
                 }
             },
             {"sky", SaveSky(level.sky)}
@@ -2130,6 +2133,12 @@ namespace {
             wall.middleIgnoredByRaycast = wallJson.value("middleIgnoredByRaycast", wall.middleIgnoredByRaycast);
             wall.blocksPathfinders = wallJson.value("blocksPathfinders", wall.blocksPathfinders);
             wall.blocksSound = wallJson.value("blocksSound", wall.blocksSound);
+            wall.gatewayTarget = LoadIDField(wallJson, "gatewayTarget", INVALID_ID);
+            {
+                const std::string sideName = wallJson.value("gatewaySide", std::string{GATEWAY_SIDE_NAMES[0]});
+                for (int side = 0; side < 3; ++side)
+                    if (sideName == GATEWAY_SIDE_NAMES[side]) wall.gatewaySide = static_cast<GatewaySide>(side);
+            }
             wall.angle = wallJson.value("angle", 0.0f);
 
             wall.id = LoadIDField(wallJson,"id",static_cast<ID>(i));
@@ -2209,6 +2218,8 @@ namespace {
                 {"middleIgnoredByRaycast", wall.middleIgnoredByRaycast},
                 {"blocksPathfinders", wall.blocksPathfinders},
                 {"blocksSound", wall.blocksSound},
+                {"gatewayTarget", wall.gatewayTarget},
+                {"gatewaySide", GATEWAY_SIDE_NAMES[static_cast<int>(wall.gatewaySide)]},
                 {"frontSector", wall.frontSector},
                 {"backSector", wall.backSector},
                 {"tagIds", wall.tagIds},

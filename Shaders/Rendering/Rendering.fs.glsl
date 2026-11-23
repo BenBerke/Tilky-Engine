@@ -7,6 +7,7 @@
 #define RENDER_MODEL 5
 #define RENDER_ENTITY_MARKER 6
 #define RENDER_EDITOR_GIZMO 7
+#define RENDER_GATEWAY 8
 
 #define ENTITY_MARKER_HALF_SIZE 8.0 // pixels, as in Rendering.vs.glsl
 #define ENTITY_MARKER_RADIUS 6.0
@@ -188,7 +189,7 @@ void main() {
         FragColor = ApplySurfaceMetaData(ApplyLighting(vec4(color.rgb * vColor.rgb * GetModelShade(), color.a), false));
         return;
     }
-    else if (renderMode == RENDER_COLLIDER || renderMode == RENDER_EDITOR_GIZMO) {
+    else if (renderMode == RENDER_COLLIDER || renderMode == RENDER_EDITOR_GIZMO || renderMode == RENDER_GATEWAY) {
         FragColor = vColor;
 
         return;

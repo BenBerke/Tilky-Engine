@@ -223,6 +223,14 @@ bool OpenGL::InitializeOpenGL() {
         return false;
     }
 
+    {
+        GLint stencilBits = 0;
+        glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_STENCIL, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &stencilBits);
+        hasStencil = stencilBits > 0;
+
+        if (!hasStencil) spdlog::warn("The window has no stencil buffer: gateways will show black");
+    }
+
     glViewport(0, 0, screenWidth, screenHeight);
 
     // Default fallback incase something happens to user defined settings
@@ -243,6 +251,17 @@ bool OpenGL::InitSDL(const std::string& windowName, const bool startHidden) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         spdlog::critical(
             "SDL_Init failed while initializing video subsystem: {}",
+            SDL_GetError()
+        );
+        return false;
+    }
+
+    // The window's pixel format is picked when it is created, so these go
+    // first. Depth 24 is what the window always got; the stencil is where
+    // gateways mark the screen their views draw to.
+    if (!SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24) || !SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8)) {
+        spdlog::critical(
+            "SDL_GL_SetAttribute failed while setting the depth/stencil buffer size: {}",
             SDL_GetError()
         );
         return false;

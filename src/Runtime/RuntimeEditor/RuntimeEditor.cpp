@@ -2764,9 +2764,11 @@ namespace RuntimeEditorUi {
             MapEditorInternal::BeginWallInspectorEdit(wallInspectorEdit, level.walls[selectedWall]);
 
             ID openSectorRequest = INVALID_ID;
+            ImGuiDrawFunctions::GatewayRequest gatewayRequest; // no map here to pick on
 
             const bool deleteRequested =
-                ImGuiDrawFunctions::DrawWallEditor(level.walls[selectedWall], &editingWall, DRAGGABLE, nullptr, &openSectorRequest);
+                ImGuiDrawFunctions::DrawWallEditor(level.walls[selectedWall], &editingWall, DRAGGABLE, nullptr, &openSectorRequest,
+                                                   &gatewayRequest);
 
             if (deleteRequested) {
                 // Highest index first, so each erase leaves the rest valid.
@@ -2786,6 +2788,10 @@ namespace RuntimeEditorUi {
             // Before the mirroring below, so the step also holds the rest of
             // the selection as it was.
             MapEditorInternal::RecordGeometryInspectorEdit(level, wallInspectorEdit, "editor.history.edit_walls");
+
+            // Its own undo step: two-way changes the target wall too.
+            if (gatewayRequest.set)
+                MapEditorInternal::SetGatewayLink(level, level.walls[selectedWall].id, gatewayRequest.target, gatewayRequest.twoWay);
 
             if (!editingWall) {
                 ClearWallSelection();

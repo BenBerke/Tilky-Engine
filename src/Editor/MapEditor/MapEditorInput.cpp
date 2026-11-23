@@ -187,7 +187,9 @@ namespace MapEditorInternal {
 
     ID wallSnapHoveredWallID = INVALID_ID;
     ID teleporterPickHoveredSectorID = INVALID_ID;
+    ID gatewayPickHoveredWallID = INVALID_ID;
     std::optional<TeleporterPick> teleporterPick;
+    std::optional<GatewayPick> gatewayPick;
 
 
     bool IsPaintSelectActive(const bool mouseBlockedByImGui) {
@@ -2588,6 +2590,7 @@ namespace MapEditorInternal {
     }
 
     void BeginTeleporterPick(const ID sectorID, const int floorIndex) {
+        gatewayPick.reset();
         teleporterPick = TeleporterPick{sectorID, floorIndex};
         ImGuiDrawFunctions::ShowNotification(Localisation::Get("sector.make_teleporter_pick").c_str(), false, 4.0f);
     }
@@ -2642,6 +2645,64 @@ namespace MapEditorInternal {
         const std::string tagName = MakeTeleporter(level, pick.sectorID, pick.floorIndex, destinationID);
         if (!tagName.empty())
             ImGuiDrawFunctions::ShowNotification((Localisation::Get("sector.make_teleporter_done") + " " + tagName).c_str(), false);
+        return true;
+    }
+
+    void BeginGatewayPick(const ID wallID, const bool twoWay) {
+        teleporterPick.reset();
+        gatewayPick = GatewayPick{wallID, twoWay};
+        ImGuiDrawFunctions::ShowNotification(Localisation::Get("wall.gateway.pick_hint").c_str(), false, 4.0f);
+    }
+
+    bool HandleGatewayPick(const bool mouseBlockedByImGui, const bool keyboardBlockedByImgui) {
+        // The picking click is kept from the canvas until it's released, so
+        // its release doesn't select or end anything there.
+        static bool swallowingClick = false;
+        if (swallowingClick) {
+            const bool stillPressed = InputManager::GetMouseButton(SDL_BUTTON_LEFT) || InputManager::GetMouseButton(SDL_BUTTON_RIGHT) ||
+                                      InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT) || InputManager::GetMouseButtonUp(SDL_BUTTON_RIGHT);
+            if (stillPressed) return true;
+            swallowingClick = false;
+        }
+
+        gatewayPickHoveredWallID = INVALID_ID;
+        if (!gatewayPick) return false;
+
+        Level& level = LevelManager::CurrentLevel();
+        if (MapQueries::GetWallByID(level, gatewayPick->wallID) == nullptr) {
+            gatewayPick.reset();
+            return false;
+        }
+
+        if (!keyboardBlockedByImgui && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
+            gatewayPick.reset();
+            ImGuiDrawFunctions::ShowNotification(Localisation::Get("wall.gateway.pick_cancelled").c_str(), false, 1.5f);
+            return false;
+        }
+
+        if (mouseBlockedByImGui) return false;
+
+        const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
+        gatewayPickHoveredWallID = PickWallAt(mouseWorld);
+
+        if (!InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) return false;
+
+        swallowingClick = true;
+        const GatewayPick pick = *gatewayPick;
+        const ID targetID = gatewayPickHoveredWallID;
+
+        // Clicking empty space or the wall itself waits for another click.
+        if (targetID == INVALID_ID || targetID == pick.wallID) {
+            ImGuiDrawFunctions::ShowNotification(Localisation::Get(targetID == INVALID_ID
+                ? "wall.gateway.pick_no_wall" : "wall.gateway.pick_same_wall").c_str(), true, 2.0f);
+            return true;
+        }
+
+        gatewayPick.reset();
+        gatewayPickHoveredWallID = INVALID_ID;
+
+        if (SetGatewayLink(level, pick.wallID, targetID, pick.twoWay))
+            ImGuiDrawFunctions::ShowNotification(Localisation::Get("wall.gateway.pick_done").c_str(), false);
         return true;
     }
 

@@ -15,6 +15,7 @@
 
 #include <tracy/Tracy.hpp>
 
+#include "Headers/Map/Gateways.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Math/Constants.hpp"
 #include "Headers/Math/SIMD/SSECompat.hpp"
@@ -415,6 +416,61 @@ namespace {
         return spans;
     }
 
+    // The spans with a gateway's opening (startT..endT, bottom..top) cut out,
+    // so bodies walk into it. Left and right of it stay whole; over it, what
+    // is under the bottom and over the top stays.
+    std::vector<WallSpan> CutGatewayOpening(const std::vector<WallSpan>& spans, const Gateways::Opening& opening) {
+        std::vector<WallSpan> cut;
+        cut.reserve(spans.size() + 4);
+
+        const auto at = [](const WallSpan& span, const float start, const float end, const float t) {
+            const float length = span.endT - span.startT;
+            const float k = length > 0.0f ? (t - span.startT) / length : 0.0f;
+            return start + (end - start) * k;
+        };
+
+        const auto push = [&](const WallSpan& piece) {
+            if (piece.endT - piece.startT <= Constants::Epsilon) return;
+            if (std::max(piece.topStart - piece.bottomStart, piece.topEnd - piece.bottomEnd) <= MIN_WALL_HEIGHT) return;
+            cut.push_back(piece);
+        };
+
+        for (const WallSpan& span : spans) {
+            const float holeStart = std::max(span.startT, opening.startT);
+            const float holeEnd = std::min(span.endT, opening.endT);
+
+            if (holeEnd <= holeStart) {
+                cut.push_back(span);
+                continue;
+            }
+
+            const auto part = [&](const float startT, const float endT) {
+                return WallSpan{
+                    at(span, span.bottomStart, span.bottomEnd, startT), at(span, span.bottomStart, span.bottomEnd, endT),
+                    at(span, span.topStart, span.topEnd, startT), at(span, span.topStart, span.topEnd, endT),
+                    startT, endT
+                };
+            };
+
+            if (span.startT < holeStart) push(part(span.startT, holeStart));
+            if (holeEnd < span.endT) push(part(holeEnd, span.endT));
+
+            const WallSpan middle = part(holeStart, holeEnd);
+
+            WallSpan below = middle;
+            below.topStart = std::min(middle.topStart, opening.bottom);
+            below.topEnd = std::min(middle.topEnd, opening.bottom);
+            push(below);
+
+            WallSpan above = middle;
+            above.bottomStart = std::max(middle.bottomStart, opening.top);
+            above.bottomEnd = std::max(middle.bottomEnd, opening.top);
+            push(above);
+        }
+
+        return cut;
+    }
+
     // Wall spans only change when a wall moves or the heights around it do,
     // so they are kept between runs and rebuilt per wall when needed.
     // Everything is compared exactly, so a kept span is always the one a
@@ -433,6 +489,14 @@ namespace {
             int frontIndex = -1;
             int backIndex = -1;
             bool solidOpenings = false;
+
+            // A working gateway's opening, which is cut out of the spans.
+            // It moves with the heights of the target's room too.
+            bool gateway = false;
+            float gatewayStartT = 0.0f;
+            float gatewayEndT = 0.0f;
+            float gatewayBottom = 0.0f;
+            float gatewayTop = 0.0f;
         };
         std::vector<WallKey> wallKeys;
         std::vector<std::vector<WallSpan>> spans;
@@ -442,6 +506,9 @@ namespace {
     };
 
     WallSpanCache wallSpanCache;
+
+    // Entities moved through a gateway since the last run (MarkTeleported).
+    std::vector<ID> teleportedBodies;
 
     // Per rigidbody (same index as level.rigidbodies.components): grounded
     // when the run started, which is what the last run left it at.
@@ -500,8 +567,17 @@ namespace {
 
         size_t rebuilt = 0;
 
+        // Few walls are gateways, so their openings are looked up by index.
+        thread_local std::vector<Gateways::Opening> openings;
+        thread_local std::vector<int> openingOfWall;
+        Gateways::Collect(level, openings);
+        openingOfWall.assign(wallCount, -1);
+        for (size_t index = 0; index < openings.size(); ++index)
+            openingOfWall[static_cast<size_t>(openings[index].wall - level.walls.data())] = static_cast<int>(index);
+
         for (size_t wallIndex = 0; wallIndex < wallCount; ++wallIndex) {
             const Wall& wall = level.walls[wallIndex];
+            const Gateways::Opening* opening = openingOfWall[wallIndex] >= 0 ? &openings[openingOfWall[wallIndex]] : nullptr;
 
             const Sector* frontSectorPtr = MapQueries::GetSectorByID(level, wall.frontSector);
             const Sector* backSectorPtr = MapQueries::GetSectorByID(level, wall.backSector);
@@ -513,7 +589,12 @@ namespace {
                 wall.end,
                 indexOf(frontSectorPtr),
                 indexOf(backSectorPtr),
-                wall.HasMiddle() && wall.middleHasCollision
+                wall.HasMiddle() && wall.middleHasCollision,
+                opening != nullptr,
+                opening != nullptr ? opening->startT : 0.0f,
+                opening != nullptr ? opening->endT : 0.0f,
+                opening != nullptr ? opening->bottom : 0.0f,
+                opening != nullptr ? opening->top : 0.0f
             };
             WallSpanCache::WallKey& cached = cache.wallKeys[wallIndex];
 
@@ -527,7 +608,12 @@ namespace {
                 cached.end == key.end &&
                 cached.frontIndex == key.frontIndex &&
                 cached.backIndex == key.backIndex &&
-                cached.solidOpenings == key.solidOpenings) continue;
+                cached.solidOpenings == key.solidOpenings &&
+                cached.gateway == key.gateway &&
+                cached.gatewayStartT == key.gatewayStartT &&
+                cached.gatewayEndT == key.gatewayEndT &&
+                cached.gatewayBottom == key.gatewayBottom &&
+                cached.gatewayTop == key.gatewayTop) continue;
 
             const SectorSample frontSector{frontSectorPtr, boundsCache.Get(frontSectorPtr)};
             const SectorSample backSector{backSectorPtr, boundsCache.Get(backSectorPtr)};
@@ -537,6 +623,8 @@ namespace {
 
             if (spans.empty() && frontSectorPtr == nullptr && backSectorPtr == nullptr)
                 spans.push_back({0.0f, 0.0f, 32.0f, 32.0f});
+
+            if (opening != nullptr) spans = CutGatewayOpening(spans, *opening);
 
             cached = key;
             cache.wallBuilt[wallIndex] = 1;
@@ -1250,8 +1338,17 @@ namespace PhysicsSystem {
         return std::clamp(static_cast<int>(std::ceil(steps)), 1, maxSubsteps);
     }
 
+    void MarkTeleported(const ID entityID) {
+        teleportedBodies.push_back(entityID);
+    }
+
     void Run(Level& level, Contacts& contacts, const float deltaTime) {
         ZoneScopedN("PhysicsSystem::Run");
+
+        // Read by this run only.
+        struct ClearTeleported {
+            ~ClearTeleported() { teleportedBodies.clear(); }
+        } clearTeleported;
 
         groundedBeforeRun.resize(level.rigidbodies.components.size());
 
@@ -1407,6 +1504,10 @@ namespace PhysicsSystem {
             // come from velocity (a script setting the position) aren't
             // swept, so teleporting past a wall still works.
             Vector3 sweptFrom = selfBody.base - selfRigidbody->velocity * deltaTime;
+
+            // Just came out of a gateway: its move started on the other side
+            // of the map, so there is nothing to sweep.
+            if (std::ranges::find(teleportedBodies, selfCollider.ownerID) != teleportedBodies.end()) sweptFrom = selfBody.base;
 
             const auto resolveWalls = [&] {
                 bool pushed = true;

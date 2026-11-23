@@ -79,6 +79,7 @@ namespace {
     bool relativeMouseMode = true;
 
     float fpsTimer = 0.0f;
+    int fpsFrames = 0;
     int fps = 0;
 
     int vsyncMode = -1; // adaptive, OpenGLInit.cpp's own default
@@ -584,11 +585,14 @@ namespace {
 
     void UpdateFpsCounter() {
         fpsTimer += GameTime::unscaledDeltaTime;
+        ++fpsFrames;
 
         if (fpsTimer < 1.3f) return;
 
-        fps = static_cast<int>(GameTime::GetFPS());
+        // Average over the whole window, so the number is right after one refresh.
+        fps = static_cast<int>(static_cast<float>(fpsFrames) / fpsTimer + 0.5f);
         fpsTimer = 0.0f;
+        fpsFrames = 0;
     }
 
     void RenderDebugText() {

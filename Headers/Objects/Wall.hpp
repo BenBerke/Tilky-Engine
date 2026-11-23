@@ -32,6 +32,15 @@ enum class WallTextureAnchor : int {
     World = 3,      // world height 0: the texture never moves
 };
 
+// Which sides of a two-sided wall go through its gateway. Saved by name.
+enum class GatewaySide : int {
+    Both = 0,
+    Front = 1, // from the front sector
+    Back = 2,  // from the back sector
+};
+
+inline constexpr const char* GATEWAY_SIDE_NAMES[] = {"both", "front", "back"};
+
 struct WallTextureAnchorInfo {
     WallTextureAnchor anchor;
     const char* name;     // level files and the Lua WallAnchor table
@@ -105,6 +114,15 @@ struct Wall {
     // Doom's sound-block line: a Noise Alert crosses one of these, and stops
     // at the second.
     bool blocksSound = false;
+
+    // Gateway (Headers/Map/Gateways.hpp): the wall this one's opening shows
+    // and leads to. Two-way is the target linking back. INVALID_ID: an
+    // ordinary wall.
+    ID gatewayTarget = INVALID_ID;
+    // On a wall with a sector on both sides: which of them go through the
+    // gateway. The other side stays an ordinary opening. Ignored on a
+    // one-sided wall.
+    GatewaySide gatewaySide = GatewaySide::Both;
 
     // Stable ID of the sector that is to the front or to the left of the Wall in top down view
     // Should be -1 if there is no sector

@@ -426,6 +426,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Renderer/OpenGL/OpenGLDestroy.cpp
         src/Runtime/Renderer/OpenGL/OpenGLSector.cpp
         src/Runtime/Renderer/OpenGL/OpenGLBackground.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLGateway.cpp
         src/Runtime/Renderer/OpenGL/OpenGLUI.cpp
         src/Runtime/Renderer/OpenGL/OpenGLCollider.cpp
         src/Runtime/Renderer/OpenGL/OpenGL.cpp
@@ -453,6 +454,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Map/LevelSerialization.cpp
         src/Map/MapQueries.cpp
         src/Map/WallPieces.cpp
+        src/Map/Gateways.cpp
         src/Map/TextureTiling.cpp
 
         src/UISytem.cpp
@@ -475,6 +477,7 @@ set(TILKY_RUNTIME_SOURCES
         Headers/Map/LevelSerialization.hpp
         Headers/Map/MapQueries.hpp
         Headers/Map/WallPieces.hpp
+        Headers/Map/Gateways.hpp
         Headers/Map/TextureTiling.hpp
 
         Headers/Math/Geometry/Geometry.hpp

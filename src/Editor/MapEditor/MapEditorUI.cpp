@@ -1680,6 +1680,16 @@ namespace {
             HoverTooltip(tooltip.c_str());
         }
 
+        {
+            const std::string tooltip = Get("settings.rendering.tooltip.gateway_depth");
+            SettingRow(Get("settings.rendering.gateway_depth"), tooltip.c_str());
+            if (ImGui::SliderInt("##GatewayDepth", &level.rendererSettings.gatewayDepth, 0, MAX_GATEWAY_DEPTH)) {
+                level.rendererSettings.gatewayDepth = std::clamp(level.rendererSettings.gatewayDepth, 0, MAX_GATEWAY_DEPTH);
+                hasUnsavedChanges = true;
+            }
+            HoverTooltip(tooltip.c_str());
+        }
+
         EndSettingsTable();
     }
 
@@ -4481,9 +4491,12 @@ namespace {
         BeginWallInspectorEdit(wallInspectorEdit, wall);
 
         ID openSectorRequest = INVALID_ID;
+        ImGuiDrawFunctions::GatewayRequest gatewayRequest;
+        gatewayRequest.pickAllowed = true;
 
         const bool deleteRequested =
-                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, DRAGGABLE, MAP_INSPECTOR_WINDOW_ID, &openSectorRequest);
+                ImGuiDrawFunctions::DrawWallEditor(wall, &editingWall, DRAGGABLE, MAP_INSPECTOR_WINDOW_ID, &openSectorRequest,
+                                                   &gatewayRequest);
 
         if (deleteRequested) {
             // DeleteSelectedWalls already handles the whole selection as one
@@ -4506,6 +4519,12 @@ namespace {
         // a moved corner as they were.
         RecordGeometryInspectorEdit(level, wallInspectorEdit,
                                     startMoved || endMoved ? "editor.history.edit_wall_points" : "editor.history.edit_walls");
+
+        // Its own undo step: two-way changes the target wall too. `wall` is
+        // still this wall - nothing above added or removed walls.
+        const ID gatewayWallID = wall.id;
+        if (gatewayRequest.set) SetGatewayLink(level, gatewayWallID, gatewayRequest.target, gatewayRequest.twoWay);
+        if (gatewayRequest.pick) BeginGatewayPick(gatewayWallID, gatewayRequest.twoWay);
 
         if (multiEdit &&
             PropagateWallEdits(level, appearanceBeforeEdit, wall, selectedWalls, selectedWallID))

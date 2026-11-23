@@ -20,7 +20,9 @@
 
 #include "Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptRuntime.hpp"
+#include "Headers/Map/Gateways.hpp"
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Math/Quaternion/Quaternion.hpp"
 #include "Headers/Runtime/PhysicsSystem.hpp"
 #include "Headers/Runtime/EventSystem.hpp"
 #include "Headers/Objects/Prefab.hpp"
@@ -102,6 +104,36 @@ namespace {
         return true;
     }
 
+    // A body whose feet went into a gateway's opening between `from` and
+    // where it is now comes out of the exit the same way: same place
+    // relative to the opening, turned with it, velocity and view included.
+    void PassThroughGateways(Level& level, const std::vector<Gateways::Opening>& openings,
+                             ComponentTransform& transform, ComponentRigidbody& rigidbody, const Vector3& from) {
+        const Gateways::Opening* crossed = nullptr;
+        float moveT = 0.0f;
+        if (!Gateways::FindCrossing(openings, from, transform.position, crossed, moveT)) return;
+
+        transform.SetPosition(crossed->MapPoint(transform.position));
+        transform.rotation = (Quaternion::FromAxisAngle(0.0f, 1.0f, 0.0f, -crossed->turnDegrees * Constants::DegToRad) *
+                              transform.rotation).Normalized();
+        rigidbody.velocity = crossed->MapDirection(rigidbody.velocity);
+
+        if (Entity* owner = level.GetEntity(transform.ownerID)) {
+            for (ComponentCamera* camera : owner->GetComponents<ComponentCamera>()) {
+                camera->yaw = crossed->MapYaw(camera->yaw);
+
+                // The height jump is the gateway's, not a step to smooth.
+                camera->hasPreviousTransformY = false;
+                camera->isStepping = false;
+                camera->stepOffsetY = 0.0f;
+            }
+        }
+
+        // Physics looks for walls around its sector, so it has to be the
+        // exit's before the next run.
+        transform.UpdateObjectSectorAndFloor(level.sectors);
+        PhysicsSystem::MarkTeleported(transform.ownerID);
+    }
 }
 
 namespace LevelSystem {
@@ -480,7 +512,22 @@ namespace LevelSystem {
 
             frameContacts.Clear();
 
+            // Gateways move whatever went into them once physics has had its
+            // say about where it ended up.
+            thread_local std::vector<Gateways::Opening> gatewayOpenings;
+            thread_local std::vector<Vector3> stepStarts;
+            if (Gateways::AnyLinked(level)) Gateways::Collect(level, gatewayOpenings);
+            else gatewayOpenings.clear();
+
             for (int i = 0; i < substeps; i++) {
+                if (!gatewayOpenings.empty()) {
+                    stepStarts.resize(level.rigidbodies.components.size());
+                    for (size_t index = 0; index < level.rigidbodies.components.size(); ++index) {
+                        const ComponentTransform* transform = level.transforms.Get(level.rigidbodies.components[index].ownerID);
+                        stepStarts[index] = transform != nullptr ? transform->position : Vector3{};
+                    }
+                }
+
                 for (ComponentRigidbody &r: level.rigidbodies.components) {
                     // A disabled entity's body is frozen, its velocity kept.
                     if (!r.ownerEnabled) continue;
@@ -508,6 +555,16 @@ namespace LevelSystem {
                     if (!r.velocity.IsZero()) transform->AddPosition(r.velocity * subDeltaTime);
                 }
                 PhysicsSystem::Run(level, frameContacts, subDeltaTime);
+
+                if (!gatewayOpenings.empty()) {
+                    for (size_t index = 0; index < level.rigidbodies.components.size(); ++index) {
+                        ComponentRigidbody& r = level.rigidbodies.components[index];
+                        if (!r.ownerEnabled || level.rigidbodies.Get(r.ownerID) != &r) continue;
+
+                        if (ComponentTransform* transform = level.transforms.Get(r.ownerID))
+                            PassThroughGateways(level, gatewayOpenings, *transform, r, stepStarts[index]);
+                    }
+                }
             }
 
             PathfinderSystem::AfterPhysics(level);

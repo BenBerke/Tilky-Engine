@@ -327,7 +327,8 @@ namespace Editor {
                 ImGui::SetWindowFocus(nullptr);
 
             const bool teleporterPickTookMouse = HandleTeleporterPick(mouseBlockedByImGui, keyboardBlockedByImgui);
-            HandleEditorInput(mouseBlockedByImGui || teleporterPickTookMouse, keyboardBlockedByImgui);
+            const bool gatewayPickTookMouse = HandleGatewayPick(mouseBlockedByImGui, keyboardBlockedByImgui);
+            HandleEditorInput(mouseBlockedByImGui || teleporterPickTookMouse || gatewayPickTookMouse, keyboardBlockedByImgui);
             HandleEditorShortcuts(keyboardBlockedByImgui);
 
             // After everything that moves entities, so a snapped one is
@@ -348,6 +349,8 @@ namespace Editor {
             DrawGeometryEditOverlay();
             DrawWallSnapPickHighlight();
             DrawTeleporterPickHighlight();
+            DrawGatewayLinks();
+            DrawGatewayPickHighlight();
 
             DrawEntities();
             DrawEventLinks();

@@ -98,8 +98,9 @@ namespace MultiEdit {
     }
 
     void MirrorWallEdit(const json& before, const json& after, Wall& target) {
-        // Where the wall is and what it borders belong to that wall.
-        static const std::vector<std::string_view> excluded = {"id", "start", "end", "frontSector", "backSector"};
+        // Where the wall is, what it borders and where its gateway leads
+        // belong to that wall.
+        static const std::vector<std::string_view> excluded = {"id", "start", "end", "frontSector", "backSector", "gatewayTarget"};
 
         json targetJson = LevelSerialization::WallToJson(target);
         if (!ApplyChanges(targetJson, Changes(before, after), excluded)) return;

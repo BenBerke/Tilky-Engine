@@ -3,6 +3,7 @@
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Map/Gateways.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Editor/EditorTextureCache.hpp"
 #include "Headers/Math/Vector/Vector2Math.hpp" // This includes "SSECompat.hpp"
@@ -1189,6 +1190,74 @@ namespace MapEditorInternal {
         for (const Wall* wall : sector->walls)
             if (wall != nullptr)
                 DrawColoredThickLine(WorldToScreen(wall->start, cameraPos), WorldToScreen(wall->end, cameraPos), 7.0f);
+    }
+
+    // Violet: the opening on each gateway wall, and a thin line from it to
+    // the middle of the wall it leads to.
+    void DrawGatewayLinks() {
+        const Level& level = LevelManager::CurrentLevel();
+        if (!Gateways::AnyLinked(level)) return;
+
+        for (const Wall& wall : level.walls) {
+            if (wall.gatewayTarget == INVALID_ID) continue;
+
+            const Wall* target = MapQueries::GetWallByID(level, wall.gatewayTarget);
+            if (target == nullptr) continue;
+
+            std::array<Gateways::Opening, 2> openings;
+            const int openingCount = Gateways::Compute(level, wall, openings);
+            const bool works = openingCount > 0;
+            const Gateways::Opening& opening = openings[0];
+
+            const Vector2 middle = (wall.start + wall.end) * 0.5f;
+            const Vector2 targetMiddle = (target->start + target->end) * 0.5f;
+
+            // A link that can't work (not one-sided, closed) shows in grey.
+            if (works) SDL_SetRenderDrawColor(renderer, 190, 90, 255, 255);
+            else SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+
+            const Vector2 start = works ? opening.StartPoint() : wall.start;
+            const Vector2 end = works ? opening.EndPoint() : wall.end;
+            DrawColoredThickLine(WorldToScreen(start, cameraPos), WorldToScreen(end, cameraPos), 5.0f);
+
+            // A tick into each side it is entered from.
+            for (int index = 0; index < openingCount; ++index) {
+                constexpr float TICK_PIXELS = 9.0f;
+                const Vector2 inward = openings[static_cast<size_t>(index)].inward;
+                const Vector2 tickEnd = middle + inward * (TICK_PIXELS / std::max(editorZoom, 0.0001f));
+                DrawColoredThickLine(WorldToScreen(middle, cameraPos), WorldToScreen(tickEnd, cameraPos), 3.0f);
+            }
+
+            const Vector2 from = WorldToScreen(middle, cameraPos);
+            const Vector2 to = WorldToScreen(targetMiddle, cameraPos);
+            SDL_RenderLine(renderer, from.x, from.y, to.x, to.y);
+
+            // An arrowhead a short way before the target's middle, so the
+            // direction reads (a two-way link has one at each end).
+            const float dx = to.x - from.x;
+            const float dy = to.y - from.y;
+            const float length = std::sqrt(dx * dx + dy * dy);
+            if (length > 24.0f) {
+                const float ux = dx / length;
+                const float uy = dy / length;
+                const Vector2 tip = {to.x - ux * 10.0f, to.y - uy * 10.0f};
+                constexpr float HEAD = 8.0f;
+
+                SDL_RenderLine(renderer, tip.x, tip.y, tip.x - ux * HEAD - uy * HEAD * 0.6f, tip.y - uy * HEAD + ux * HEAD * 0.6f);
+                SDL_RenderLine(renderer, tip.x, tip.y, tip.x - ux * HEAD + uy * HEAD * 0.6f, tip.y - uy * HEAD - ux * HEAD * 0.6f);
+            }
+        }
+    }
+
+    // Amber, like Snap to Wall's pick.
+    void DrawGatewayPickHighlight() {
+        if (gatewayPickHoveredWallID == INVALID_ID) return;
+
+        const Wall* wall = MapQueries::GetWallByID(LevelManager::CurrentLevel(), gatewayPickHoveredWallID);
+        if (wall == nullptr) return;
+
+        SDL_SetRenderDrawColor(renderer, 255, 190, 60, 255);
+        DrawColoredThickLine(WorldToScreen(wall->start, cameraPos), WorldToScreen(wall->end, cameraPos), 7.0f);
     }
 
     // Amber, like Geometry Mode's hover.

@@ -10,6 +10,7 @@
 #include <optional>
 #include <vector>
 
+#include "Headers/Map/Gateways.hpp"
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Map/WallPieces.hpp"
 #include "Headers/Math/Constants.hpp"
@@ -307,7 +308,10 @@ namespace {
         const float length,
         const ID ignoredEntity,
         const bool requireCollider,
-        const bool hitEntities
+        const bool hitEntities,
+        // Gateways the ray goes through: their openings are no wall to it
+        // (CastRayThroughGateways carries it on from the exit).
+        const std::vector<Gateways::Opening>* gateways = nullptr
     ) {
         if (dir.IsZero()) return std::nullopt;
 
@@ -344,10 +348,25 @@ namespace {
             scratch.pieces.clear();
             WallPieces::Build(level, wall, boundsCache, scratch.pieces);
 
+            const Gateways::Opening* opening = nullptr;
+            if (gateways != nullptr)
+                for (const Gateways::Opening& candidate : *gateways)
+                    if (candidate.wall == &wall) opening = &candidate;
+
             const HitOrder order{ORDER_WALL, static_cast<std::size_t>(&wall - level.walls.data()), 0};
 
             const auto submitWallHit = [&](const float distance, const WallPieces::WallPiece& piece) {
                 if (!beats(distance, order)) return;
+
+                if (opening != nullptr) {
+                    const Vector3 at = pos + normalizedDir * distance;
+                    const Vector2 start = opening->StartPoint();
+                    const Vector2 span = opening->EndPoint() - start;
+                    const float spanLengthSq = span.x * span.x + span.y * span.y;
+                    const float along = spanLengthSq > 0.0f ? ((at.x - start.x) * span.x + (at.z - start.y) * span.y) / spanLengthSq : -1.0f;
+
+                    if (along >= 0.0f && along <= 1.0f && at.y >= opening->bottom && at.y <= opening->top) return;
+                }
 
                 RayHit hit;
                 hit.type = RayHitType::Wall;
@@ -639,6 +658,86 @@ namespace {
     }
 }
 
+namespace {
+    // A ray can go through this many gateways, so two facing each other
+    // can't send it round forever.
+    constexpr int MAX_GATEWAY_HOPS = 16;
+
+    // Moved this far out of an exit, so the exit wall itself isn't hit at 0.
+    constexpr float GATEWAY_EXIT_NUDGE = 0.001f;
+
+    // CastRay, carried on through every gateway opening it goes into from
+    // the gateway's room before hitting anything. The hit's distance is
+    // the whole way travelled; its position is where it really is.
+    std::optional<RayHit> CastRayThroughGateways(
+        Level& level,
+        const Vector3 pos,
+        const Vector3& dir,
+        const float length,
+        const ID ignoredEntity,
+        const bool requireCollider,
+        const bool hitEntities
+    ) {
+        if (dir.IsZero() || !Gateways::AnyLinked(level))
+            return CastRay(level, pos, dir, length, ignoredEntity, requireCollider, hitEntities);
+
+        thread_local std::vector<Gateways::Opening> openings;
+        Gateways::Collect(level, openings);
+
+        if (openings.empty()) return CastRay(level, pos, dir, length, ignoredEntity, requireCollider, hitEntities);
+
+        Vector3 origin = pos;
+        Vector3 direction = Vector3Math::Normalized(dir);
+        float travelled = 0.0f;
+        float remaining = length;
+
+        for (int hop = 0; hop <= MAX_GATEWAY_HOPS && remaining > 0.0f; ++hop) {
+            std::optional<RayHit> hit = CastRay(level, origin, direction, remaining, ignoredEntity, requireCollider, hitEntities, &openings);
+
+            // The nearest opening it goes into, before what it hit.
+            const Gateways::Opening* crossed = nullptr;
+            float crossedAt = hit.has_value() ? hit->distance : remaining;
+
+            if (hop < MAX_GATEWAY_HOPS) {
+                for (const Gateways::Opening& opening : openings) {
+                    const float side = opening.SideDistance({origin.x, origin.z});
+                    const float approach = -(direction.x * opening.inward.x + direction.z * opening.inward.y);
+
+                    if (side < 0.0f || approach <= Constants::Epsilon) continue;
+
+                    const float distance = side / approach;
+                    if (distance >= crossedAt) continue;
+
+                    const Vector3 at = origin + direction * distance;
+                    const Vector2 start = opening.StartPoint();
+                    const Vector2 span = opening.EndPoint() - start;
+                    const float spanLengthSq = span.x * span.x + span.y * span.y;
+                    if (spanLengthSq <= Constants::Epsilon) continue;
+
+                    const float along = ((at.x - start.x) * span.x + (at.z - start.y) * span.y) / spanLengthSq;
+                    if (along < 0.0f || along > 1.0f || at.y < opening.bottom || at.y > opening.top) continue;
+
+                    crossed = &opening;
+                    crossedAt = distance;
+                }
+            }
+
+            if (crossed == nullptr) {
+                if (hit.has_value()) hit->distance += travelled;
+                return hit;
+            }
+
+            const Vector3 exitDirection = crossed->MapDirection(direction);
+            origin = crossed->MapPoint(origin + direction * crossedAt) + exitDirection * GATEWAY_EXIT_NUDGE;
+            direction = exitDirection;
+            travelled += crossedAt + GATEWAY_EXIT_NUDGE;
+            remaining -= crossedAt + GATEWAY_EXIT_NUDGE;
+        }
+
+        return std::nullopt;
+    }
+}
+
 namespace GameFunctions {
     std::optional<RayHit> Raycast(
         Level& level,
@@ -649,7 +748,7 @@ namespace GameFunctions {
         const bool requireCollider,
         const RayType type
     ) {
-        std::optional<RayHit> hit = CastRay(level, pos, dir, length, ignoredEntity, requireCollider, true);
+        std::optional<RayHit> hit = CastRayThroughGateways(level, pos, dir, length, ignoredEntity, requireCollider, true);
 
         // The ignored entity is the one casting it.
         EventSystem::ReportRay(level, type, ignoredEntity, pos, dir, length, hit);
@@ -657,7 +756,7 @@ namespace GameFunctions {
     }
 
     std::optional<RayHit> RaycastGeometry(Level& level, const Vector3 pos, const Vector3& dir, const float length) {
-        return CastRay(level, pos, dir, length, INVALID_ENTITY_ID, false, false);
+        return CastRayThroughGateways(level, pos, dir, length, INVALID_ENTITY_ID, false, false);
     }
 
     bool LineOfSight(Level& level, const Vector3& from, const Vector3& to) {

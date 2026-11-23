@@ -28,8 +28,6 @@ void OpenGL::UpdateVisibleSectors(
     const ComponentCamera& camera,
     const ComponentTransform& renderCameraTransform
 ) {
-    const size_t sectorCount = level.sectors.size();
-
     // The camera entity's own sector as the hint - it's almost always right.
     const int cameraSector = MapQueries::FindSectorContainingPoint(
         level.sectors,
@@ -37,10 +35,16 @@ void OpenGL::UpdateVisibleSectors(
         renderCameraTransform.sectorIndex
     );
 
+    UpdateVisibleSectorsFrom(level, cameraSector, camera.projection * camera.view);
+}
+
+void OpenGL::UpdateVisibleSectorsFrom(const Level& level, const int startSector, const Matrix4& viewProjection) {
+    const size_t sectorCount = level.sectors.size();
+
     MapQueries::GetVisibleSectors(
         level,
-        cameraSector,
-        camera.projection * camera.view,
+        startSector,
+        viewProjection,
         static_cast<float>(screenWidth),
         static_cast<float>(screenHeight),
         visibleSectors
@@ -130,6 +134,123 @@ void OpenGL::DrawFlats() const {
     }
 
     flush();
+}
+
+void OpenGL::SetSceneCamera(const ComponentCamera& camera, const Vector3& eye) const {
+    glUniformMatrix4fv(viewUniform, 1, GL_TRUE, camera.view.Data());
+    glUniformMatrix4fv(projectionUniform, 1, GL_TRUE, camera.projection.Data());
+
+    // Distance lighting and which way sprites face are measured from here.
+    glUniform3f(cameraWorldPosUniform, eye.x, eye.y, eye.z);
+}
+
+void OpenGL::SetupSceneShader(const Level& level, const ComponentCamera& camera, const Vector3& eye) {
+    ZoneScopedN("Shader Setup");
+
+    projectionShader->use();
+    glBindVertexArray(VAO);
+
+    SetSceneCamera(camera, eye);
+
+    // Not a view through a gateway (that one sets its plane after this).
+    glUniform4f(clipPlaneUniform, 0.0f, 0.0f, 0.0f, 1.0f);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, atlasTexture);
+
+    glUniform1i(glGetUniformLocation(projectionShader->ID, "uAtlas"), 0);
+
+    glUniform1i(glGetUniformLocation(projectionShader->ID, "uTextureCount"), static_cast<int>(textureRegions.size()));
+    glUniform1f(glGetUniformLocation(projectionShader->ID, "uTexelsPerUnit"), ProjectManager::GetTexelsPerUnit());
+
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
+
+    glUniform1i(fullbrightUniform, fullbright ? 1 : 0);
+
+    // The fade needs End above Start, whatever the sliders say mid-drag.
+    const RendererSettings& renderer = level.rendererSettings;
+    glUniform1f(distanceLightStartUniform, renderer.distanceLightStart);
+    glUniform1f(distanceLightEndUniform, std::max(renderer.distanceLightEnd, renderer.distanceLightStart + 1.0f));
+    glUniform1f(distanceLightDarkestUniform, renderer.distanceLightDarkest);
+
+    glUniform2f(viewportSizeUniform, static_cast<float>(screenWidth), static_cast<float>(screenHeight));
+}
+
+void OpenGL::DrawSceneGeometry() {
+    using namespace OpenGLRendererInternal;
+
+    {
+        ZoneScopedN("Draw Flats");
+
+        //glEnable(GL_CULL_FACE);
+        //glCullFace(GL_BACK);
+        //glFrontFace(GL_CCW);
+
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, sectorSSBO);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, sectorFloorSSBO);
+
+        glEnable(GL_BLEND);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_GREATER);
+        glUniform1i(renderModeUniform, RENDER_FLAT);
+
+        DrawFlats();
+    }
+
+    {
+        ZoneScopedN("Upload GPU Walls from Map");
+
+        // Walls can not have backface culling as all walls are potentially visible from both sides
+        // And they can change in runtime so we can not bake them
+        //glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+
+        UploadGpuWallsFromMap();
+
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
+        glEnable(GL_BLEND);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_GREATER);
+        glUniform1i(renderModeUniform, RENDER_WALL);
+        glDrawArraysInstanced(GL_TRIANGLES, 0, 6, gpuWallCount);
+        glDisable(GL_BLEND);
+    }
+
+    {
+        ZoneScopedN("Build GPU Models");
+
+        // Opaque geometry: drawn before sprites so their alpha blends over models.
+        BuildGpuModels();
+
+        glEnable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_GREATER);
+
+        DrawGpuModels();
+        glDisable(GL_BLEND);
+        glDisable(GL_CULL_FACE);
+    }
+
+    {
+        ZoneScopedN("Build GPU Sprites");
+
+        BuildGpuSprites();
+
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, spriteSSBO);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthFunc(GL_GEQUAL);
+        glDepthMask(GL_TRUE);
+
+        glUniform1i(renderModeUniform, RENDER_SPRITE);
+
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, spriteCount);
+        glDisable(GL_BLEND);
+    }
 }
 
 void OpenGL::DrawNoCameraScreen() {
@@ -307,11 +428,26 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
     CameraSystem::RebuildCameraMatrices(renderCameraTransform, *camera);
 
+    // This frame's gateways.
+    gatewayOpenings.clear();
+    if (Gateways::AnyLinked(level)) Gateways::Collect(level, gatewayOpenings);
+
     {
         ZoneScopedN("Visible Sectors");
 
         visibilityCulling = false;
         if (!useEditorCamera) UpdateVisibleSectors(level, *camera, renderCameraTransform);
+    }
+
+    // Everything the camera sees directly is stencil 0; each view through a
+    // gateway draws only where its opening marked the stencil.
+    const bool drawGateways = !gatewayOpenings.empty();
+
+    if (drawGateways) {
+        glEnable(GL_STENCIL_TEST);
+        glStencilMask(0xFF);
+        glStencilFunc(GL_EQUAL, 0, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
     }
 
     {
@@ -320,116 +456,50 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     }
 
     {
-        ZoneScopedN("Shader Setup");
-        projectionShader->use();
-        glBindVertexArray(VAO);
-
-        glUniformMatrix4fv(viewUniform, 1, GL_TRUE, camera->view.Data());
-        glUniformMatrix4fv(projectionUniform, 1, GL_TRUE, camera->projection.Data());
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, atlasTexture);
-
-        glUniform1i(glGetUniformLocation(projectionShader->ID, "uAtlas"), 0);
-
-        glUniform1i(glGetUniformLocation(projectionShader->ID, "uTextureCount"), static_cast<int>(textureRegions.size()));
-        glUniform1f(glGetUniformLocation(projectionShader->ID, "uTexelsPerUnit"), ProjectManager::GetTexelsPerUnit());
-
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
-
-        // Every mode's distance lighting reads this, so set it before the first draw.
-        glUniform3f(
-            cameraWorldPosUniform,
-            renderCameraTransform.position.x,
-            renderCameraTransform.position.y,
-            renderCameraTransform.position.z
-        );
-
-        glUniform1i(fullbrightUniform, fullbright ? 1 : 0);
-
-        // The fade needs End above Start, whatever the sliders say mid-drag.
-        const RendererSettings& renderer = level.rendererSettings;
-        glUniform1f(distanceLightStartUniform, renderer.distanceLightStart);
-        glUniform1f(distanceLightEndUniform, std::max(renderer.distanceLightEnd, renderer.distanceLightStart + 1.0f));
-        glUniform1f(distanceLightDarkestUniform, renderer.distanceLightDarkest);
-
-        glUniform2f(viewportSizeUniform, static_cast<float>(screenWidth), static_cast<float>(screenHeight));
-    }
-
-    {
         ZoneScopedN("Upload GPU Sectors");
 
-        //glEnable(GL_CULL_FACE);
-        //glCullFace(GL_BACK);
-        //glFrontFace(GL_CCW);
-
+        // Floor data is the same in every view, so it is uploaded once.
         BuildGpuSectors();
         RefreshFlatTrianglesIfLayoutChanged();
-
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, flatSSBO);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, sectorSSBO);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, sectorFloorSSBO);
-
-        glEnable(GL_BLEND);
-        glDepthMask(GL_TRUE);
-        glDepthFunc(GL_GREATER);
-        glUniform1i(renderModeUniform, RENDER_FLAT);
-
-        DrawFlats();
     }
 
-    {
-        ZoneScopedN("Upload GPU Walls from Map");
+    SetupSceneShader(level, *camera, renderCameraTransform.position);
+    DrawSceneGeometry();
 
-        // Walls can not have backface culling as all walls are potentially visible from both sides
-        // And they can change in runtime so we can not bake them
-        //glDisable(GL_CULL_FACE);
-        glEnable(GL_BLEND);
+    if (drawGateways) {
+        ZoneScopedN("Gateways");
 
-        UploadGpuWallsFromMap();
+        // Put back after: the editor overlays below are of this view.
+        const bool culling = visibilityCulling;
+        const std::vector<uint8_t> visible = sectorVisible;
+        const std::vector<uint8_t> showsEntities = sectorShowsEntities;
 
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, wallSSBO);
-        glEnable(GL_BLEND);
+        GatewayView view;
+        view.camera = *camera;
+        view.eye = renderCameraTransform.position;
+        view.scissor[2] = screenWidth;
+        view.scissor[3] = screenHeight;
+
+        // However many gateways are in sight, a frame draws at most this
+        // many views through them.
+        constexpr int MAX_GATEWAY_VIEWS = 32;
+        int passesLeft = MAX_GATEWAY_VIEWS;
+        DrawGatewayViews(level, view, 0, passesLeft);
+
+        visibilityCulling = culling;
+        sectorVisible = visible;
+        sectorShowsEntities = showsEntities;
+
+        glDisable(GL_STENCIL_TEST);
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_CLIP_DISTANCE0);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+        projectionShader->use();
+        glBindVertexArray(VAO);
+        SetSceneCamera(*camera, renderCameraTransform.position);
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_GREATER);
-        glUniform1i(renderModeUniform, RENDER_WALL);
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 6, gpuWallCount);
-        glDisable(GL_BLEND);
-    }
-
-    {
-        ZoneScopedN("Build GPU Models");
-
-        // Opaque geometry: drawn before sprites so their alpha blends over models.
-        BuildGpuModels();
-
-        glEnable(GL_BLEND);
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthMask(GL_TRUE);
-        glDepthFunc(GL_GREATER);
-
-        DrawGpuModels();
-        glDisable(GL_BLEND);
-        glDisable(GL_CULL_FACE);
-    }
-
-    {
-        ZoneScopedN("Build GPU Sprites");
-
-        BuildGpuSprites();
-
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, spriteSSBO);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthFunc(GL_GEQUAL);
-        glDepthMask(GL_TRUE);
-
-        glUniform1i(renderModeUniform, RENDER_SPRITE);
-
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, spriteCount);
-        glDisable(GL_BLEND);
     }
 
 #ifndef TILKY_STANDALONE

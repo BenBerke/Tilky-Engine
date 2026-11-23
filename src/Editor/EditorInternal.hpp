@@ -408,6 +408,10 @@ namespace MapEditorInternal {
     // its highlight. INVALID_ID otherwise.
     extern ID teleporterPickHoveredSectorID;
 
+    // The wall under the cursor while a gateway waits for its target, for
+    // its highlight. INVALID_ID otherwise.
+    extern ID gatewayPickHoveredWallID;
+
     // True from the mouse-down that starts a wall body/endpoint drag
     // until that drag is committed.
     extern bool draggingWallGeometry;
@@ -1345,6 +1349,25 @@ namespace MapEditorInternal {
     // the mouse as taken. Escape cancels.
     bool HandleTeleporterPick(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
 
+    // Links `wallID`'s gateway to `targetID` (INVALID_ID removes it) as one
+    // undo step. Two-way makes the target link back; a link back the old
+    // target had goes when the link changes or two-way is turned off. True
+    // when something changed.
+    bool SetGatewayLink(Level& level, ID wallID, ID targetID, bool twoWay);
+
+    // The wall inspector's Pick on Map: waits for a click on the target wall
+    // in the 2D map (any mode), like Make Teleporter. Empty when it isn't.
+    struct GatewayPick {
+        ID wallID = INVALID_ID;
+        bool twoWay = true;
+    };
+    extern std::optional<GatewayPick> gatewayPick;
+
+    void BeginGatewayPick(ID wallID, bool twoWay);
+
+    // As HandleTeleporterPick.
+    bool HandleGatewayPick(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
+
     // Deletes every wall in the current selection as one undoable
     // operation, with a single topology rebuild at the end.
     void DeleteSelectedWalls();
@@ -1826,6 +1849,11 @@ namespace MapEditorInternal {
 
     // The outline of the sector Make Teleporter would pick (MapEditorDrawing.cpp).
     void DrawTeleporterPickHighlight();
+
+    // Every gateway's opening and a line to where it leads; the wall a
+    // gateway pick would link to.
+    void DrawGatewayLinks();
+    void DrawGatewayPickHighlight();
 
     // Lines from the selected wall/sector/entity's events to the dispatches
     // they reach, and from the events reaching its dispatches to it.
