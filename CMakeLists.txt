@@ -198,7 +198,6 @@ find_package(OpenAL CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(SDL3 REQUIRED CONFIG COMPONENTS SDL3 Headers)
 find_package(SDL3_image REQUIRED CONFIG)
-find_package(SDL3_ttf REQUIRED CONFIG)
 find_package(Freetype REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(sol2 CONFIG REQUIRED)
@@ -1044,7 +1043,6 @@ function(configure_tilky_engine_executable target_name)
             spdlog::spdlog
             OpenAL::OpenAL
             $<IF:$<TARGET_EXISTS:SDL3_image::SDL3_image-shared>,SDL3_image::SDL3_image-shared,SDL3_image::SDL3_image-static>
-            SDL3_ttf::SDL3_ttf
             Freetype::Freetype
             glad
             Tilky_Project

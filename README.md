@@ -365,7 +365,7 @@ New to the engine? [**Make a Doom-Style Game**](docs/wiki/guide/README.md) is a 
 | **Profiling**                 | Tracy                                 |
 | **Serialization**             | nlohmann/json                         |
 | **Logging**                   | spdlog                                |
-| **Assets**                    | SDL3_image, SDL3_ttf, FreeType, Assimp        |
+| **Assets**                    | SDL3_image, FreeType, Assimp          |
 | **Build System**              | CMake, Ninja                          |
 | **Dependency Management**     | vcpkg                                 |
 | **Exporter and Helper Tools** | C++20                                 |

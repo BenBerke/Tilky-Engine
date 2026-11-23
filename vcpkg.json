@@ -22,7 +22,6 @@
         "png"
       ]
     },
-    "sdl3-ttf",
     "sol2",
     "spdlog",
     "stb",

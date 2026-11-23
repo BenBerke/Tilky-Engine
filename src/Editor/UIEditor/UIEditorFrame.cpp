@@ -181,7 +181,7 @@ namespace MapEditorInternal {
             const float pixelSize = text.fontSize * windowScale * uiCanvasZoom;
             if (!(pixelSize >= 0.5f)) return;
 
-            // SDL_ttf takes whole-byte colours.
+            // Whole-byte colours, as the editor's old SDL_ttf text had.
             const auto channel = [](const float value) { return static_cast<float>(std::lround(std::clamp(value, 0.0f, 1.0f) * 255.0f)) / 255.0f; };
 
             const float padding = UI_TEXT_PADDING * windowScale;
