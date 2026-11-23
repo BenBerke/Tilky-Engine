@@ -603,6 +603,8 @@ private:
     // OpenGLTexture.cpp. Loads `path` into a new GL texture. False (and
     // `out` untouched) if it can't be read.
     bool LoadTextureFile(const std::filesystem::path& path, GPUTexture& out);
+    // The GL texture for RGBA8 pixels, set up as LoadTextureFile's are.
+    void UploadTexturePixels(const std::filesystem::path& path, const void* pixels, int width, int height, GPUTexture& out);
     // The atlas and its region buffer only, not the standalone textures.
     void DestroyAtlas();
     // Re-uploads, in place, every standalone texture whose file changed on
@@ -637,6 +639,35 @@ private:
 
     static constexpr int SECTOR_FLOOR_COUNT = 3;
     static constexpr int SECTOR_HEIGHT_COUNT = SECTOR_FLOOR_COUNT + 1;
+
+    // 2D editor canvas (OpenGLEditor2D.cpp). Made on the first
+    // DrawEditor2D, so the game never builds them. Present in every build
+    // so the class layout is the same in editor and standalone objects.
+    enum Editor2DPass { EDITOR2D_SECTOR, EDITOR2D_WALL, EDITOR2D_LINEDEF, EDITOR2D_ENTITY, EDITOR2D_COLLIDER, EDITOR2D_OVERLAY, EDITOR2D_PASS_COUNT };
+    enum Editor2DBuffer { EDITOR2D_BUFFER_SECTORS, EDITOR2D_BUFFER_SECTOR_TRIANGLES, EDITOR2D_BUFFER_SECTOR_FLAGS,
+                          EDITOR2D_BUFFER_WALLS, EDITOR2D_BUFFER_WALL_FLAGS, EDITOR2D_BUFFER_LINEDEFS, EDITOR2D_BUFFER_LINEDEF_FLAGS,
+                          EDITOR2D_BUFFER_ENTITIES, EDITOR2D_BUFFER_ENTITY_FLAGS, EDITOR2D_BUFFER_COLLIDERS, EDITOR2D_BUFFER_COLLIDER_FLAGS,
+                          EDITOR2D_BUFFER_OVERLAY, EDITOR2D_BUFFER_LABEL_OVERLAY, EDITOR2D_BUFFER_COUNT };
+    GLuint editor2DPrograms[EDITOR2D_PASS_COUNT] = {};
+    GLuint editor2DBuffers[EDITOR2D_BUFFER_COUNT] = {};
+    GLuint editor2DVAO = 0;
+    GLuint editor2DSamplerRepeat = 0;
+    GLuint editor2DSamplerClamp = 0;
+    bool editor2DInitTried = false;
+    bool editor2DReady = false;
+
+    bool InitEditor2D();
+    void DestroyEditor2D();
+    void DrawEditor2DOverlay(const Editor2D::Frame& frame, int layer);
+    // The labels of one Layer (Layer::Count = those drawn after everything).
+    void DrawEditor2DLabels(const Editor2D::Frame& frame, int layer);
+    void SetEditor2DClip(const Editor2D::Frame& frame, bool clip);
+    GLuint Editor2DTexture(const std::string& fileName);
+
+public:
+    void DrawEditor2D(const Editor2D::Frame& frame) override;
+    [[nodiscard]] bool FindLoadedTexture(const std::string& fileName, LoadedTexture* out) const override;
+    bool AddDecodedTexture(const std::string& fileName, const std::filesystem::path& path, const void* pixels, int width, int height) override;
 };
 
 #endif

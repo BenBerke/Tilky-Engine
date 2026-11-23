@@ -429,6 +429,7 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Renderer/OpenGL/OpenGLGateway.cpp
         src/Runtime/Renderer/OpenGL/OpenGLUI.cpp
         src/Runtime/Renderer/OpenGL/OpenGLCollider.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLEditor2D.cpp
         src/Runtime/Renderer/OpenGL/OpenGL.cpp
 
         src/Runtime/PhysicsSystem.cpp
@@ -657,6 +658,7 @@ set(TILKY_SHARED_SUPPORT_SOURCES
 
 set(TILKY_EDITOR_SOURCES
         src/Editor/MapEditor/MapEditorDrawing.cpp
+        src/Editor/MapEditor/MapEditorFrame.cpp
         src/Editor/MapEditor/MapEditorGeometry.cpp
         ${TILKY_GENERATED_MAP_EDITOR_UI}
         src/Editor/MapEditor/MapEditorInput.cpp
@@ -690,6 +692,7 @@ set(TILKY_EDITOR_SOURCES
         src/Editor/UIEditor/UIEditorUI.cpp
         src/Editor/UIEditor/UIEditorInput.cpp
         src/Editor/UIEditor/UiEditorDraw.cpp
+        src/Editor/UIEditor/UIEditorFrame.cpp
 
         Headers/Editor/AssetBrowser.hpp
         Headers/Editor/FlipbookEditor.hpp

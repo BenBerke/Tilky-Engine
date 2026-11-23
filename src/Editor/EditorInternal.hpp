@@ -10,6 +10,7 @@
 #include "Headers/Objects/ComponentRegistry.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Editor/WallSnap.hpp"
+#include "Headers/Editor/EditorTextureCache.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -23,7 +24,11 @@
 
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_video.h>
-#include <SDL3_ttf/SDL_ttf.h>
+namespace Editor2D {
+    struct Frame;
+}
+
+class IRenderer;
 
 namespace MapEditorInternal {
     inline constexpr float UI_FONT_SIZE = 34.0f;
@@ -220,11 +225,11 @@ namespace MapEditorInternal {
     // success); MapEditorUI.cpp surfaces it as a toast once per rejection.
     extern std::string lastGeometryError;
 
+    // The window the editors draw in: the renderer's, shared with Play and
+    // the runtime editor (RuntimeSession::GetRenderer()).
     extern SDL_Window* window;
-    extern SDL_Renderer* renderer;
-    extern TTF_Font* font;
-    extern TTF_Font* labelFont; // small canvas labels (wall lengths)
-    extern TTF_TextEngine* textEngine;
+    // Draws the map and UI editor canvases (DrawEditor2D) in that window.
+    extern IRenderer* canvasRenderer;
 
     extern ImFont* scriptEditorFont;
 
@@ -955,23 +960,10 @@ namespace MapEditorInternal {
     // the true, always-fixed grid unit.
     float GetActiveGridSize();
 
-    void DrawThickLine(SDL_Renderer* renderer, Vector2 start, Vector2 end, float thickness);
-    void DrawFilledTriangle(const Triangle& triangle, SDL_FColor color);
-    void DrawFilledTriangleTextured(const Triangle& triangle, SDL_Texture* texture, SDL_FColor tint);
-    void DrawSectorPreview();
-    void DrawSnapIndicator();
-    void DrawExistingSectors();
-    void DrawWalls();
-
-    // Every linedef, with a square at each end. Faint outside Linedef Mode.
-    void DrawLinedefs();
-
-    // Geometry Mode's canvas overlay: hover highlight, selection
-    // highlight, and the draggable endpoint handles of the selected
-    // wall(s) - or, in Linedef Mode, linedef(s) and the linedef being
-    // drawn. Draws nothing in any other mode.
-    void DrawGeometryEditOverlay();
-    void DrawEntities();
+    // The whole map editor canvas - sectors, walls, linedefs, entities,
+    // previews, gizmo, grid... - drawn by canvasRenderer from the frame
+    // BuildMapEditorFrame() makes (MapEditorDrawing.cpp).
+    void DrawMapCanvas();
 
     // =========================================================================
     //  Entity Mode move gizmo
@@ -1007,15 +999,13 @@ namespace MapEditorInternal {
     // The part being dragged right now, GIZMO_NONE between drags.
     EntityGizmoPart GetActiveEntityGizmoPart();
 
-    // Defined in MapEditorDrawing.cpp. Call after DrawEntities().
-    void DrawEntityMoveGizmo();
-    // Defined in MapEditorInput.cpp, next to the box selection it draws.
-    // Call after DrawEntities().
-    void DrawSelectionBox();
-    void DrawGrid();
+    // Where the box selection being dragged started (world), if one is.
+    // Defined in MapEditorInput.cpp, next to the box selection.
+    bool GetSelectionBoxStart(Vector2* startWorld);
 
-    // The level's background image, under everything else.
-    void DrawBackgroundImage();
+    // The map editor canvas as a frame for the renderer (MapEditorFrame.cpp).
+    // Leaves out the parts drawn with ImGui (DrawViewModeLegend, DrawCommentIcons).
+    void BuildMapEditorFrame(Editor2D::Frame& frame);
 
     void HandleEditorInput(bool mouseBlockedByImGui, bool keyboardBlockedByImgui);
     // Save and editor-switch shortcuts. Defined in MapEditorUI.cpp, next to
@@ -1027,9 +1017,10 @@ namespace MapEditorInternal {
     void OpenRuntimeEditor();
     void DrawEditorUI();
 
+    // The UI editor canvas, drawn by canvasRenderer (UiEditorDraw.cpp).
     void UIEditorDraw();
-    // Closes the fonts the UI canvas opened to preview UI Text. Before TTF_Quit().
-    void DestroyUIPreviewFonts();
+    // The UI editor canvas as a frame for the renderer (UIEditorFrame.cpp).
+    void BuildUIEditorFrame(Editor2D::Frame& frame);
     void DrawUIEditorUI();
 
     // The map editor's toolbar (Save, Save & Play, Runtime Editor, UI Editor,
@@ -1518,9 +1509,6 @@ namespace MapEditorInternal {
     // cursor on the canvas.
     [[nodiscard]] bool IsPaintSelectActive(bool mouseBlockedByImGui);
 
-    // The brush circle at the cursor (MapEditorDrawing.cpp).
-    void DrawPaintSelectBrush();
-
     // The comment icons on the canvas, with their text on hover
     // (MapEditorDrawing.cpp).
     void DrawCommentIcons();
@@ -1843,22 +1831,6 @@ namespace MapEditorInternal {
     // Floor height of the sector at `point`, or 0 outside every sector.
     [[nodiscard]] float FloorHeightAt(const Vector2& point);
 
-    // Draws the hover highlight of the wall Snap to Wall would pick
-    // (MapEditorDrawing.cpp).
-    void DrawWallSnapPickHighlight();
-
-    // The outline of the sector Make Teleporter would pick (MapEditorDrawing.cpp).
-    void DrawTeleporterPickHighlight();
-
-    // Every gateway's opening and a line to where it leads; the wall a
-    // gateway pick would link to.
-    void DrawGatewayLinks();
-    void DrawGatewayPickHighlight();
-
-    // Lines from the selected wall/sector/entity's events to the dispatches
-    // they reach, and from the events reaching its dispatches to it.
-    void DrawEventLinks();
-
     // The Entity Mode palette, for the map editor's panel and the runtime
     // editor's toolbar menu (MapEditorUI.cpp).
     void DrawEntityPalette(const char* hintKey);
@@ -2162,20 +2134,15 @@ namespace MapEditorInternal {
     void DuplicateSelectedEntities();
 
     // Texture preview / Texture View Mode access point. Textures are
-    // identified by name (relative to the Textures folder), not by index.
-    // Returns nullptr safely if the file is missing or unavailable - never
-    // crashes on a missing texture.
-    SDL_Texture* GetEditorTexture(const std::string& textureFileName);
+    // identified by name (relative to the Assets folder), not by index.
+    // Returns nullptr safely while it loads, or if the file is missing or
+    // unavailable - never crashes on a missing texture. See EditorTextureCache.
+    const EditorTextureCache::Texture* GetEditorTexture(const std::string& textureFileName);
 
-    // Backend bridge for every thumbnail the shared inspector widgets draw.
-    // ImTextureID means different things per ImGui backend - an SDL_Texture*
-    // under imgui_impl_sdlrenderer3, a GLuint texture name under
-    // imgui_impl_opengl3 - so nothing below may build one itself.
-    //
-    // The Map Editor leaves previewTextureProvider null and gets the
-    // SDL_Renderer path above. The Runtime Editor points it at the live
-    // IRenderer in RuntimeEditor::Start() (and clears it in Shutdown()), so
-    // the exact same DrawAssetField call produces GL-valid IDs there.
+    // Every thumbnail the shared inspector widgets draw goes through here.
+    // The map editor loads in the background (GetEditorTexture); the Runtime
+    // Editor points previewTextureProvider at its IRenderer in
+    // RuntimeEditor::Start() (and clears it in Shutdown()), which loads at once.
     //
     // Both defined in MapEditorUI.cpp.
     extern ImTextureID (*previewTextureProvider)(const std::string& textureFileName);

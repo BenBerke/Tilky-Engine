@@ -2,6 +2,7 @@
 #define TILKY_ENGINE_IRENDERER_HPP
 
 #include <imgui.h>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,10 @@
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Runtime/Renderer/SurfaceMetaData.hpp"
+
+namespace Editor2D {
+    struct Frame;
+}
 
 class IRenderer {
 public:
@@ -129,6 +134,42 @@ public:
     // nullptr. A font from the editor's context can't be drawn here.
     [[nodiscard]] virtual ImFont* GetImGuiIconFont() const {
         return nullptr;
+    }
+
+    // Draws a 2D editor canvas (map editor / UI editor) into the bound
+    // framebuffer, clearing it first. Declared in the standalone game too, so
+    // both executables share one IRenderer layout; only the editor calls it.
+    virtual void DrawEditor2D(const Editor2D::Frame& frame) {
+        (void)frame;
+    }
+
+    // The editors' texture loading (EditorTextureCache) decodes images on
+    // worker threads and hands them over here, so the editors, the runtime
+    // editor and the game share one set of textures.
+    struct LoadedTexture {
+        unsigned id = 0; // the GL texture
+        int width = 0;
+        int height = 0;
+    };
+
+    // A texture already loaded under `fileName`, without loading it.
+    // False while it isn't (or its load failed).
+    [[nodiscard]] virtual bool FindLoadedTexture(const std::string& fileName, LoadedTexture* out) const {
+        (void)fileName;
+        (void)out;
+        return false;
+    }
+
+    // Makes a texture from decoded RGBA8 pixels and files it under
+    // `fileName`, as if loaded from `path`. Nothing on a null `pixels` but
+    // the failure is remembered, as a failed load is.
+    virtual bool AddDecodedTexture(const std::string& fileName, const std::filesystem::path& path, const void* pixels, int width, int height) {
+        (void)fileName;
+        (void)path;
+        (void)pixels;
+        (void)width;
+        (void)height;
+        return false;
     }
 
     // Surfaces to draw differently (see SurfaceMetaData). Kept until

@@ -682,14 +682,17 @@ namespace {
             }
         }
 
-        SDL_Texture* preview = sprite.texture.empty() ? nullptr : GetEditorTexture(sprite.texture);
+        const EditorTextureCache::Texture* preview = sprite.texture.empty() ? nullptr : GetEditorTexture(sprite.texture);
 
         const ImU32 tint = ImGui::ColorConvertFloat4ToU32(ImVec4(
             std::clamp(sprite.color.x, 0.0f, 1.0f), std::clamp(sprite.color.y, 0.0f, 1.0f),
             std::clamp(sprite.color.z, 0.0f, 1.0f), std::clamp(sprite.color.w, 0.0f, 1.0f)));
 
         float texW = 0.0f, texH = 0.0f;
-        if (preview != nullptr) SDL_GetTextureSize(preview, &texW, &texH);
+        if (preview != nullptr) {
+            texW = static_cast<float>(preview->width);
+            texH = static_cast<float>(preview->height);
+        }
 
         if (sprite.texture.empty()) {
             // No texture: the game draws a solid rectangle of the colour, or nothing.
@@ -706,7 +709,7 @@ namespace {
             }
 
             const ImVec2 imageMin(cursor.x + (previewSize - drawW) * 0.5f, cursor.y + (previewSize - drawH) * 0.5f);
-            drawList->AddImage(reinterpret_cast<ImTextureID>(preview), imageMin,
+            drawList->AddImage(preview->imguiID, imageMin,
                                ImVec2(imageMin.x + drawW, imageMin.y + drawH), ImVec2(0, 0), ImVec2(1, 1), tint);
         } else if (!sprite.texture.empty()) {
             // Assigned but not resolvable -> missing-texture feedback.
@@ -1564,8 +1567,8 @@ namespace {
         Spacing();
 
         assetBrowser.Draw([](const std::string& textureFileName) -> ImTextureID {
-            SDL_Texture* texture = GetEditorTexture(textureFileName);
-            return texture != nullptr ? reinterpret_cast<ImTextureID>(texture) : ImTextureID{};
+            const EditorTextureCache::Texture* texture = GetEditorTexture(textureFileName);
+            return texture != nullptr ? texture->imguiID : ImTextureID{};
         });
 
         ImGui::End();

@@ -4,7 +4,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "imgui_impl_sdl3.h"
-#include "imgui_impl_sdlrenderer3.h"
+#include "imgui_impl_opengl3.h"
 
 #include <filesystem>
 #include <SDL3/SDL_init.h>
@@ -19,6 +19,10 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
+#include "Headers/Runtime/RuntimeSession.hpp"
+#include "Headers/Runtime/Renderer/IRenderer.hpp"
+
+#include <glad/glad.h>
 
 namespace MapEditorInternal {
     int screenWidth = 1080;
@@ -27,7 +31,6 @@ namespace MapEditorInternal {
 
 namespace {
     ImGuiContext* imguiContext = nullptr;
-    bool shownOnce = false;
 
     // User settings are read from disk on the first Start() only, so values
     // changed but not yet saved survive switching to the runtime editor and
@@ -141,50 +144,37 @@ namespace Editor {
         }
         if (!LoadProjectSettings()) spdlog::error("Unable to load project settings");
 
-        SDL_ShowWindow(window);
+        // The window Play and the runtime editor use too. Showing it makes
+        // the renderer's context and ImGui context current (and maximizes it
+        // the first time), so the editor's ImGui context is set again after.
+        canvasRenderer->SetWindowVisible(true);
+        ImGui::SetCurrentContext(imguiContext);
 
-        if (!shownOnce) {
-            // Later shows keep whatever size and position the user left it at.
-            SDL_MaximizeWindow(window);
-            shownOnce = true;
-        }
+        SDL_SetWindowTitle(window, Localisation::Get("screen.title.level_editor").c_str());
 
-        // The game window is still shown until the switch hides it.
-        SDL_RaiseWindow(window);
-
-        SDL_RaiseWindow(window);
+        // The editor drew without VSync on its own SDL_Renderer; the VSync
+        // setting is for Play and the runtime editor (they set it each session).
+        canvasRenderer->SetVSync(0);
     }
 
     bool Initialize() {
         using namespace MapEditorInternal;
 
-        if (SDL_Init(SDL_INIT_VIDEO) == false) {
-            spdlog::critical("MapEditor SDL_Init Failed: {}", SDL_GetError());
+        // The editors draw in the renderer's window, with its GL context.
+        canvasRenderer = RuntimeSession::GetRenderer();
+        if (canvasRenderer == nullptr) {
+            spdlog::critical("The editor needs the renderer's window; RuntimeSession::Initialize() failed or hasn't run");
             return false;
         }
 
-        //const SDL_DisplayID displayID = SDL_GetPrimaryDisplay();
-        //const SDL_DisplayMode *mode = SDL_GetDesktopDisplayMode(displayID);
-        // if (!mode) spdlog::error("Failed to get desktop display mode", SDL_GetError());
-        // else {
-        //     screenWidth = mode->w;
-        //     screenHeight = mode->h;
-        // }
+        canvasRenderer->MakeCurrent();
+        window = canvasRenderer->GetWindow();
+        SDL_GLContext glContext = SDL_GL_GetCurrentContext();
 
-        if (SDL_CreateWindowAndRenderer(
-                Localisation::Get("screen.title.level_editor").c_str(),
-                screenWidth,
-                screenHeight,
-                // Hidden until Start() shows it; maximized on that first show.
-                SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN,
-                &window,
-                &renderer
-            ) == false) {
-            spdlog::critical("MapEditor Window or Renderer failed", SDL_GetError());
-            SDL_Quit();
+        if (window == nullptr || glContext == nullptr) {
+            spdlog::critical("The renderer has no window or GL context for the editor");
             return false;
         }
-        SDL_SetWindowFullscreenMode(window, nullptr);
 
         const fs::path iconPath = ProjectManager::GetEngineBasePath() / "LauncherAssets" / "Fox.png";
         SDL_Surface* windowIcon = IMG_Load(iconPath.string().c_str());
@@ -195,34 +185,13 @@ namespace Editor {
             SDL_DestroySurface(windowIcon);
         }
 
-        if (!TTF_Init()) {
-            spdlog::critical("TTF_Init failed {}", SDL_GetError());
-            SDL_Quit();
-            return false;
-        }
+        EditorTextureCache::SetRenderer(canvasRenderer);
 
         const fs::path fontPath = ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
 
-        font = TTF_OpenFont(fontPath.string().c_str(), UI_FONT_SIZE);
-        TTF_SetFontKerning(font, false);
-
-        if (!font) {
-            spdlog::critical("TTF_OpenFont failed {}", SDL_GetError());
-            TTF_Quit();
-            SDL_Quit();
-            return false;
-        }
-
-        // A separate small font rather than resizing `font`, which other
-        // canvas text is drawn with this same frame.
-        labelFont = TTF_OpenFont(fontPath.string().c_str(), LABEL_FONT_SIZE);
-        if (!labelFont) spdlog::warn("TTF_OpenFont failed for the label font {}", SDL_GetError());
-
-        textEngine = TTF_CreateRendererTextEngine(renderer);
-
         IMGUI_CHECKVERSION();
-        // Lives until Destroy(), next to the runtime's own context, so both
-        // set theirs current before touching ImGui.
+        // Lives until Destroy(), next to the runtime's own context on the same
+        // window, so both set theirs current before touching ImGui.
         imguiContext = ImGui::CreateContext();
         ImGui::SetCurrentContext(imguiContext);
 
@@ -232,7 +201,10 @@ namespace Editor {
 
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // When you comment this out somethings break for some reason
-        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+        // No ImGuiConfigFlags_ViewportsEnable: the SDL_Renderer backend the
+        // editor used couldn't put panels in windows of their own, so they
+        // always stayed inside the editor window. The OpenGL backend can, but
+        // only with platform windows managed every frame; they stay inside.
 
         // The editor's own text font. The script editor's monospace font is
         // added first, so without this it would be the default for the whole UI.
@@ -248,8 +220,8 @@ namespace Editor {
         // The saved design replaces this once LoadUserSettings() in Start() runs.
         EditorStyle::Apply(EditorStyle::ActiveDesign());
 
-        ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
-        ImGui_ImplSDLRenderer3_Init(renderer);
+        ImGui_ImplSDL3_InitForOpenGL(window, glContext);
+        ImGui_ImplOpenGL3_Init("#version 430");
 
         return true;
     }
@@ -266,24 +238,28 @@ namespace Editor {
         ImGui::SetCurrentContext(imguiContext);
         const ImGuiIO& io = ImGui::GetIO();
         if (io.IniFilename != nullptr && GImGui->SettingsLoaded) ImGui::SaveIniSettingsToDisk(io.IniFilename);
-    }
 
-    void HideWindow() {
-        SDL_HideWindow(MapEditorInternal::window);
+        // Play and the runtime editor go on in this window, under its own name.
+        SDL_SetWindowTitle(window, Localisation::Get("screen.title.engine").c_str());
     }
 
     void Update() {
         using namespace MapEditorInternal;
 
+        canvasRenderer->MakeCurrent();
         ImGui::SetCurrentContext(imguiContext);
+
+        // The canvas is drawn at the window's size this frame.
+        SDL_GetWindowSize(window, &screenWidth, &screenHeight);
 
         if (ProcessPendingLevelLoad()) [[unlikely]] {
 #ifndef TILKY_STANDALONE
             cameraPos = LevelManager::CurrentLevel().editorCamPos;
 #endif
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            SDL_RenderClear(renderer);
-            SDL_RenderPresent(renderer);
+            glViewport(0, 0, screenWidth, screenHeight);
+            glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            canvasRenderer->EndFrame();
             return;
         }
 
@@ -294,12 +270,9 @@ namespace Editor {
 
         // Before anything draws, so a texture finished this frame shows up
         // this frame.
-        EditorTextureCache::Update(renderer);
+        EditorTextureCache::Update();
 
-        SDL_SetRenderDrawColor(renderer, backgroundColor.r, backgroundColor.g, backgroundColor.b, 255);
-        SDL_RenderClear(renderer);
-
-        ImGui_ImplSDLRenderer3_NewFrame();
+        ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
@@ -335,37 +308,12 @@ namespace Editor {
             // drawn back on its wall.
             if (WallSnap::Enforce(LevelManager::CurrentLevel())) MarkUnsavedChanges();
 
-            DrawBackgroundImage();
-            DrawExistingSectors();
-            DrawGrid();
-            DrawWalls();
-            DrawLinedefs();
-
-            // Geometry Mode's hover/selection highlights and endpoint
-            // handles. This took the place of DrawDots(), but has to be
-            // drawn AFTER DrawWalls() rather than before it the way
-            // DrawDots() was - it highlights the walls, so drawing it
-            // first would put every highlight underneath them.
-            DrawGeometryEditOverlay();
-            DrawWallSnapPickHighlight();
-            DrawTeleporterPickHighlight();
-            DrawGatewayLinks();
-            DrawGatewayPickHighlight();
-
-            DrawEntities();
-            DrawEventLinks();
-            DrawEntityMoveGizmo();
-            DrawSelectionBox();
-
-            // Also called in Geometry Mode for the snap indicator: wall
-            // and endpoint dragging obey the same grid/point snapping as
-            // sector drawing, so it needs the same preview of where a
-            // point will actually land.
-            if (currentMode == MODE_SECTOR || currentMode == MODE_GEOMETRY) DrawSectorPreview();
+            // After the input, so what it changed is drawn this frame. Drawn
+            // now; ImGui (the legend, comment icons, panels) goes on top.
+            DrawMapCanvas();
 
             DrawViewModeLegend();
             DrawCommentIcons();
-            DrawPaintSelectBrush();
 
             DrawEditorUI();
         }
@@ -396,11 +344,10 @@ namespace Editor {
             if (!SDL_StartTextInput(window))
                 spdlog::error("SDL_StartTextInput failed: {}", SDL_GetError());
 
-        ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
+        glViewport(0, 0, screenWidth, screenHeight);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        SDL_GetWindowSize(window, &screenWidth, &screenHeight);
-
-        SDL_RenderPresent(renderer);
+        canvasRenderer->EndFrame();
 
         UpdateAutoSave();
     }
@@ -436,43 +383,24 @@ namespace Editor {
         if (userSettingsSafeToSave) SaveUserSettings();
         else spdlog::warn("Not saving user settings on close: the existing file could not be loaded");
 
+        // The backend frees its GL objects, so the renderer's context must
+        // be current: Destroy() runs before RuntimeSession::Destroy().
+        if (canvasRenderer != nullptr) canvasRenderer->MakeCurrent();
         ImGui::SetCurrentContext(imguiContext);
-        ImGui_ImplSDLRenderer3_Shutdown();
+        ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext(imguiContext);
         imguiContext = nullptr;
 
-        DestroyUIPreviewFonts();
-
-        if (font) {
-            TTF_CloseFont(font);
-            font = nullptr;
-        }
-
-        if (labelFont) {
-            TTF_CloseFont(labelFont);
-            labelFont = nullptr;
-        }
-
-        TTF_Quit();
-
-        // Must run before the renderer is destroyed below - these textures
-        // were created against it.
+        // The textures themselves belong to the renderer.
         EditorTextureCache::Destroy();
 
-        if (renderer) {
-            SDL_DestroyRenderer(renderer);
-            renderer = nullptr;
-        }
-
-        if (window) {
-            SDL_DestroyWindow(window);
-            window = nullptr;
-        }
+        // The window and renderer are the runtime's; RuntimeSession::Destroy() ends them.
+        window = nullptr;
+        canvasRenderer = nullptr;
 
         quit = false;
         shutdown = false;
-        SDL_Quit();
     }
 
     SDL_Window* GetWindow() {

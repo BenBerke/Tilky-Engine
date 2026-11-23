@@ -4832,29 +4832,26 @@ namespace MapEditorInternal {
     AssetBrowser assetBrowser;
     bool assetBrowserInitialized = false;
 
-    SDL_Texture *GetEditorTexture(const std::string &textureFileName) {
+    const EditorTextureCache::Texture *GetEditorTexture(const std::string &textureFileName) {
         if (textureFileName.empty()) {
             return nullptr;
         }
 
-        return EditorTextureCache::Get(renderer, textureFileName);
+        return EditorTextureCache::Get(textureFileName);
     }
 
-    // Null in this (SDL) editor; set by RuntimeEditor::Start() when the same
-    // inspector code runs on top of the OpenGL backend. See EditorInternal.hpp.
+    // Null in the map editor; set by RuntimeEditor::Start(). See EditorInternal.hpp.
     ImTextureID (*previewTextureProvider)(const std::string &textureFileName) = nullptr;
 
-    // The ONLY place a texture name becomes an ImTextureID. Everything that
-    // draws a thumbnail goes through here rather than casting an SDL_Texture*
-    // itself, because that cast is only valid under imgui_impl_sdlrenderer3.
+    // Where a texture name becomes an ImTextureID for the inspector widgets.
     ImTextureID GetPreviewTextureID(const std::string &textureFileName) {
         if (textureFileName.empty()) return ImTextureID{};
 
         if (previewTextureProvider != nullptr) return previewTextureProvider(textureFileName);
 
-        SDL_Texture *texture = GetEditorTexture(textureFileName);
+        const EditorTextureCache::Texture *texture = GetEditorTexture(textureFileName);
 
-        return texture != nullptr ? reinterpret_cast<ImTextureID>(texture) : ImTextureID{};
+        return texture != nullptr ? texture->imguiID : ImTextureID{};
     }
 
     void DrawTextureThumbnailBox(const std::string &textureFileName, const float size) {

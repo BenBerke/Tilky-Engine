@@ -7,6 +7,8 @@
 
 #include <string>
 
+class IRenderer;
+
 /// Responsible for anything that requires rendering the map.
 
 namespace RuntimeSession {
@@ -35,6 +37,10 @@ namespace RuntimeSession {
     void Shutdown();
 #ifndef TILKY_STANDALONE
     void HideWindow();
+
+    // The renderer and its window, made by Initialize(). The map and UI
+    // editors draw in the same window. nullptr if Initialize() failed.
+    [[nodiscard]] IRenderer* GetRenderer();
 
     // The game window's VSync (1 on, -1 adaptive, 0 off), from the editor's
     // Engine Settings. Applied when a Play / runtime editor session starts.

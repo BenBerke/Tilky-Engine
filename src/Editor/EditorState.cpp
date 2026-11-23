@@ -14,10 +14,7 @@ namespace Editor {
 
 namespace MapEditorInternal {
     SDL_Window* window = nullptr;
-    SDL_Renderer* renderer = nullptr;
-    TTF_Font* font = nullptr;
-    TTF_Font* labelFont = nullptr;
-    TTF_TextEngine* textEngine = nullptr;
+    IRenderer* canvasRenderer = nullptr;
 
     ImFont* scriptEditorFont = nullptr;
     ImFont* editorIconFont = nullptr;

@@ -915,5 +915,9 @@ namespace RuntimeSession {
     void HideWindow() {
         if (renderer) renderer->SetWindowVisible(false);
     }
+
+    IRenderer* GetRenderer() {
+        return renderer.get();
+    }
 #endif
 }

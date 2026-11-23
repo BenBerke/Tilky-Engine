@@ -2057,30 +2057,11 @@ namespace MapEditorInternal {
         return xDistance <= zDistance ? GIZMO_X : GIZMO_Z;
     }
 
-    void DrawSelectionBox() {
-        if (!boxSelectPending || !boxSelectDragged) return;
+    bool GetSelectionBoxStart(Vector2* startWorld) {
+        if (!boxSelectPending || !boxSelectDragged) return false;
 
-        // From where the drag started in the world (the camera can pan
-        // mid-drag) to the cursor.
-        const Vector2 start = WorldToScreen(boxSelectStartWorld, cameraPos);
-        const Vector2 end = InputManager::GetMousePosition();
-
-        const SDL_FRect box = {
-            std::min(start.x, end.x),
-            std::min(start.y, end.y),
-            std::fabs(end.x - start.x),
-            std::fabs(end.y - start.y)
-        };
-
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-
-        SDL_SetRenderDrawColor(renderer, 90, 150, 255, 40);
-        SDL_RenderFillRect(renderer, &box);
-
-        SDL_SetRenderDrawColor(renderer, 90, 150, 255, 200);
-        SDL_RenderRect(renderer, &box);
-
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+        *startWorld = boxSelectStartWorld;
+        return true;
     }
 
     EntityGizmoPart GetActiveEntityGizmoPart() {

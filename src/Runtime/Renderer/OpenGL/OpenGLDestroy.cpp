@@ -17,6 +17,7 @@ void OpenGL::Shutdown() {
     DestroyEditorCamera();
 
     DestroyFonts();
+    DestroyEditor2D();
 
     if (sectorSSBO != 0) {
         glDeleteBuffers(1, &sectorSSBO);

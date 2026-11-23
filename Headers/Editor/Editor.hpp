@@ -18,16 +18,15 @@ namespace Editor {
     extern std::vector<std::string> maps;
     extern std::string currentMap;
 
-    // Once at engine start: the (hidden) window, renderer, fonts and ImGui.
+    // Once at engine start, after RuntimeSession::Initialize(): the editors
+    // draw in the renderer's window (fonts, ImGui, texture loading).
     bool Initialize();
     // Each time the editor becomes the active mode: resets session state and shows the window.
     void Start();
     void Update();
-    // Leaving the editor for Play / the runtime editor. The window stays
-    // visible until HideWindow(), so the game window can open first.
+    // Leaving the editor for Play / the runtime editor, which go on in the same window.
     void Stop();
-    void HideWindow();
-    // Once at engine exit. Calls SDL_Quit, so it runs after the runtime is destroyed.
+    // Once at engine exit, before RuntimeSession::Destroy() ends the window.
     void Destroy();
 
     bool ShutdownRequested();

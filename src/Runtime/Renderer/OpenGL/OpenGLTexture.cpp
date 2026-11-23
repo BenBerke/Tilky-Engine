@@ -26,21 +26,19 @@ bool OpenGL::LoadTextureFile(const std::filesystem::path& path, GPUTexture& out)
         return false;
     }
 
+    UploadTexturePixels(path, convertedSurface->pixels, convertedSurface->w, convertedSurface->h, out);
+
+    SDL_DestroySurface(convertedSurface);
+
+    return true;
+}
+
+void OpenGL::UploadTexturePixels(const std::filesystem::path& path, const void* pixels, const int width, const int height, GPUTexture& out) {
     GLuint textureID = 0;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
 
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGBA8,
-        convertedSurface->w,
-        convertedSurface->h,
-        0,
-        GL_RGBA,
-        GL_UNSIGNED_BYTE,
-        convertedSurface->pixels
-    );
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 
     glGenerateMipmap(GL_TEXTURE_2D);
 
@@ -55,13 +53,37 @@ bool OpenGL::LoadTextureFile(const std::filesystem::path& path, GPUTexture& out)
     std::error_code ec;
 
     out.id = textureID;
-    out.width = convertedSurface->w;
-    out.height = convertedSurface->h;
+    out.width = width;
+    out.height = height;
     out.path = path;
     out.writeTime = std::filesystem::last_write_time(path, ec);
+}
 
-    SDL_DestroySurface(convertedSurface);
+bool OpenGL::FindLoadedTexture(const std::string& fileName, LoadedTexture* out) const {
+    const auto found = textureIndexByName.find(fileName);
+    if (found == textureIndexByName.end() || found->second < 0 || found->second >= GetTextureCount()) return false;
 
+    const GPUTexture& texture = textures[found->second];
+    if (texture.id == 0) return false;
+
+    *out = {texture.id, texture.width, texture.height};
+    return true;
+}
+
+bool OpenGL::AddDecodedTexture(const std::string& fileName, const std::filesystem::path& path, const void* pixels, const int width,
+                               const int height) {
+    if (fileName.empty() || textureIndexByName.contains(fileName)) return false;
+
+    // A failed decode is cached as a failed load is, so it isn't retried every frame.
+    if (pixels == nullptr || width <= 0 || height <= 0) {
+        textureIndexByName.emplace(fileName, -1);
+        return false;
+    }
+
+    GPUTexture texture;
+    UploadTexturePixels(path, pixels, width, height, texture);
+    textures.push_back(std::move(texture));
+    textureIndexByName.emplace(fileName, static_cast<int>(textures.size()) - 1);
     return true;
 }
 

@@ -138,20 +138,9 @@ namespace {
         modeActive = false;
     }
 
-    // Play and the runtime editor share the game window.
-    void HideModeWindow(const EngineMode oldMode, const EngineMode newMode) {
-        const bool oldIsEditor = oldMode == EngineMode::EDITOR;
-
-        if (oldIsEditor == (newMode == EngineMode::EDITOR)) return;
-
-        if (oldIsEditor) Editor::HideWindow();
-        else RuntimeSession::HideWindow();
-    }
-
     bool SwitchMode(const EngineMode newMode) {
         if (modeActive && currentMode == newMode) return true;
 
-        const EngineMode previousMode = currentMode;
         // The runtime editor edits the level too (placed prefabs, scripts), so
         // Play started from it gets the same preparation.
         const bool prepareEditorLevelForRuntime =
@@ -160,22 +149,14 @@ namespace {
 
         StopCurrentMode(prepareEditorLevelForRuntime);
 
-        // The old window is hidden only once the new one is up, so nothing
-        // disappears while the new mode loads - and if it fails to start,
-        // the old window never went away.
-        if (StartMode(newMode)) {
-            HideModeWindow(previousMode, newMode);
-            return true;
-        }
+        // Every mode draws in the one window, so there is nothing to hide.
+        if (StartMode(newMode)) return true;
 
         if (newMode == EngineMode::EDITOR) return false;
 
         spdlog::error("Failed to start requested mode. Returning to the main editor.");
 
-        if (!StartMode(EngineMode::EDITOR)) return false;
-
-        HideModeWindow(previousMode, EngineMode::EDITOR);
-        return true;
+        return StartMode(EngineMode::EDITOR);
     }
 
     bool FindProjectArgument(const int argc, char** argv, fs::path& projectFile) {
@@ -359,17 +340,30 @@ int main(const int argc, char** argv) {
     if (!FindProjectArgument(argc, argv, projectFile)) return 1;
     if (!LoadProject(projectFile)) return 1;
 
-    // Both windows are made once and only hidden/shown when switching modes.
-    // A window's close button reports SDL_EVENT_WINDOW_CLOSE_REQUESTED (see
+    // One window for every mode, made once (hidden until the editor shows
+    // it). Its close button reports SDL_EVENT_WINDOW_CLOSE_REQUESTED (see
     // InputManager); SDL's own quit-on-last-window-close would otherwise send
-    // SDL_EVENT_QUIT for the game window once the editor's is hidden.
+    // SDL_EVENT_QUIT when it is hidden for a moment.
     SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
 
-    if (!Editor::Initialize()) return 1;
+    // The renderer first: the editors draw in its window.
+    if (!RuntimeSession::Initialize(Localisation::Get("screen.title.engine"))) {
+        // Audio failing still leaves the window: the editor works, Play reports it.
+        if (RuntimeSession::GetRenderer() == nullptr) {
+            spdlog::critical("Failed to create the engine window");
+            SDL_Quit();
+            return 1;
+        }
 
-    // Without it the editor still works; Play reports the failure.
-    if (!RuntimeSession::Initialize(Localisation::Get("screen.title.engine")))
-        spdlog::critical("Failed to create the game window. Play and the runtime editor are unavailable");
+        spdlog::critical("Failed to initialize the runtime. Play and the runtime editor may not work");
+    }
+
+    if (!Editor::Initialize()) {
+        Editor::Destroy();
+        RuntimeSession::Destroy();
+        SDL_Quit();
+        return 1;
+    }
 
     if (!StartMode(EngineMode::EDITOR)) return 1;
 
@@ -384,9 +378,10 @@ int main(const int argc, char** argv) {
     // Covers unexpected exits where a mode is still running.
     StopCurrentMode(false);
 
-    // The runtime first: Editor::Destroy() ends with SDL_Quit.
-    RuntimeSession::Destroy();
+    // The editor first: it lets go of the window and GL objects the runtime then ends.
     Editor::Destroy();
+    RuntimeSession::Destroy();
+    SDL_Quit();
 
     spdlog::info("Engine shutdown complete");
     spdlog::shutdown();
