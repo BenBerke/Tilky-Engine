@@ -124,7 +124,7 @@ namespace Editor {
 
         ImGui::SetCurrentContext(imguiContext);
 
-        UpdateLevels();
+        UpdateLevelsIfChanged();
 
         if (!LevelManager::HasCurrentLevel()) {
             LevelManager::loadedLevels.emplace_back();

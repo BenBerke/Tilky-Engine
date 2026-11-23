@@ -2273,6 +2273,9 @@ namespace MapEditorInternal {
     bool ProcessPendingLevelLoad();
 
     void UpdateLevels();
+    // UpdateLevels(), unless no level file under Assets changed since it last
+    // ran. Changes the editor makes itself call UpdateLevels() directly.
+    void UpdateLevelsIfChanged();
 
     void ClearManualSectorSelection();
     void CreateManualSector();
