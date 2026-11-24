@@ -3015,11 +3015,16 @@ namespace MapEditorInternal {
             const bool gridLarger = GetKeyBindDown(KEYBIND_GRID_LARGER);
 
             if (gridSmaller != gridLarger) {
-                constexpr double MAX_GRID_SIZE = 1024.0;
-                GRID_SIZE = std::clamp(gridLarger ? GRID_SIZE * 2.0 : GRID_SIZE * 0.5, MIN_GRID_SIZE, MAX_GRID_SIZE);
+                constexpr double MAX_GRID_SIZE = 2048.0;
+                // Refuse a step past the limits instead of clamping: a clamped
+                // value (e.g. 0.001) leaves the size x 2^n chain, so stepping
+                // back up never returns to the original size (12 -> 8.192).
+                const double stepped = gridLarger ? GRID_SIZE * 2.0 : GRID_SIZE * 0.5;
+                const bool withinLimits = stepped >= MIN_GRID_SIZE && stepped <= MAX_GRID_SIZE;
+                if (withinLimits) GRID_SIZE = stepped;
 
                 char message[128];
-                std::snprintf(message, sizeof(message), Localisation::Get("editor.toast.grid_size").c_str(), GRID_SIZE);
+                std::snprintf(message, sizeof(message), Localisation::Get(withinLimits ? "editor.toast.grid_size" : "editor.toast.grid_size_limit").c_str(), GRID_SIZE);
                 ImGuiDrawFunctions::ShowNotification(message, false, 1.5f);
             }
 

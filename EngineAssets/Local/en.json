@@ -135,6 +135,7 @@
   "editor.toast.sector_all_not_copied": "Only events were copied - copy the whole sector with Shift+C first",
   "editor.toast.grid_snap_off": "Grid snap off",
   "editor.toast.grid_size": "Grid size: %g",
+  "editor.toast.grid_size_limit": "Grid size limit reached: %g",
   "editor.toast.grid_origin_moved": "Grid origin moved",
   "editor.toast.grid_aligned": "Grid aligned to wall",
   "editor.toast.grid_align_no_wall": "Point at a wall, or select one, to align the grid to it",

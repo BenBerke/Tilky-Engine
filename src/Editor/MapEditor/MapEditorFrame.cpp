@@ -961,8 +961,14 @@ namespace MapEditorInternal {
                 }
             }
 
-            const float startX = std::floor(leftGrid / activeGridSize) * activeGridSize;
-            const float startY = std::floor(bottomGrid / activeGridSize) * activeGridSize;
+            // Each line is index * size rather than a running sum, so float
+            // error doesn't build up across the screen at small grid sizes.
+            const double gridStep = activeGridSize;
+            const auto firstIndexX = static_cast<int64_t>(std::floor(leftGrid / gridStep));
+            const auto lastIndexX = static_cast<int64_t>(std::floor(rightGrid / gridStep));
+            const auto firstIndexY = static_cast<int64_t>(std::floor(bottomGrid / gridStep));
+            const auto lastIndexY = static_cast<int64_t>(std::floor(topGrid / gridStep));
+            const auto lineAt = [gridStep](const int64_t index) { return static_cast<float>(static_cast<double>(index) * gridStep); };
 
             canvas.SetBlend(true);
 
@@ -975,18 +981,24 @@ namespace MapEditorInternal {
                     canvas.Line(Screen(GridToWorld(startGrid)), Screen(GridToWorld(endGrid)));
                 };
 
-                for (float gridX = startX; gridX <= rightGrid; gridX += activeGridSize)
+                for (int64_t ix = firstIndexX; ix <= lastIndexX; ++ix) {
+                    const float gridX = lineAt(ix);
                     drawLine({gridX, bottomGrid}, {gridX, topGrid}, IsOnMajorGridLine(gridX));
-                for (float gridY = startY; gridY <= topGrid; gridY += activeGridSize)
+                }
+                for (int64_t iy = firstIndexY; iy <= lastIndexY; ++iy) {
+                    const float gridY = lineAt(iy);
                     drawLine({leftGrid, gridY}, {rightGrid, gridY}, IsOnMajorGridLine(gridY));
+                }
             }
             else {
                 canvas.SetColor(gridColor.r * 255.0f, gridColor.g * 255.0f, gridColor.b * 255.0f, gridColor.a * 255.0f);
 
-                for (float gridX = startX; gridX <= rightGrid; gridX += activeGridSize) {
+                for (int64_t ix = firstIndexX; ix <= lastIndexX; ++ix) {
+                    const float gridX = lineAt(ix);
                     const bool majorX = IsOnMajorGridLine(gridX);
 
-                    for (float gridY = startY; gridY <= topGrid; gridY += activeGridSize) {
+                    for (int64_t iy = firstIndexY; iy <= lastIndexY; ++iy) {
+                        const float gridY = lineAt(iy);
                         const bool major = majorX && IsOnMajorGridLine(gridY);
                         const float dotSize = major ? majorDotSize : minorDotSize;
                         const Vector2 screenPos = Screen(GridToWorld({gridX, gridY}));
