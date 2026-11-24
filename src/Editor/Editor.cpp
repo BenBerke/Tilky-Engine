@@ -7,6 +7,7 @@
 #include "imgui_impl_opengl3.h"
 
 #include <filesystem>
+#include <optional>
 #include <SDL3/SDL_init.h>
 #include <SDL3_image/SDL_image.h>
 #include <spdlog/spdlog.h>
@@ -60,6 +61,46 @@ namespace {
     // Between Start() and Stop(): the 3D view (runtime editor session) runs
     // then, as a panel next to the map.
     bool editorRunning = false;
+
+    // Middle-drag panning of the map holds the cursor where the drag
+    // started, hidden, like the 3D view's middle-drag look: it can't slide
+    // onto the 3D view (or out of the window) mid-pan, and comes back where
+    // it was on release. The pan reads the relative motion meanwhile.
+    bool panCursorLocked = false;
+    float panCursorX = 0.0f;
+    float panCursorY = 0.0f;
+    std::optional<SDL_Rect> mouseRectBeforePan;
+
+    void SetPanCursorLocked(const bool locked) {
+        SDL_Window* window = Editor::GetWindow();
+        if (window == nullptr || locked == panCursorLocked) return;
+
+        if (locked) {
+            SDL_GetMouseState(&panCursorX, &panCursorY);
+
+            const SDL_Rect* previousRect = SDL_GetWindowMouseRect(window);
+            mouseRectBeforePan = previousRect != nullptr ? std::optional<SDL_Rect>{*previousRect} : std::nullopt;
+
+            InputManager::SetRelativeMouseMode(window, true);
+
+            const SDL_Rect lockRect = {static_cast<int>(panCursorX), static_cast<int>(panCursorY), 1, 1};
+            if (!SDL_SetWindowMouseRect(window, &lockRect))
+                spdlog::warn("Map pan could not fix the cursor position: {}", SDL_GetError());
+
+            panCursorLocked = true;
+            return;
+        }
+
+        if (!SDL_SetWindowMouseRect(window, mouseRectBeforePan.has_value() ? &*mouseRectBeforePan : nullptr))
+            spdlog::warn("Map pan could not restore the mouse rectangle: {}", SDL_GetError());
+
+        // Never moves the pointer over another application after focus loss.
+        if (SDL_GetMouseFocus() == window) SDL_WarpMouseInWindow(window, panCursorX, panCursorY);
+
+        InputManager::SetRelativeMouseMode(window, false);
+        panCursorLocked = false;
+        mouseRectBeforePan.reset();
+    }
 
     uint64_t lastAutoSaveTime = 0;
     // The level the running auto save is writing - a failed save only marks
@@ -317,7 +358,9 @@ namespace Editor {
     void Stop() {
         using namespace MapEditorInternal;
 
-        // Before Play: the 3D view's session ends first.
+        // Before Play: the 3D view's session ends first, and a map pan lets
+        // the cursor go.
+        SetPanCursorLocked(false);
         StopRuntimeView();
         editorRunning = false;
 
@@ -405,6 +448,11 @@ namespace Editor {
         // shortcut until the canvas was clicked again.
         // The command palette has the keyboard while it's open, typing or not.
         const bool keyboardBlockedByImgui = io.WantTextInput || keyBindBeingListened != nullptr || CommandPalette::IsOpen();
+
+        // Held from the frame the middle button pans the map (the canvas has
+        // the mouse) until it goes up; off in the UI editor.
+        SetPanCursorLocked(currentState == STATE_MAP && InputManager::GetMouseButton(SDL_BUTTON_MIDDLE) &&
+                           (panCursorLocked || !mouseBlockedByImGui));
 
         if (currentState == STATE_MAP) {
             // The keys are the Map panel's or the 3D view's, never both.

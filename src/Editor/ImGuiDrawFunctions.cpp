@@ -842,9 +842,10 @@ namespace ImGuiDrawFunctions {
     static constexpr ImGuiWindowFlags kInspectorFlags =
         ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoCollapse;
 
-    // "Title" or, with a shared window ID, "Title###id".
+    // "Title" or, drawn into the editor's one Inspector panel (a shared
+    // window ID), "Inspector###id": the panel keeps its name whatever it shows.
     static std::string InspectorWindowTitle(const std::string &title, const char *windowId) {
-        return windowId == nullptr ? title : title + "###" + windowId;
+        return windowId == nullptr ? title : Get("editor.inspector") + "###" + windowId;
     }
 
     void PutSpace(const int n) {
@@ -4128,7 +4129,8 @@ namespace ImGuiDrawFunctions {
 
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
 
-        if (!ImGui::Begin(InspectorWindowTitle(Get("sector.title"), windowId).c_str(), open, kInspectorFlags)) {
+        // The Inspector panel (windowId) has no close button: it always stays open.
+        if (!ImGui::Begin(InspectorWindowTitle(Get("sector.title"), windowId).c_str(), windowId != nullptr ? nullptr : open, kInspectorFlags)) {
             ImGui::End();
             return false;
         }
@@ -4727,7 +4729,7 @@ namespace ImGuiDrawFunctions {
         bool deleteRequested = false;
 
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin(InspectorWindowTitle(Get("wall.title"), windowId).c_str(), open, kInspectorFlags)) {
+        if (!ImGui::Begin(InspectorWindowTitle(Get("wall.title"), windowId).c_str(), windowId != nullptr ? nullptr : open, kInspectorFlags)) {
             ImGui::End();
             return false;
         }
@@ -4900,7 +4902,7 @@ namespace ImGuiDrawFunctions {
         bool deleteRequested = false;
 
         ImGui::SetNextWindowSize(ImVec2(320, 0), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin(InspectorWindowTitle(Get("linedef.title"), windowId).c_str(), open, kInspectorFlags)) {
+        if (!ImGui::Begin(InspectorWindowTitle(Get("linedef.title"), windowId).c_str(), windowId != nullptr ? nullptr : open, kInspectorFlags)) {
             ImGui::End();
             return false;
         }
@@ -5338,7 +5340,7 @@ namespace ImGuiDrawFunctions {
         ImGui::SetNextWindowSize(ImVec2(340, 0), ImGuiCond_FirstUseEver);
         const std::string entityWindowTitle = state.windowTitle.empty() ? Get("entity.title") : state.windowTitle;
 
-        const bool windowVisible = ImGui::Begin(entityWindowTitle.c_str(), open, kInspectorFlags);
+        const bool windowVisible = ImGui::Begin(entityWindowTitle.c_str(), state.closeButton ? open : nullptr, kInspectorFlags);
 
         if (!windowVisible) {
             ImGui::End();

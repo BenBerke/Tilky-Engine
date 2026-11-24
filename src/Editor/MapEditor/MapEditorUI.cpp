@@ -4818,7 +4818,9 @@ namespace {
         BeginInspectorEdit(level, entityInspectorEdit, entity.id);
 
         // The shared inspector window (see DrawSelectionInspectors).
-        entityInspectorState.windowTitle = Get("entity.title") + "###" + MAP_INSPECTOR_WINDOW_ID;
+        // The editor's one Inspector panel, which always stays open.
+        entityInspectorState.windowTitle = Get("editor.inspector") + "###" + MAP_INSPECTOR_WINDOW_ID;
+        entityInspectorState.closeButton = false;
         // A particle emitter's Play/Stop preview plays in the 3D view.
         entityInspectorState.allowParticlePreview = RuntimeSession::EditorViewRunning();
 
@@ -4997,6 +4999,20 @@ namespace {
             case INSPECT_WALL: DrawSelectedWallInspector(level); break;
             case INSPECT_LINEDEF: DrawSelectedLinedefInspector(level); break;
             default: break;
+        }
+
+        // Unity style, the panel always stays open: with nothing to show (or
+        // what it showed just went away), it says how to fill it.
+        if (!editingSector && !editingEntity && !editingWall && !editingLinedef) {
+            ImGui::SetNextWindowSize(ImVec2(320.0f, 0.0f), ImGuiCond_FirstUseEver);
+            if (ImGui::Begin((Get("editor.inspector") + "###" + MAP_INSPECTOR_WINDOW_ID).c_str(), nullptr,
+                             ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoCollapse)) {
+                ImGui::Spacing();
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextDisabled("%s", Get("editor.inspector.empty").c_str());
+                ImGui::PopTextWrapPos();
+            }
+            ImGui::End();
         }
 
         for (int kind = INSPECT_SECTOR; kind <= INSPECT_LINEDEF; ++kind) wasOpen[kind] = *flags[kind];

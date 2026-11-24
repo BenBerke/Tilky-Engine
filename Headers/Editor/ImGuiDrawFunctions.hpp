@@ -31,6 +31,9 @@ namespace ImGuiDrawFunctions {
         bool allowSnapToFloor = true;
         // Play and Stop on Particle Emitters. Only where the view can show them.
         bool allowParticlePreview = false;
+        // The window's close button (off for the editor's Inspector panel,
+        // which always stays open).
+        bool closeButton = true;
         bool snapToFloorRequested = false;
 
         // Snap to Wall (Headers/Editor/WallSnap.hpp), shown with Snap to Floor.

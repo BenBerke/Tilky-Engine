@@ -321,6 +321,8 @@
   "runtime_editor.statistics.frame_time": "Frame time",
   "editor.layout_menu": "Layout",
   "editor.menu.window": "Window",
+  "editor.inspector": "Inspector",
+  "editor.inspector.empty": "Nothing selected. Right-click something on the Map or in the 3D view, or pick it in the Hierarchy, to inspect it here.",
   "editor.menu.window.reset_layout": "Reset Layout",
   "editor.tooltip.menu.window.reset_layout": "Puts every panel back where it starts: Map and Scene side by side, the inspector and the level's panels on the right, the Asset Browser and the other shared panels along the bottom.",
   "editor.toolbar.more": "More",
