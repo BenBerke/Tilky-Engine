@@ -3526,6 +3526,17 @@ namespace RuntimeEditor {
 
             if (!mouseBlockedByImGui && MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_PLACE_ENTITY)) PlacePaletteEntityAtHover(level);
 
+            // The same delete as the 2D editor's, on the one shared
+            // selection: this view's picks are written to it first. Not
+            // mid gizmo drag, whose undo step would land after the delete's.
+            if (!TransformGizmo::IsDragging() && &level == &LevelManager::CurrentLevel() &&
+                MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_DELETE)) {
+                PushSharedSelection(level);
+                MapEditorInternal::DeleteSelection(level);
+                PullSharedSelection(level);
+                runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
+            }
+
             // Faces the selected entities toward the point under the cursor,
             // or away from it with Ctrl.
             if (!mouseBlockedByImGui && hit.has_value() && !selectedEntityIds.empty() &&

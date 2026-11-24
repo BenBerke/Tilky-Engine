@@ -173,6 +173,7 @@
   "editor.key.rt_focus_selection": "Focus Selection",
   "editor.key.rt_toggle_entity_markers": "Toggle Entity Markers",
   "editor.key.rt_place_entity": "Place Entity",
+  "editor.key.rt_delete": "Delete Selection",
   "editor.key.rt_point_at_cursor": "Point Entities at Cursor (Ctrl: away)",
   "editor.key.rt_raise_to_neighbour": "Raise to Neighbour (Ctrl: highest)",
   "editor.key.rt_lower_to_neighbour": "Lower to Neighbour (Ctrl: lowest)",

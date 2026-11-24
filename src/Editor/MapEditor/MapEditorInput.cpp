@@ -3192,29 +3192,31 @@ namespace MapEditorInternal {
                 PasteEntityClipboard(level, mouseWorld, "editor.history.paste_entities");
         }
 
-        if (GetKeyBindDown(KEYBIND_DELETE)) [[unlikely]] {
-            if (!selectedEntities.empty()) {
-                const std::vector<ID> entitiesToDelete = selectedEntities;
-                selectedEntities.clear();
+        if (GetKeyBindDown(KEYBIND_DELETE)) [[unlikely]] DeleteSelection(level);
+    }
 
-                EntitiesSnapshot before = CaptureEntitiesSnapshot();
-                for (const ID id : entitiesToDelete) level.DestroyEntity(id);
-                PushEntitiesUndo(std::move(before), "editor.history.delete_entities", static_cast<int>(entitiesToDelete.size()));
-            }
-            if (!selectedSectors.empty()) {
-                const std::vector<ID> sectorsToDelete = selectedSectors;
-                selectedSectors.clear();
+    void DeleteSelection(Level& level) {
+        if (!selectedEntities.empty()) {
+            const std::vector<ID> entitiesToDelete = selectedEntities;
+            selectedEntities.clear();
 
-                GeometrySnapshot before = CaptureGeometryUndoSnapshot();
-                for (const ID id : sectorsToDelete) DeleteSector(id);
-                PushGeometryUndoSnapshot(std::move(before), "editor.history.delete_sectors", static_cast<int>(sectorsToDelete.size()));
-            }
-            // One undoable operation with a single topology rebuild for
-            // the whole wall selection, rather than one of each per wall.
-            DeleteSelectedWalls();
-            DeleteSelectedLinedefs();
-
-            editingEntity = false;
+            EntitiesSnapshot before = CaptureEntitiesSnapshot();
+            for (const ID id : entitiesToDelete) level.DestroyEntity(id);
+            PushEntitiesUndo(std::move(before), "editor.history.delete_entities", static_cast<int>(entitiesToDelete.size()));
         }
+        if (!selectedSectors.empty()) {
+            const std::vector<ID> sectorsToDelete = selectedSectors;
+            selectedSectors.clear();
+
+            GeometrySnapshot before = CaptureGeometryUndoSnapshot();
+            for (const ID id : sectorsToDelete) DeleteSector(id);
+            PushGeometryUndoSnapshot(std::move(before), "editor.history.delete_sectors", static_cast<int>(sectorsToDelete.size()));
+        }
+        // One undoable operation with a single topology rebuild for
+        // the whole wall selection, rather than one of each per wall.
+        DeleteSelectedWalls();
+        DeleteSelectedLinedefs();
+
+        editingEntity = false;
     }
 }

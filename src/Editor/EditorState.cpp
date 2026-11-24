@@ -355,6 +355,7 @@ namespace MapEditorInternal {
         {"rt_brightness_scroll", "editor.key.rt_brightness_scroll", "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_LCTRL, SDL_SCANCODE_RCTRL}},
         {"rt_back_to_editor",   "editor.key.rt_back_to_editor",   "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_V}},
         {"rt_save_and_play",    "editor.key.rt_save_and_play",    "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_P}},
+        {"rt_delete",           "editor.key.rt_delete",           "editor.key_group.runtime_editing", KEYSCOPE_RUNTIME, {SDL_SCANCODE_DELETE}},
 
         {"ui_nudge_up",         "editor.key.ui_nudge_up",         "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_UP}},
         {"ui_nudge_down",       "editor.key.ui_nudge_down",       "editor.key_group.ui_editor", KEYSCOPE_UI, {SDL_SCANCODE_DOWN}},

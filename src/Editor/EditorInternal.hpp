@@ -1529,6 +1529,10 @@ namespace MapEditorInternal {
     // Deletes every selected linedef as one undo step.
     void DeleteSelectedLinedefs();
 
+    // The Delete key: every selected entity, sector, wall and linedef, each
+    // kind as its own undo step. Used by the 2D and runtime editors.
+    void DeleteSelection(Level& level);
+
     // Splits the linedef at `point` (projected onto it). The new half is a
     // copy of the old one with a new ID. False when the point is too close
     // to either end.
@@ -1702,6 +1706,7 @@ namespace MapEditorInternal {
         KEYBIND_RT_BRIGHTNESS_SCROLL, // held while scrolling over a floor/ceiling
         KEYBIND_RT_BACK_TO_EDITOR,
         KEYBIND_RT_SAVE_AND_PLAY,
+        KEYBIND_RT_DELETE,
 
         // UI editor
         KEYBIND_UI_NUDGE_UP,
