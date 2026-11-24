@@ -992,7 +992,7 @@ namespace {
                         DrawUIButtonInspector(entity, *button);
                     break;
                 default:
-                    ImGuiDrawFunctions::DrawComponentFields(entity, componentType, instanceID, false);
+                    ImGuiDrawFunctions::DrawComponentFields(entity, componentType, instanceID, true);
                     break;
             }
 

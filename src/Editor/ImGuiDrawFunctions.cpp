@@ -720,8 +720,8 @@ namespace ImGuiDrawFunctions {
             if (ImGui::BeginTable(
                 "##sprite_90_table",
                 3,
-                ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
-                ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
+                ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoHostExtendX,
+                ImVec2(0.0f, 0.0f)
             )) {
                 ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
                 ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
@@ -762,8 +762,8 @@ namespace ImGuiDrawFunctions {
             if (ImGui::BeginTable(
                 "##sprite_45_table",
                 3,
-                ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit,
-                ImVec2(COLUMN_WIDTH * 3.0f, 0.0f)
+                ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_NoHostExtendX,
+                ImVec2(0.0f, 0.0f)
             )) {
                 ImGui::TableSetupColumn("C0", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
                 ImGui::TableSetupColumn("C1", ImGuiTableColumnFlags_WidthFixed, COLUMN_WIDTH);
@@ -5711,7 +5711,9 @@ namespace ImGuiDrawFunctions {
     // ─────────────────────────────────────────────────────────────────────────
     //  Component fields
     // ─────────────────────────────────────────────────────────────────────────
-    void DrawComponentFields(Entity &entity, const int componentType, const std::uint64_t instanceID, const bool draggable) {
+    void DrawComponentFields(Entity &entity, const int componentType, const std::uint64_t instanceID, const bool _draggable) {
+        constexpr bool draggable = true;
+
         // Sprite/Model/Collider/AudioSource sit at an offset from the Transform.
         auto DrawOffsetSection = [&](Vector3 &offset, const char* tooltipKey = "editor.tooltip.component.offset", const float speed = 1.0f) {
             {
