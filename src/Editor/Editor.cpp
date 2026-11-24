@@ -32,6 +32,21 @@ namespace MapEditorInternal {
 namespace {
     ImGuiContext* imguiContext = nullptr;
 
+    // The window's size this frame, which the panels and ImGui are drawn at
+    // (screenWidth/screenHeight are the 2D canvas's).
+    int windowWidth = 1080;
+    int windowHeight = 960;
+
+    // Clears the window where no panel covers it, to what the dock space's
+    // own background would show.
+    void ClearWindowBehindPanels() {
+        const ImVec4 emptyBackground = ImGui::GetStyle().Colors[ImGuiCol_DockingEmptyBg];
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, windowWidth, windowHeight);
+        glClearColor(emptyBackground.x, emptyBackground.y, emptyBackground.z, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
+
     // User settings are read from disk on the first Start() only, so values
     // changed but not yet saved survive switching to the runtime editor and
     // back.
@@ -41,6 +56,10 @@ namespace {
     // skips its save, so the defaults the editor fell back to never overwrite
     // that file.
     bool userSettingsSafeToSave = false;
+
+    // Between Start() and Stop(): the 3D view (runtime editor session) runs
+    // then, as a panel next to the map.
+    bool editorRunning = false;
 
     uint64_t lastAutoSaveTime = 0;
     // The level the running auto save is writing - a failed save only marks
@@ -82,6 +101,66 @@ namespace {
             hasUnsavedChanges = false;
         }
     }
+
+    // A component inspector key button that wasn't drawn last frame
+    // (entity deselected, inspector closed) can't finish its binding.
+    void DropStaleKeyBindListen() {
+        using namespace MapEditorInternal;
+
+        if (keyBindBeingListened != nullptr && !IsUserSettingsKeySlot(keyBindBeingListened) &&
+            componentKeyBindDrawnFrame < ImGui::GetFrameCount() - 1)
+            keyBindBeingListened = nullptr;
+    }
+
+    // After the frame's edits, so the 3D view draws the level as the 2D
+    // editor left it. Walls, sectors and sprites are rebuilt from the level
+    // every frame and floors whenever their triangles change (the renderer
+    // does both), so what's left is where entities stand and any image the
+    // atlas doesn't have yet - checked only after something could have set
+    // one: a click, a key, an undo or redo.
+    void SyncRuntimeViewWithEdits() {
+        using namespace MapEditorInternal;
+
+        Level& level = LevelManager::CurrentLevel();
+
+        for (ComponentTransform& transform : level.transforms.components)
+            transform.UpdateObjectSectorAndFloor(level.sectors);
+
+        static std::uint64_t checkedUndoVersion = 0;
+
+        const bool mayHaveNewTexture =
+            undoHistoryVersion != checkedUndoVersion ||
+            InputManager::GetAnyKeyDown() != SDL_SCANCODE_UNKNOWN ||
+            InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT) ||
+            InputManager::GetMouseButtonUp(SDL_BUTTON_RIGHT);
+
+        checkedUndoVersion = undoHistoryVersion;
+
+        if (mayHaveNewTexture) canvasRenderer->RefreshTexturesIfLevelNeedsNew();
+    }
+}
+
+namespace MapEditorInternal {
+    void StartRuntimeView() {
+        if (!editorRunning || RuntimeSession::EditorViewRunning()) return;
+
+        Editor::PrepareLevelForRuntime();
+
+        if (!RuntimeSession::Start(RuntimeSession::EDITOR))
+            spdlog::error("The 3D view (runtime editor) failed to start; the editor runs without it");
+
+        // Starting made the renderer's own ImGui context (Play's) current.
+        ImGui::SetCurrentContext(imguiContext);
+    }
+
+    void StopRuntimeView() {
+        if (!RuntimeSession::EditorViewRunning()) return;
+
+        // Writes where its camera is into the level, as it always did.
+        canvasRenderer->MakeCurrent();
+        RuntimeSession::Shutdown();
+        ImGui::SetCurrentContext(imguiContext);
+    }
 }
 
 namespace Editor {
@@ -94,7 +173,6 @@ namespace Editor {
         quit = false;
         play = false;
         shutdown = false;
-        switchToRuntime = false;
 
         editingSector = false;
         selectedSectorID = INVALID_ID;
@@ -124,6 +202,14 @@ namespace Editor {
 
         ImGui::SetCurrentContext(imguiContext);
 
+        {
+            // The runtime editor drives these on this context while its 3D
+            // camera looks or drags (it shares the editor's context); the 2D
+            // editor never sets them.
+            ImGuiIO& io = ImGui::GetIO();
+            io.ConfigFlags &= ~(ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange);
+        }
+
         UpdateLevelsIfChanged();
 
         if (!LevelManager::HasCurrentLevel()) {
@@ -152,9 +238,11 @@ namespace Editor {
 
         SDL_SetWindowTitle(window, Localisation::Get("screen.title.level_editor").c_str());
 
-        // The editor drew without VSync on its own SDL_Renderer; the VSync
-        // setting is for Play and the runtime editor (they set it each session).
-        canvasRenderer->SetVSync(0);
+        // The 3D view next to the map. Its session sets the window's VSync
+        // from the setting, which the whole editor follows now that it draws
+        // the 3D view every frame.
+        editorRunning = true;
+        StartRuntimeView();
     }
 
     bool Initialize() {
@@ -228,6 +316,11 @@ namespace Editor {
 
     void Stop() {
         using namespace MapEditorInternal;
+
+        // Before Play: the 3D view's session ends first.
+        StopRuntimeView();
+        editorRunning = false;
+
 #ifndef TILKY_STANDALONE
         LevelManager::CurrentLevel().editorCamPos = cameraPos;
 #endif
@@ -249,14 +342,32 @@ namespace Editor {
         canvasRenderer->MakeCurrent();
         ImGui::SetCurrentContext(imguiContext);
 
-        // The canvas is drawn at the window's size this frame.
-        SDL_GetWindowSize(window, &screenWidth, &screenHeight);
+        SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+
+        // The map canvas is the Map panel's size as last drawn (the
+        // window's before that); the UI editor's canvas is the window.
+        if (currentState == STATE_MAP && mapPanelSize.x >= 1.0f && mapPanelSize.y >= 1.0f) {
+            screenWidth = static_cast<int>(mapPanelSize.x);
+            screenHeight = static_cast<int>(mapPanelSize.y);
+        }
+        else {
+            screenWidth = windowWidth;
+            screenHeight = windowHeight;
+        }
+
+        // Only the Map panel, drawn in the map editor, says the mouse is on
+        // the canvas; a value left from before a switch must not linger.
+        if (currentState != STATE_MAP) mapMouseFree = false;
+
+        // The 3D view (Scene panel) is drawn with the map, not in the UI
+        // editor, which fills the window.
+        const bool sceneRunning = currentState == STATE_MAP && RuntimeSession::EditorViewRunning();
 
         if (ProcessPendingLevelLoad()) [[unlikely]] {
 #ifndef TILKY_STANDALONE
             cameraPos = LevelManager::CurrentLevel().editorCamPos;
 #endif
-            glViewport(0, 0, screenWidth, screenHeight);
+            glViewport(0, 0, windowWidth, windowHeight);
             glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
             canvasRenderer->EndFrame();
@@ -272,19 +383,22 @@ namespace Editor {
         // this frame.
         EditorTextureCache::Update();
 
+        // Before the editor's ImGui frame: into the Scene panel's texture.
+        if (sceneRunning) RuntimeSession::RenderEditorView();
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
         const ImGuiIO &io = ImGui::GetIO();
 
-        // A component inspector key button that wasn't drawn last frame
-        // (entity deselected, inspector closed) can't finish its binding.
-        if (keyBindBeingListened != nullptr && !IsUserSettingsKeySlot(keyBindBeingListened) &&
-            componentKeyBindDrawnFrame < ImGui::GetFrameCount() - 1)
-            keyBindBeingListened = nullptr;
+        DropStaleKeyBindListen();
+        UpdateKeyboardPanel(sceneRunning);
 
-        const bool mouseBlockedByImGui = io.WantCaptureMouse;
+        // The map canvas is an ImGui panel (Map), so ImGui always wants the
+        // mouse over it; whether the canvas itself has the mouse is asked
+        // there. The UI editor's canvas is still the window's middle.
+        const bool mouseBlockedByImGui = currentState == STATE_MAP ? !mapMouseFree : io.WantCaptureMouse;
         // Only a text field being typed into blocks the shortcuts.
         // WantCaptureKeyboard is true whenever any ImGui window has focus
         // (keyboard nav is on), so clicking a panel used to lock every
@@ -293,29 +407,37 @@ namespace Editor {
         const bool keyboardBlockedByImgui = io.WantTextInput || keyBindBeingListened != nullptr || CommandPalette::IsOpen();
 
         if (currentState == STATE_MAP) {
+            // The keys are the Map panel's or the 3D view's, never both.
+            const bool mapKeyboardBlocked = keyboardBlockedByImgui || keyboardPanel != EditorPanel::Map;
+
             // ImGui only drops window focus on a left-click on empty space,
             // but the canvas picks with right-click too. A panel left focused
             // (the asset browser) would keep Ctrl+C/V from the canvas.
             if (!mouseBlockedByImGui && (ImGui::IsMouseClicked(ImGuiMouseButton_Right) || ImGui::IsMouseClicked(ImGuiMouseButton_Middle)))
                 ImGui::SetWindowFocus(nullptr);
 
-            const bool teleporterPickTookMouse = HandleTeleporterPick(mouseBlockedByImGui, keyboardBlockedByImgui);
-            const bool gatewayPickTookMouse = HandleGatewayPick(mouseBlockedByImGui, keyboardBlockedByImgui);
-            HandleEditorInput(mouseBlockedByImGui || teleporterPickTookMouse || gatewayPickTookMouse, keyboardBlockedByImgui);
-            HandleEditorShortcuts(keyboardBlockedByImgui);
+            const bool teleporterPickTookMouse = HandleTeleporterPick(mouseBlockedByImGui, mapKeyboardBlocked);
+            const bool gatewayPickTookMouse = HandleGatewayPick(mouseBlockedByImGui, mapKeyboardBlocked);
+            HandleEditorInput(mouseBlockedByImGui || teleporterPickTookMouse || gatewayPickTookMouse, mapKeyboardBlocked);
+            HandleEditorShortcuts(mapKeyboardBlocked);
 
             // After everything that moves entities, so a snapped one is
             // drawn back on its wall.
             if (WallSnap::Enforce(LevelManager::CurrentLevel())) MarkUnsavedChanges();
 
-            // After the input, so what it changed is drawn this frame. Drawn
-            // now; ImGui (the legend, comment icons, panels) goes on top.
+            // After the input, so what it changed is drawn this frame: into
+            // the Map panel's texture, which DrawEditorUI shows with the
+            // legend and comment icons on top.
+            canvasRenderer->BeginPanelTarget(IRenderer::PanelTarget::Map, screenWidth, screenHeight);
             DrawMapCanvas();
-
-            DrawViewModeLegend();
-            DrawCommentIcons();
+            canvasRenderer->EndPanelTarget();
+            ClearWindowBehindPanels();
 
             DrawEditorUI();
+
+            // After the 2D panels, into the same dock space: the Scene panel,
+            // its toolbar and the runtime editor's inspectors.
+            if (sceneRunning) RuntimeSession::DrawEditorUI();
         }
         else if (currentState == STATE_UI) {
             HandleUIEditorShortcuts(keyboardBlockedByImgui);
@@ -344,8 +466,14 @@ namespace Editor {
             if (!SDL_StartTextInput(window))
                 spdlog::error("SDL_StartTextInput failed: {}", SDL_GetError());
 
-        glViewport(0, 0, screenWidth, screenHeight);
+        glViewport(0, 0, windowWidth, windowHeight);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        if (sceneRunning) {
+            // Its overlays, then its input (as it always ran: after drawing).
+            RuntimeSession::FinishEditorFrame(keyboardPanel != EditorPanel::Scene || keyBindBeingListened != nullptr);
+            SyncRuntimeViewWithEdits();
+        }
 
         canvasRenderer->EndFrame();
 
@@ -366,10 +494,6 @@ namespace Editor {
 
     bool HoldShutdownForExport() {
         return MapEditorInternal::HoldQuitForGameExport();
-    }
-
-    bool SwitchToRuntimeEditorRequested() {
-        return MapEditorInternal::switchToRuntime;
     }
 
     void Destroy() {

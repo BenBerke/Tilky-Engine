@@ -35,6 +35,21 @@
 namespace fs = std::filesystem;
 
 namespace {
+    // Stops the editor's 3D view while the level is replaced and starts it
+    // again for the new one when it goes out of scope (whichever way the
+    // function returns). The exported game has no editor.
+    struct RuntimeViewRestart {
+#ifndef TILKY_STANDALONE
+        RuntimeViewRestart() { MapEditorInternal::StopRuntimeView(); }
+        ~RuntimeViewRestart() { MapEditorInternal::StartRuntimeView(); }
+#else
+        RuntimeViewRestart() = default;
+#endif
+
+        RuntimeViewRestart(const RuntimeViewRestart&) = delete;
+        RuntimeViewRestart& operator=(const RuntimeViewRestart&) = delete;
+    };
+
     Level& GetOrCreateCurrentLevel() {
         if (!LevelManager::HasCurrentLevel()) {
             LevelManager::loadedLevels.emplace_back();
@@ -256,12 +271,9 @@ namespace MapEditorInternal {
             worldSettingsVisible = settings.value("worldSettingsVisible", true);
             assetBrowserVisible = settings.value("assetBrowserVisible", true);
             historyVisible = settings.value("historyVisible", false);
-            runtimeHistoryVisible = settings.value("runtimeHistoryVisible", false);
             tagExplorerVisible = settings.value("tagExplorerVisible", false);
-            runtimeTagExplorerVisible = settings.value("runtimeTagExplorerVisible", false);
 #ifndef TILKY_STANDALONE
             commentsVisible = settings.value("commentsVisible", false);
-            runtimeCommentsVisible = settings.value("runtimeCommentsVisible", false);
             Comments::showIcons = settings.value("showCommentIcons", true);
 #endif
             entityMarkerMode = static_cast<EntityMarkerMode>(std::clamp(
@@ -546,12 +558,9 @@ namespace MapEditorInternal {
                 {"worldSettingsVisible", worldSettingsVisible},
                 {"assetBrowserVisible", assetBrowserVisible},
                 {"historyVisible", historyVisible},
-                {"runtimeHistoryVisible", runtimeHistoryVisible},
                 {"tagExplorerVisible", tagExplorerVisible},
-                {"runtimeTagExplorerVisible", runtimeTagExplorerVisible},
 #ifndef TILKY_STANDALONE
                 {"commentsVisible", commentsVisible},
-                {"runtimeCommentsVisible", runtimeCommentsVisible},
                 {"showCommentIcons", Comments::showIcons},
 #endif
                 {"entityMarkerMode", static_cast<int>(entityMarkerMode)},
@@ -801,6 +810,8 @@ namespace Editor {
 
         ClearUndoHistory();
 
+        const RuntimeViewRestart restartRuntimeView;
+
         if (LevelManager::loadedLevels.empty()) {
             LevelManager::loadedLevels.push_back(std::move(loadedLevel));
             LevelManager::currentLevelIndex = 0;
@@ -868,6 +879,8 @@ namespace Editor {
             spdlog::warn("Can not create a new level with an empty name");
             return false;
         }
+
+        const RuntimeViewRestart restartRuntimeView;
 
         LevelManager::loadedLevels.assign(1, Level{});
         LevelManager::currentLevelIndex = 0;

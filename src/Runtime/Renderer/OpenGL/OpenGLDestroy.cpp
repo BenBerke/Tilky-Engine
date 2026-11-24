@@ -18,6 +18,7 @@ void OpenGL::Shutdown() {
 
     DestroyFonts();
     DestroyEditor2D();
+    DestroyPanelTargets();
 
     if (sectorSSBO != 0) {
         glDeleteBuffers(1, &sectorSSBO);
@@ -111,7 +112,6 @@ void OpenGL::Shutdown() {
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext(imguiContext);
         imguiContext = nullptr;
-        imguiIconFont = nullptr;
     }
 #endif
 

@@ -108,7 +108,7 @@ namespace MapEditorInternal {
 
     }
 
-    void DrawViewModeLegend() {
+    void DrawViewModeLegend(ImDrawList* drawList) {
         using namespace ViewModeLegend;
 
         if (textureViewMode != TextureViewMode::FloorHeight &&
@@ -123,9 +123,9 @@ namespace MapEditorInternal {
         constexpr float MARGIN = 16.0f;
         constexpr int SEGMENTS = 32;
 
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
         const float lineHeight = ImGui::GetTextLineHeight();
-        const ImVec2 barMin = {MARGIN, static_cast<float>(screenHeight) - MARGIN - BAR_HEIGHT - lineHeight - 4.0f};
+        const ImVec2 barMin = {mapPanelOrigin.x + MARGIN,
+                               mapPanelOrigin.y + static_cast<float>(screenHeight) - MARGIN - BAR_HEIGHT - lineHeight - 4.0f};
 
         const bool roomHeight = textureViewMode == TextureViewMode::RoomHeight;
 
@@ -162,10 +162,13 @@ namespace MapEditorInternal {
         }
     }
 
-    void DrawCommentIcons() {
+    void DrawCommentIcons(ImDrawList* drawList) {
+        // In window coordinates, as Comments compares them with the mouse.
         Comments::DrawIcons(LevelManager::CurrentLevel(), [](const Vector3& world, Vector2& screen) {
             screen = WorldToScreen({world.x, world.z}, cameraPos);
+            screen.x += mapPanelOrigin.x;
+            screen.y += mapPanelOrigin.y;
             return true;
-        }, !ImGui::GetIO().WantCaptureMouse);
+        }, mapMouseFree, drawList);
     }
 }

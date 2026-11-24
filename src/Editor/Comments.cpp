@@ -114,10 +114,10 @@ namespace Comments {
         return comment.id;
     }
 
-    void DrawIcons(const Level& level, const Projector& project, const bool mouseOnView) {
+    void DrawIcons(const Level& level, const Projector& project, const bool mouseOnView, ImDrawList* drawList) {
         if (!showIcons || level.comments.empty()) return;
 
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+        if (drawList == nullptr) drawList = ImGui::GetBackgroundDrawList();
         const Vector2 mouse = InputManager::GetMousePosition();
         const EditorComment* hovered = nullptr;
 

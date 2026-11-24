@@ -130,17 +130,40 @@ public:
         return static_cast<ImTextureID>(0);
     }
 
-    // The icon font (Font Awesome) in this renderer's own ImGui context, or
-    // nullptr. A font from the editor's context can't be drawn here.
-    [[nodiscard]] virtual ImFont* GetImGuiIconFont() const {
-        return nullptr;
-    }
-
     // Draws a 2D editor canvas (map editor / UI editor) into the bound
     // framebuffer, clearing it first. Declared in the standalone game too, so
     // both executables share one IRenderer layout; only the editor calls it.
     virtual void DrawEditor2D(const Editor2D::Frame& frame) {
         (void)frame;
+    }
+
+    // The editor's panels that show a rendered view, each with an offscreen
+    // texture of its own: the runtime editor's Scene and the 2D Map.
+    enum class PanelTarget {
+        Scene,
+        Map,
+        Count
+    };
+
+    // Between BeginPanelTarget() and EndPanelTarget(), BeginFrame(),
+    // Update() and DrawEditor2D() draw into the panel's offscreen texture of
+    // `width` x `height` pixels (made or resized as needed) instead of the
+    // window; screenWidth/screenHeight are its size. 0 or less uses the
+    // window's size. EndPanelTarget() goes back to the window, with the
+    // window's size, without clearing it. Play and the game never call them.
+    virtual void BeginPanelTarget(PanelTarget target, int width, int height) {
+        (void)target;
+        (void)width;
+        (void)height;
+    }
+
+    virtual void EndPanelTarget() {}
+
+    // The texture the panel's last BeginPanelTarget() drew into (0 before
+    // the first), bottom row first, as GL keeps it.
+    [[nodiscard]] virtual unsigned GetPanelTexture(PanelTarget target) const {
+        (void)target;
+        return 0;
     }
 
     // The editors' texture loading (EditorTextureCache) decodes images on

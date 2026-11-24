@@ -35,8 +35,60 @@ namespace MapEditorInternal {
     inline constexpr float LABEL_FONT_SIZE = 15.0f;
     inline constexpr float UI_TEXT_PADDING = 8.0f;
 
+    // The 2D canvas's size: the Map panel's in the map editor (the window's
+    // until it was first drawn), the window's in the UI editor. Canvas
+    // ("screen") coordinates start at the canvas's top-left corner.
     extern int screenWidth;
     extern int screenHeight;
+
+    // The Map panel, a dockable window the map canvas is drawn into, as last
+    // drawn (MapEditorUI.cpp). Origin is in window coordinates; size 0 x 0
+    // until first drawn.
+    extern Vector2 mapPanelOrigin;
+    extern Vector2 mapPanelSize;
+    // The mouse is on the Map panel's canvas with nothing of ImGui's in the
+    // way (or a press that started there is still held): what the map
+    // editor's clicks, wheel and hover need.
+    extern bool mapMouseFree;
+    // The Map panel's ImGui window ID (0 before first drawn).
+    extern ImGuiID mapPanelWindowID;
+
+    // The mouse in canvas coordinates: the window position minus the Map
+    // panel's origin. What WorldToScreen/ScreenToWorld work in.
+    [[nodiscard]] Vector2 MapMousePosition();
+
+    // The editor's two side-by-side panels: the 2D map and the runtime
+    // editor's 3D view (Scene).
+    enum class EditorPanel {
+        Map,
+        Scene
+    };
+
+    // The panel the keys go to: the last one the mouse was over (Map at
+    // first). The other panel's shortcuts and fly keys are off.
+    extern EditorPanel keyboardPanel;
+
+    // Gives `panel` the keys and focuses its window (its tab comes to the
+    // front if it shares a dock node), on the next ImGui frame. The Runtime
+    // Editor button and key focus Scene.
+    void FocusEditorPanel(EditorPanel panel);
+
+    // Run once per ImGui frame, after NewFrame (Editor.cpp): moves the keys
+    // to the panel under the mouse and applies a FocusEditorPanel request.
+    void UpdateKeyboardPanel(bool sceneRunning);
+
+    // The ImGui window ID of the runtime editor's Scene panel.
+    [[nodiscard]] ImGuiID ScenePanelWindowID();
+
+    // The main dock space's ID, as last drawn (0 before).
+    extern ImGuiID mainDockSpaceID;
+
+    // The runtime editor (3D view) session runs while the 2D editor does
+    // (Editor.cpp). Loading or replacing the level stops it before and
+    // starts it again after, for the new level. Both do nothing while the
+    // editor isn't running.
+    void StopRuntimeView();
+    void StartRuntimeView();
 
     extern float editorZoom;
     extern double GRID_SIZE; // fixed world-space grid/snap spacing - NOT affected by editorZoom. Adjustable at runtime via the Grid & Snapping panel.
@@ -279,8 +331,9 @@ namespace MapEditorInternal {
         return mode == TextureViewMode::Floor || mode == TextureViewMode::Ceiling;
     }
 
-    // The legend of a height view mode, in the canvas's bottom-left corner.
-    void DrawViewModeLegend();
+    // The legend of a height view mode, in the canvas's bottom-left corner,
+    // into the Map panel's draw list.
+    void DrawViewModeLegend(ImDrawList* drawList);
 
     extern TextureViewMode textureViewMode;
 
@@ -289,7 +342,6 @@ namespace MapEditorInternal {
     extern bool quit;
     extern bool play;
     extern bool shutdown;
-    extern bool switchToRuntime;
 
     // Entities Ctrl+C copied, primary first. Ctrl+V copies whichever of
     // them still exist, so it reflects edits made after copying.
@@ -710,13 +762,11 @@ namespace MapEditorInternal {
     extern bool worldSettingsVisible;
     extern bool assetBrowserVisible;
 
-    // The History windows of the map editor and the runtime editor.
+    // The History, Tag Explorer and Comments windows, which serve the Map
+    // and the 3D view (its toolbar buttons open them too).
     extern bool historyVisible;
     extern bool tagExplorerVisible;
-    extern bool runtimeTagExplorerVisible;
     extern bool commentsVisible;
-    extern bool runtimeCommentsVisible;
-    extern bool runtimeHistoryVisible;
 
     // Which entity markers the runtime editor draws. Its toolbar button and
     // key cycle through these in order.
@@ -1012,8 +1062,8 @@ namespace MapEditorInternal {
     // the toolbar buttons that do the same.
     void HandleEditorShortcuts(bool keyboardBlockedByImgui);
 
-    // Saves and switches to the runtime editor, like the toolbar button
-    // (MapEditorUI.cpp).
+    // Focuses the 3D view (Scene panel), like the toolbar button, from the
+    // UI editor too (MapEditorUI.cpp).
     void OpenRuntimeEditor();
     void DrawEditorUI();
 
@@ -1509,9 +1559,9 @@ namespace MapEditorInternal {
     // cursor on the canvas.
     [[nodiscard]] bool IsPaintSelectActive(bool mouseBlockedByImGui);
 
-    // The comment icons on the canvas, with their text on hover
-    // (MapEditorDrawing.cpp).
-    void DrawCommentIcons();
+    // The comment icons on the canvas, with their text on hover, into the
+    // Map panel's draw list (MapEditorDrawing.cpp).
+    void DrawCommentIcons(ImDrawList* drawList);
     extern bool placeRandomYaw;
     extern std::string placeDefaultTag;
 

@@ -1413,7 +1413,7 @@ namespace MapEditorInternal {
             return;
         }
 
-        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseScreen = MapMousePosition();
         const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
 
         HandleSectorDrawClick(mouseWorld);
@@ -1449,7 +1449,7 @@ namespace MapEditorInternal {
     std::string GetActiveDrawToolMeasurementText() {
         if (currentMode != MODE_SECTOR) return "";
 
-        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseScreen = MapMousePosition();
         const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
 
         char buffer[160];

@@ -32,6 +32,103 @@ void OpenGL::EndFrame() {
     SDL_GL_SwapWindow(window);
 }
 
+bool OpenGL::UpdateScreenSize() {
+    if (activePanelTarget != nullptr) {
+        screenWidth = activePanelTarget->width;
+        screenHeight = activePanelTarget->height;
+        return true;
+    }
+
+    if (!SDL_GetWindowSizeInPixels(window, &screenWidth, &screenHeight)) {
+        spdlog::error("SDL_GetWindowSizeInPixels failed: {}", SDL_GetError());
+        return false;
+    }
+
+    return true;
+}
+
+void OpenGL::BeginPanelTarget(const PanelTarget panel, int width, int height) {
+    const int index = static_cast<int>(panel);
+    if (index < 0 || index >= static_cast<int>(PanelTarget::Count)) return;
+
+    if (width <= 0 || height <= 0) {
+        if (!SDL_GetWindowSizeInPixels(window, &width, &height) || width <= 0 || height <= 0) return;
+    }
+
+    PanelTargetBuffers& target = panelTargets[index];
+
+    if (target.framebuffer == 0 || width != target.width || height != target.height) {
+        DestroyPanelTarget(target);
+
+        glGenTextures(1, &target.colorTexture);
+        glBindTexture(GL_TEXTURE_2D, target.colorTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        // Shown at its own size, pixel for pixel.
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        // Depth 24 + stencil 8, like the window: gateways need the stencil.
+        glGenRenderbuffers(1, &target.depthStencil);
+        glBindRenderbuffer(GL_RENDERBUFFER, target.depthStencil);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+
+        glGenFramebuffers(1, &target.framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, target.framebuffer);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target.colorTexture, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, target.depthStencil);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            spdlog::error("An editor panel's framebuffer is incomplete; drawing to the window instead");
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            DestroyPanelTarget(target);
+            activePanelTarget = nullptr;
+            return;
+        }
+
+        target.width = width;
+        target.height = height;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, target.framebuffer);
+    activePanelTarget = &target;
+    screenWidth = target.width;
+    screenHeight = target.height;
+    glViewport(0, 0, screenWidth, screenHeight);
+}
+
+void OpenGL::EndPanelTarget() {
+    activePanelTarget = nullptr;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // Scissor and stencil may still be on from gateways or the 2D canvas.
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_STENCIL_TEST);
+
+    if (!UpdateScreenSize()) return;
+    glViewport(0, 0, screenWidth, screenHeight);
+}
+
+unsigned OpenGL::GetPanelTexture(const PanelTarget panel) const {
+    const int index = static_cast<int>(panel);
+    if (index < 0 || index >= static_cast<int>(PanelTarget::Count)) return 0;
+    return panelTargets[index].colorTexture;
+}
+
+void OpenGL::DestroyPanelTarget(PanelTargetBuffers& target) {
+    if (target.framebuffer != 0) glDeleteFramebuffers(1, &target.framebuffer);
+    if (target.colorTexture != 0) glDeleteTextures(1, &target.colorTexture);
+    if (target.depthStencil != 0) glDeleteRenderbuffers(1, &target.depthStencil);
+
+    target = {};
+}
+
+void OpenGL::DestroyPanelTargets() {
+    for (PanelTargetBuffers& target : panelTargets) DestroyPanelTarget(target);
+    activePanelTarget = nullptr;
+}
+
 void OpenGL::MakeCurrent() {
     if (window != nullptr && glContext != nullptr && SDL_GL_GetCurrentContext() != glContext)
         SDL_GL_MakeCurrent(window, glContext);

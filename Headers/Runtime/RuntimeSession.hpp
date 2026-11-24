@@ -29,8 +29,22 @@ namespace RuntimeSession {
 
     // Shows the game window and starts a Play / runtime editor session.
     bool Start(RuntimeType runtimeType);
+
+    // A runtime editor (EDITOR) session runs for as long as the 2D editor
+    // does, inside its frame and ImGui context: the Scene panel next to the
+    // Map panel. Each frame, in order:
+    // RenderEditorView() before the editor's ImGui::NewFrame (game time, the
+    // 3D view into the Scene panel's texture), DrawEditorUI() inside the
+    // ImGui frame, FinishEditorFrame() once ImGui was rendered and before the
+    // editor swaps the window (overlays, then the runtime editor's input;
+    // `keyboardElsewhere`: the keys are the Map panel's this frame).
+    [[nodiscard]] bool EditorViewRunning();
+    void RenderEditorView();
+    void DrawEditorUI();
+    void FinishEditorFrame(bool keyboardElsewhere);
 #endif
 
+    // Play (and the standalone game) each frame.
     void Update();
     // Ends the session. In the engine the window is kept and stays visible
     // until HideWindow(), so the editor window can open first.
@@ -43,7 +57,8 @@ namespace RuntimeSession {
     [[nodiscard]] IRenderer* GetRenderer();
 
     // The game window's VSync (1 on, -1 adaptive, 0 off), from the editor's
-    // Engine Settings. Applied when a Play / runtime editor session starts.
+    // Engine Settings. Applied at once (the editor draws in that window too)
+    // and again when a session starts.
     void SetVSyncMode(int mode);
     [[nodiscard]] int GetVSyncMode();
 #endif

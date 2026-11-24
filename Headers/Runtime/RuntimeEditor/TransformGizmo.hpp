@@ -5,6 +5,7 @@
 #include "Headers/Math/Vector/Vector3.hpp"
 
 struct ComponentTransform;
+struct ImDrawList;
 
 // The runtime editor's Unity-style transform gizmo, drawn on the entity being
 // edited. The move tool has an arrow per world axis and a square per plane
@@ -27,6 +28,9 @@ namespace TransformGizmo {
         Vector3 up;      // unit
         float tanHalfFov = 1.0f;
         Vector2 viewportSize;
+        // Where the view's top-left corner is in the window (the Scene
+        // panel's image); screen points and `mouse` are window coordinates.
+        Vector2 viewportOrigin;
     };
 
     // Starts a drag when `mouse` (window pixels) is over a handle. Returns
@@ -43,10 +47,10 @@ namespace TransformGizmo {
     // Projects a world point to window pixels. False when it is behind the camera.
     bool ProjectPoint(const View& view, const Vector3& point, Vector2& screen);
 
-    // Draws onto ImGui's background draw list (above the 3D view, below the
-    // panels), so call it inside an ImGui frame. With `showHover`, the handle
-    // under `mouse` is highlighted; the one being dragged always is.
-    void Draw(const View& view, Tool tool, const ComponentTransform& transform, Vector2 mouse, bool showHover);
+    // Draws onto `drawList` (the Scene panel's), so call it inside an ImGui
+    // frame. With `showHover`, the handle under `mouse` is highlighted; the
+    // one being dragged always is.
+    void Draw(ImDrawList* drawList, const View& view, Tool tool, const ComponentTransform& transform, Vector2 mouse, bool showHover);
 }
 
 #endif //TILKY_ENGINE_TRANSFORMGIZMO_HPP

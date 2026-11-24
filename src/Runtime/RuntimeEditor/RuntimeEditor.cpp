@@ -46,6 +46,7 @@
 #include <cstring>
 #include <filesystem>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <numbers>
 #include <limits>
 #include <optional>
@@ -326,11 +327,6 @@ namespace {
     // only after both have ended. Update() owns this; Draw() only reads it.
     bool cameraLooking = false;
 
-    bool backToEditorRequested = false;
-
-    // Set by the Save & Play key once the level saved.
-    bool playRequested = false;
-
     bool cursorLocked = false;
     Vector2 cursorBeforeLock = {};
     std::optional<SDL_Rect> mouseRectBeforeLock;
@@ -388,6 +384,28 @@ namespace {
 
     // Saved by Update() for Draw(), which has no viewport size of its own.
     Vector2 gizmoViewportSize = {};
+
+    // The Scene panel the 3D view is shown in, as Draw() last laid it out:
+    // its image's top-left corner and size in window coordinates (ImGui
+    // units), and its size in framebuffer pixels, which the view renders at.
+    // Draw() runs before Update() in a frame, so Update() sees this frame's.
+    Vector2 sceneOrigin = {};
+    Vector2 sceneSize = {};
+    Vector2 scenePixelSize = {};
+
+    // The mouse is on the Scene image with no other window, popup or item in
+    // the way - what io.WantCaptureMouse being false meant while the 3D view
+    // filled the window. Clicks, the wheel and the gizmo's hover use it.
+    bool sceneMouseFree = false;
+
+    // On the Scene image even while a popup is open or another item is being
+    // dragged (a texture from the asset browser): where "no ImGui window under
+    // the mouse" was asked before. Looking, the hover tint and drops use it.
+    bool sceneHovered = false;
+
+    // The Scene panel's draw list, for the overlays drawn over the 3D view
+    // (gizmo, slope handles, event links, comment icons). Only set inside it.
+    ImDrawList* sceneDrawList = nullptr;
 
     // Whether the drag in progress has changed anything yet, so ending it
     // only marks the level unsaved when it did.
@@ -592,6 +610,7 @@ namespace {
         view.up = Vector3Math::Normalized(Vector3Math::Cross(view.forward, view.left));
         view.tanHalfFov = std::tan(camera->fov * std::numbers::pi_v<float> / 180.0f * 0.5f);
         view.viewportSize = gizmoViewportSize;
+        view.viewportOrigin = sceneOrigin;
 
         return true;
     }
@@ -620,7 +639,7 @@ namespace {
             if (Vector3Math::Dot(anchor - view.eye, view.forward) <= 0.05f || !TransformGizmo::ProjectPoint(view, anchor, screen)) return;
 
             const Vector3& c = MapEditorInternal::eventLinkColor;
-            ImGui::GetBackgroundDrawList()->AddText({screen.x + 8.0f, screen.y - 18.0f},
+            sceneDrawList->AddText({screen.x + 8.0f, screen.y - 18.0f},
                                                     IM_COL32(static_cast<int>(c.x), static_cast<int>(c.y), static_cast<int>(c.z), 255),
                                                     Localisation::Get("events.links.instigator").c_str());
         };
@@ -641,7 +660,7 @@ namespace {
         const Vector3& c = MapEditorInternal::eventLinkColor;
         const ImU32 color = IM_COL32(static_cast<int>(c.x), static_cast<int>(c.y), static_cast<int>(c.z), 255);
 
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+        ImDrawList* drawList = sceneDrawList;
 
         for (const EventLinks::Link& link : links) {
             Vector3 from = link.from;
@@ -1142,10 +1161,6 @@ namespace {
     // textures, wall deletes and placed entities - and the inspectors'.
     using UndoStep = MapEditorInternal::UndoStep;
 
-    MapEditorInternal::InspectorEditTracker entityInspectorEdit;
-    MapEditorInternal::GeometryInspectorEditTracker wallInspectorEdit;
-    MapEditorInternal::GeometryInspectorEditTracker sectorInspectorEdit;
-
     // Every entity as the gizmo drag in progress found them, committed as an
     // undo step once the drag has changed something.
     UndoStep gizmoUndo;
@@ -1203,30 +1218,163 @@ namespace {
         return step;
     }
 
-    // After an undo or redo: selected indices and entities that no longer
-    // exist are dropped.
+    // ---- The selection, shared with the 2D editor ---------------------------
+    // The 2D editor's selection (MapEditorInternal: entity, wall and sector
+    // IDs, the primary of each) is the one selection. This view's own lists
+    // - indices, one primary flat - are rebuilt from it at the start of each
+    // frame (PullSharedSelection), and whatever this view changed in them
+    // during the frame is written back at its end (PushSharedSelection), so
+    // the code here keeps using its lists as before. A picked floor or
+    // ceiling selects its sector; which one was picked is remembered, so the
+    // texture tools keep acting on it. A sector selected any other way means
+    // its lowest floor's floor.
+
+    struct SelectionSnapshot {
+        std::optional<ID> entity;
+        std::vector<ID> entities;
+        int wall = -1;
+        std::vector<int> walls;
+        SelectedFlat flat;
+        std::vector<SelectedFlat> flats;
+
+        bool operator==(const SelectionSnapshot&) const = default;
+    };
+
+    SelectionSnapshot CurrentSelection() {
+        return {selectedEntityId, selectedEntityIds, selectedWall, selectedWalls,
+                {selectedSector, selectedSectorFloor, selectedSectorSurface}, selectedFlats};
+    }
+
+    // The selection as last pulled or pushed: a difference at the end of the
+    // frame is this view's own change.
+    SelectionSnapshot sharedSelection;
+
+    // The floors and ceilings this view picked, by sector ID, the primary's
+    // first.
+    struct PickedFlat {
+        ID sectorID = INVALID_ID;
+        int floorIndex = 0;
+        RayHitType surface = RayHitType::SectorFloor;
+    };
+
+    std::vector<PickedFlat> pickedFlats;
+
+    void PullSharedSelection(Level& level) {
+        namespace Shared = MapEditorInternal;
+
+        selectedEntityIds.clear();
+        for (const ID id : Shared::selectedEntities)
+            if (level.GetEntity(id) != nullptr) selectedEntityIds.push_back(id);
+
+        if (selectedEntityIds.empty()) selectedEntityId.reset();
+        else if (std::ranges::find(selectedEntityIds, Shared::selectedEntity.id) != selectedEntityIds.end()) selectedEntityId = Shared::selectedEntity.id;
+        else selectedEntityId = selectedEntityIds.back();
+        editingEntity = selectedEntityId.has_value();
+
+        selectedWalls.clear();
+        selectedWall = -1;
+        for (const ID id : Shared::selectedWalls) {
+            const auto it = level.wallIDToIndex.find(id);
+            if (it == level.wallIDToIndex.end()) continue;
+
+            selectedWalls.push_back(it->second);
+            if (id == Shared::selectedWallID) selectedWall = it->second;
+        }
+        if (selectedWall < 0 && !selectedWalls.empty()) selectedWall = selectedWalls.back();
+        editingWall = selectedWall >= 0;
+
+        selectedFlats.clear();
+        SelectedFlat primary;
+        for (const ID id : Shared::selectedSectors) {
+            const auto it = level.sectorIDToIndex.find(id);
+            if (it == level.sectorIDToIndex.end()) continue;
+
+            const int sectorIndex = it->second;
+            const int floorCount = static_cast<int>(level.sectors[sectorIndex].floors.size());
+            const std::size_t firstOfSector = selectedFlats.size();
+
+            for (const PickedFlat& picked : pickedFlats)
+                if (picked.sectorID == id && picked.floorIndex < floorCount)
+                    selectedFlats.push_back({sectorIndex, picked.floorIndex, picked.surface});
+
+            if (selectedFlats.size() == firstOfSector && floorCount > 0)
+                selectedFlats.push_back({sectorIndex, 0, RayHitType::SectorFloor});
+
+            // The primary sector's first flat: the primary pick, if it is one.
+            if (id == Shared::selectedSectorID && selectedFlats.size() > firstOfSector) primary = selectedFlats[firstOfSector];
+        }
+
+        if (selectedFlats.empty()) {
+            selectedSector = -1;
+            selectedSectorFloor = -1;
+            selectedSectorSurface = RayHitType::None;
+            editingSector = false;
+        }
+        else SetPrimaryFlat(primary.sectorIndex >= 0 ? primary : selectedFlats.back());
+
+        sharedSelection = CurrentSelection();
+    }
+
+    void PushSharedSelection(Level& level) {
+        namespace Shared = MapEditorInternal;
+
+        const SelectionSnapshot now = CurrentSelection();
+        if (now == sharedSelection) return;
+
+        // Only the kinds that changed: an inspector the 2D editor has open
+        // for another kind isn't closed or opened by this.
+        if (now.entities != sharedSelection.entities || now.entity != sharedSelection.entity) {
+            Shared::selectedEntities = selectedEntityIds;
+            const Entity* primary = selectedEntityId.has_value() ? level.GetEntity(*selectedEntityId) : nullptr;
+            if (primary != nullptr) Shared::selectedEntity = *primary;
+            Shared::editingEntity = primary != nullptr;
+        }
+
+        if (now.walls != sharedSelection.walls || now.wall != sharedSelection.wall) {
+            Shared::selectedWalls.clear();
+            for (const int index : selectedWalls)
+                if (index >= 0 && index < static_cast<int>(level.walls.size())) Shared::selectedWalls.push_back(level.walls[index].id);
+
+            Shared::selectedWallID = selectedWall >= 0 && selectedWall < static_cast<int>(level.walls.size())
+                ? level.walls[selectedWall].id
+                : INVALID_ID;
+            Shared::editingWall = Shared::selectedWallID != INVALID_ID;
+        }
+
+        if (now.flats != sharedSelection.flats || now.flat != sharedSelection.flat) {
+            const int sectorCount = static_cast<int>(level.sectors.size());
+            const auto sectorID = [&](const int index) { return index >= 0 && index < sectorCount ? level.sectors[index].id : INVALID_ID; };
+
+            Shared::selectedSectors.clear();
+            pickedFlats.clear();
+
+            // The primary first, so it wins when its sector is pulled back.
+            const ID primaryID = sectorID(selectedSector);
+            if (primaryID != INVALID_ID) pickedFlats.push_back({primaryID, selectedSectorFloor, selectedSectorSurface});
+
+            for (const SelectedFlat& flat : selectedFlats) {
+                const ID id = sectorID(flat.sectorIndex);
+                if (id == INVALID_ID) continue;
+
+                if (std::ranges::find(Shared::selectedSectors, id) == Shared::selectedSectors.end()) Shared::selectedSectors.push_back(id);
+                if (!(id == primaryID && flat.floorIndex == selectedSectorFloor && flat.surface == selectedSectorSurface))
+                    pickedFlats.push_back({id, flat.floorIndex, flat.surface});
+            }
+
+            Shared::selectedSectorID = primaryID;
+            Shared::editingSector = primaryID != INVALID_ID;
+        }
+
+        // One selection: what this view picked replaces linedefs too.
+        if (!selectedEntityIds.empty() || !selectedWalls.empty() || !selectedFlats.empty()) Shared::ClearLinedefSelection();
+
+        // As pulled next frame (the primary sector's flat first).
+        PullSharedSelection(level);
+    }
+
     void AfterHistoryChange(Level& level) {
-        std::erase_if(selectedEntityIds, [&](const ID id) { return level.GetEntity(id) == nullptr; });
-
-        if (selectedEntityIds.empty()) ClearEntitySelection();
-        else if (!selectedEntityId.has_value() || level.GetEntity(*selectedEntityId) == nullptr) SelectOnlyEntity(selectedEntityIds.back());
-
-        const int wallCount = static_cast<int>(level.walls.size());
-        std::erase_if(selectedWalls, [&](const int index) { return index < 0 || index >= wallCount; });
-
-        if (selectedWalls.empty()) ClearWallSelection();
-        else if (selectedWall < 0 || selectedWall >= wallCount) selectedWall = selectedWalls.back();
-
-        const int sectorCount = static_cast<int>(level.sectors.size());
-        std::erase_if(selectedFlats, [&](const SelectedFlat& flat) {
-            return flat.sectorIndex < 0 || flat.sectorIndex >= sectorCount ||
-                   flat.floorIndex < 0 || flat.floorIndex >= static_cast<int>(level.sectors[flat.sectorIndex].floors.size());
-        });
-
-        if (selectedFlats.empty()) ClearFlatSelection();
-        else if (std::ranges::find(selectedFlats, SelectedFlat{selectedSector, selectedSectorFloor, selectedSectorSurface}) == selectedFlats.end())
-            SetPrimaryFlat(selectedFlats.back());
-
+        // The undo restored the 2D editor's selection with the level.
+        PullSharedSelection(level);
         if (runtimeRenderer != nullptr) runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
     }
 
@@ -1832,7 +1980,7 @@ namespace {
         if (surface == nullptr) return;
 
         constexpr float RADIUS = 6.0f;
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+        ImDrawList* drawList = sceneDrawList;
 
         const std::array<SlopeHandle, 4> handles = SlopeHandles(*sector);
 
@@ -1872,26 +2020,6 @@ namespace {
     // the camera to it. Linedefs and the level itself can only be selected
     // in the 2D editor.
     void FocusSelection(Level& level);
-
-    void SelectAndShowOwner(Level& level, const EventOwnerKind kind, const ID id) {
-        if (kind == EventOwnerKind::LINE) {
-            const auto it = level.wallIDToIndex.find(id);
-            if (it == level.wallIDToIndex.end()) return;
-            SelectOnlyWall(it->second);
-        }
-        else if (kind == EventOwnerKind::SECTOR) {
-            const int sectorIndex = FindSectorIndex(level, level.GetSector(id));
-            if (sectorIndex < 0 || level.sectors[sectorIndex].floors.empty()) return;
-            SelectOnlyFlat({sectorIndex, 0, RayHitType::SectorFloor});
-        }
-        else if (kind == EventOwnerKind::ENTITY) {
-            if (level.GetEntity(id) == nullptr) return;
-            SelectOnlyEntity(id);
-        }
-        else return;
-
-        FocusSelection(level);
-    }
 
     std::size_t SelectionCount() {
         return selectedEntityIds.size() + selectedWalls.size() + selectedFlats.size();
@@ -2073,6 +2201,7 @@ namespace {
     // The Asset Browser's AssignHandler: a texture goes to the top of every
     // selected wall, every selected flat, or sprite texture 0 of every
     // selected entity, as one undo step. Other kinds are ignored.
+    // The Asset Browser's assign (Ctrl+click) while the 3D view has the keys.
     bool AssignAssetToSelection(Level& level, const AssetKind kind, const std::string& reference) {
         if (kind != AssetKind::Texture) return false;
 
@@ -2324,7 +2453,7 @@ namespace RuntimeEditorUi {
     // loaded, otherwise `fallback`. `active` draws it pressed, for the tool
     // that's selected.
     bool ToolbarButton(const char* id, const char* icon, const char* fallback, const std::string& tooltip, const bool active) {
-        ImFont* iconFont = runtimeRenderer != nullptr ? runtimeRenderer->GetImGuiIconFont() : nullptr;
+        ImFont* iconFont = MapEditorInternal::editorIconFont;
 
         ImGui::PushID(id);
 
@@ -2381,11 +2510,11 @@ namespace RuntimeEditorUi {
     }
 
     void DrawToolbar() {
-        const ImGuiViewport* viewport = ImGui::GetMainViewport();
         constexpr float MARGIN = 6.0f;
 
+        // Along the top of the Scene panel's image, over the 3D view.
         ImGui::SetNextWindowPos(
-            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + MARGIN),
+            ImVec2(sceneOrigin.x + sceneSize.x * 0.5f, sceneOrigin.y + MARGIN),
             ImGuiCond_Always,
             ImVec2(0.5f, 0.0f)
         );
@@ -2539,24 +2668,24 @@ namespace RuntimeEditorUi {
         // ---- History
         if (ToolbarButton("history", ICON_FA_CLOCK_ROTATE_LEFT, "H",
                           Localisation::Get("editor.history") + "\n" + Localisation::Get("runtime_editor.tooltip.history"),
-                          MapEditorInternal::runtimeHistoryVisible))
-            MapEditorInternal::runtimeHistoryVisible = !MapEditorInternal::runtimeHistoryVisible;
+                          MapEditorInternal::historyVisible))
+            MapEditorInternal::historyVisible = !MapEditorInternal::historyVisible;
 
         ImGui::SameLine();
 
         // ---- Tag Explorer
         if (ToolbarButton("tag_explorer", ICON_FA_TAGS, "T",
                           Localisation::Get("tag_explorer.title") + "\n" + Localisation::Get("tag_explorer.tooltip"),
-                          MapEditorInternal::runtimeTagExplorerVisible))
-            MapEditorInternal::runtimeTagExplorerVisible = !MapEditorInternal::runtimeTagExplorerVisible;
+                          MapEditorInternal::tagExplorerVisible))
+            MapEditorInternal::tagExplorerVisible = !MapEditorInternal::tagExplorerVisible;
 
         ImGui::SameLine();
 
         // ---- Comments
         if (ToolbarButton("comments", ICON_FA_NOTE_STICKY, "C",
                           Localisation::Get("comments.title") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("comments.tooltip")),
-                          MapEditorInternal::runtimeCommentsVisible))
-            MapEditorInternal::runtimeCommentsVisible = !MapEditorInternal::runtimeCommentsVisible;
+                          MapEditorInternal::commentsVisible))
+            MapEditorInternal::commentsVisible = !MapEditorInternal::commentsVisible;
 
         ImGui::SameLine();
 
@@ -2583,39 +2712,61 @@ namespace RuntimeEditorUi {
         ImGui::End();
     }
 
-    // The map editor's History window, here.
-    void DrawHistoryWindow(Level& level) {
-        ImGui::SetNextWindowSize(ImVec2(260.0f, 320.0f), ImGuiCond_FirstUseEver);
+    // The 3D view, rendered into a texture at this panel's size (see
+    // RuntimeSession's UpdateEditor), with the gizmo and other overlays drawn
+    // over it. A normal dockable window; it starts in the dock space's middle.
+    void DrawScenePanel(Level& level, const ImGuiID dockSpaceID) {
+        if (const ImGuiDockNode* central = ImGui::DockBuilderGetCentralNode(dockSpaceID))
+            ImGui::SetNextWindowDockID(central->ID, ImGuiCond_FirstUseEver);
+        else
+            ImGui::SetNextWindowDockID(dockSpaceID, ImGuiCond_FirstUseEver);
 
-        if (ImGui::Begin((Localisation::Get("editor.history") + "##RuntimeEditor").c_str(), &MapEditorInternal::runtimeHistoryVisible)) {
-            std::vector<std::string> undoLabels;
-            std::vector<std::string> redoLabels;
+        // No scrolling (the wheel belongs to the 3D view), and clicking it
+        // doesn't lift it over other windows: the toolbar floats above it.
+        // No keyboard navigation inside it, so Space and the arrow keys (fly
+        // keys) never press the view or draw a nav frame around it.
+        constexpr ImGuiWindowFlags sceneFlags =
+            ImGuiWindowFlags_NoScrollbar |
+            ImGuiWindowFlags_NoScrollWithMouse |
+            ImGuiWindowFlags_NoCollapse |
+            ImGuiWindowFlags_NoBringToFrontOnFocus |
+            ImGuiWindowFlags_NoNavInputs;
 
-            for (const UndoStep& step : MapEditorInternal::undoSteps) undoLabels.push_back(MapEditorInternal::HistoryLabel(step.labelKey, step.count));
-            for (auto it = MapEditorInternal::redoSteps.rbegin(); it != MapEditorInternal::redoSteps.rend(); ++it) redoLabels.push_back(MapEditorInternal::HistoryLabel(it->labelKey, it->count));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        const bool open = ImGui::Begin((Localisation::Get("runtime_editor.scene") + "###RuntimeEditorScene").c_str(), nullptr, sceneFlags);
+        ImGui::PopStyleVar();
 
-            const int position = ImGuiDrawFunctions::DrawHistoryList(undoLabels, redoLabels, Localisation::Get("editor.history.initial_state"));
+        sceneMouseFree = false;
+        sceneHovered = false;
 
-            if (position >= 0) {
-                MapEditorInternal::JumpToUndoPosition(static_cast<std::size_t>(position));
-                AfterHistoryChange(level);
-            }
+        if (!open) {
+            ImGui::End();
+            return;
         }
 
-        ImGui::End();
-    }
+        const ImVec2 min = ImGui::GetCursorScreenPos();
+        const ImVec2 available = ImGui::GetContentRegionAvail();
+        const ImVec2 size = {std::max(available.x, 1.0f), std::max(available.y, 1.0f)};
+        const ImVec2 framebufferScale = ImGui::GetIO().DisplayFramebufferScale;
 
-    void Draw(Level& level) {
-        // Lets panels dock to the window's edges and corners, like in the Map
-        // Editor. The empty middle lets clicks through to the game.
-        ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
+        sceneOrigin = {min.x, min.y};
+        sceneSize = {size.x, size.y};
+        scenePixelSize = {std::round(size.x * framebufferScale.x), std::round(size.y * framebufferScale.y)};
+        sceneDrawList = ImGui::GetWindowDrawList();
 
-        // The browser is shared with the Map Editor, which hands it a font
-        // from the editor's ImGui context every frame. This context has its
-        // own copy; drawing with the other one shows the wrong glyphs.
-        if (runtimeRenderer != nullptr) MapEditorInternal::assetBrowser.SetIconFont(runtimeRenderer->GetImGuiIconFont());
+        // GL keeps the bottom row first, so the image is flipped.
+        if (const unsigned sceneTexture = runtimeRenderer != nullptr ? runtimeRenderer->GetPanelTexture(IRenderer::PanelTarget::Scene) : 0;
+            sceneTexture != 0)
+            sceneDrawList->AddImage(static_cast<ImTextureID>(sceneTexture),
+                                    min, ImVec2(min.x + size.x, min.y + size.y), ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
 
-        UpdateEntityMarkers();
+        // Takes every button, so clicks reach the 3D view instead of
+        // dragging the window around.
+        ImGui::InvisibleButton("##SceneView", size,
+                               ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
+
+        sceneMouseFree = ImGui::IsItemHovered() || ImGui::IsItemActive();
+        sceneHovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem | ImGuiHoveredFlags_AllowWhenBlockedByPopup);
 
         {
             TransformGizmo::View view;
@@ -2626,7 +2777,7 @@ namespace RuntimeEditorUi {
 
                 Comments::DrawIcons(level, [&view](const Vector3& world, Vector2& screen) {
                     return TransformGizmo::ProjectPoint(view, world, screen);
-                }, !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow));
+                }, sceneMouseFree, sceneDrawList);
             }
         }
 
@@ -2635,344 +2786,47 @@ namespace RuntimeEditorUi {
 
             if (BuildGizmoView(view)) {
                 TransformGizmo::Draw(
+                    sceneDrawList,
                     view,
                     gizmoTool,
                     *gizmoTarget,
                     InputManager::GetMousePosition(),
-                    !cameraLooking && !ImGui::GetIO().WantCaptureMouse
+                    !cameraLooking && sceneMouseFree
                 );
             }
         }
 
-        if (editingEntity) {
-            // Drop anything deleted since it was selected (scripts can destroy
-            // entities while the runtime editor is open).
-            std::erase_if(selectedEntityIds, [&](const ID id) { return level.GetEntity(id) == nullptr; });
-
-            if (!selectedEntityId.has_value() || level.GetEntity(*selectedEntityId) == nullptr) {
-                ClearEntitySelection();
-                return;
-            }
-
-            Entity* entityToEdit = level.GetEntity(*selectedEntityId);
-            const ID primaryID = entityToEdit->id;
-
-            // Snapshotted only when there is someone to mirror onto.
-            const bool mirrors = selectedEntityIds.size() > 1;
-            const nlohmann::json before = mirrors ? MultiEdit::EntityState(level, primaryID) : nlohmann::json{};
-
-            {
-                using WallSnapStatus = ImGuiDrawFunctions::EntityInspectorState::WallSnapStatus;
-
-                const WallSnap::Snap* snap = WallSnap::Find(primaryID);
-                entityInspectorState.wallSnapStatus = WallSnap::IsPicking() ? WallSnapStatus::Picking
-                                                    : snap != nullptr ? WallSnapStatus::Snapped
-                                                    : WallSnapStatus::Off;
-                if (snap != nullptr) entityInspectorState.wallSnapGap = snap->gap;
-            }
-
-            MapEditorInternal::BeginInspectorEdit(level, entityInspectorEdit, primaryID);
-
-            entityInspectorState.allowParticlePreview = true;
-            const bool deleteRequested =
-                ImGuiDrawFunctions::DrawEntityEditor(*entityToEdit,entityInspectorState, &editingEntity, DRAGGABLE);
-
-            if (deleteRequested) {
-                const std::vector<ID> idsToDelete = selectedEntityIds;
-
-                ClearEntitySelection();
-
-                for (const ID id : idsToDelete) level.DestroyEntity(id);
-                return;
-            }
-
-            if (!editingEntity) {
-                MapEditorInternal::RecordInspectorEdit(level, entityInspectorEdit);
-                ClearEntitySelection();
-                return;
-            }
-
-            // Before the mirroring below, so the step also holds the rest of
-            // the selection as it was.
-            MapEditorInternal::RecordInspectorEdit(level, entityInspectorEdit, mirrors ? selectedEntityIds : std::vector<ID>{});
-
-            if (mirrors) {
-                const nlohmann::json after = MultiEdit::EntityState(level, primaryID);
-
-                if (after != before)
-                    for (const ID id : selectedEntityIds)
-                        if (id != primaryID) MultiEdit::MirrorEntityEdit(level, before, after, id);
-            }
-
-            // After the mirroring above, which would otherwise copy the
-            // primary's new height onto the others.
-            if (entityInspectorState.snapToFloorRequested) {
-                entityInspectorState.snapToFloorRequested = false;
-
-                UndoStep undo = CaptureEntities(level, "editor.history.snap_to_floor");
-                int snapped = 0;
-
-                for (const ID id : selectedEntityIds)
-                    if (ComponentTransform* entityTransform = level.transforms.Get(id); entityTransform != nullptr && MapQueries::SnapToFloor(level, *entityTransform))
-                        ++snapped;
-
-                CommitUndoIf(std::move(undo), snapped);
-                if (snapped > 0) MapEditorInternal::MarkUnsavedChanges();
-            }
-
-            if (entityInspectorState.wallSnapButtonRequested) {
-                entityInspectorState.wallSnapButtonRequested = false;
-
-                using WallSnapStatus = ImGuiDrawFunctions::EntityInspectorState::WallSnapStatus;
-
-                switch (entityInspectorState.wallSnapStatus) {
-                    case WallSnapStatus::Off: WallSnap::BeginPicking(selectedEntityIds, primaryID); break;
-                    case WallSnapStatus::Picking: WallSnap::CancelPicking(); break;
-                    case WallSnapStatus::Snapped: MapEditorInternal::DisableWallSnapsWithUndo(selectedEntityIds); break;
-                }
-            }
-
-            if (entityInspectorState.switchSidesRequested) {
-                entityInspectorState.switchSidesRequested = false;
-
-                UndoStep undo = CaptureEntities(level, "editor.history.switch_wall_side");
-                undo.wallSnaps = WallSnap::All();
-
-                const int switched = WallSnap::SwitchSides(level, selectedEntityIds);
-                CommitUndoIf(std::move(undo), switched);
-                if (switched > 0) MapEditorInternal::MarkUnsavedChanges();
-            }
-
-            if (entityInspectorState.wallSnapGapChanged) {
-                entityInspectorState.wallSnapGapChanged = false;
-
-                MapEditorInternal::SetWallSnapGapWithUndo(level, selectedEntityIds, entityInspectorState.wallSnapGap);
-            }
-        }
-
-        if (editingWall) {
-            std::erase_if(selectedWalls, [&](const int index) { return index < 0 || index >= static_cast<int>(level.walls.size()); });
-
-            if (selectedWall < 0 || selectedWall >= static_cast<int>(level.walls.size())) {
-                ClearWallSelection();
-                return;
-            }
-
-            const bool mirrors = selectedWalls.size() > 1;
-            const nlohmann::json before = mirrors ? MultiEdit::WallState(level.walls[selectedWall]) : nlohmann::json{};
-
-            MapEditorInternal::BeginWallInspectorEdit(wallInspectorEdit, level.walls[selectedWall]);
-
-            ID openSectorRequest = INVALID_ID;
-            ImGuiDrawFunctions::GatewayRequest gatewayRequest; // no map here to pick on
-
-            const bool deleteRequested =
-                ImGuiDrawFunctions::DrawWallEditor(level.walls[selectedWall], &editingWall, DRAGGABLE, nullptr, &openSectorRequest,
-                                                   &gatewayRequest);
-
-            if (deleteRequested) {
-                // Highest index first, so each erase leaves the rest valid.
-                std::vector<int> indicesToDelete = selectedWalls;
-                std::ranges::sort(indicesToDelete, std::greater{});
-
-                ClearWallSelection();
-                PushUndo(level, "editor.history.delete_walls", static_cast<int>(indicesToDelete.size()));
-
-                for (const int index : indicesToDelete) level.walls.erase(level.walls.begin() + index);
-
-                // The erase moved the walls Sector::walls points at.
-                MapQueries::RebuildSectorRuntimeLinks(level);
-                return;
-            }
-
-            // Before the mirroring below, so the step also holds the rest of
-            // the selection as it was.
-            MapEditorInternal::RecordGeometryInspectorEdit(level, wallInspectorEdit, "editor.history.edit_walls");
-
-            // Its own undo step: two-way changes the target wall too.
-            if (gatewayRequest.set)
-                MapEditorInternal::SetGatewayLink(level, level.walls[selectedWall].id, gatewayRequest.target, gatewayRequest.twoWay);
-
-            if (!editingWall) {
-                ClearWallSelection();
-                return;
-            }
-
-            if (mirrors) {
-                const nlohmann::json after = MultiEdit::WallState(level.walls[selectedWall]);
-
-                if (after != before)
-                    for (const int index : selectedWalls)
-                        if (index != selectedWall) MultiEdit::MirrorWallEdit(before, after, level.walls[index]);
-            }
-
-            // Last, so the wall's own edit above is already recorded and
-            // mirrored. The sector's lowest floor, as SelectAndShowOwner
-            // picks, but the camera stays where it is.
-            if (openSectorRequest != INVALID_ID) {
-                const int sectorIndex = FindSectorIndex(level, level.GetSector(openSectorRequest));
-                if (sectorIndex >= 0 && !level.sectors[sectorIndex].floors.empty())
-                    SelectOnlyFlat({sectorIndex, 0, RayHitType::SectorFloor});
-            }
-        }
-
-        if (editingSector) {
-            std::erase_if(selectedFlats, [&](const SelectedFlat& flat) {
-                return flat.sectorIndex < 0 || flat.sectorIndex >= static_cast<int>(level.sectors.size());
-            });
-
-            if (selectedSector < 0 || selectedSector >= static_cast<int>(level.sectors.size())) {
-                ClearFlatSelection();
-            }
-            else {
-                // The inspector edits whole sectors, so a selection of several
-                // floors/ceilings mirrors onto each other sector they belong to.
-                std::vector<int> otherSectors;
-
-                for (const SelectedFlat& flat : selectedFlats)
-                    if (flat.sectorIndex != selectedSector && std::ranges::find(otherSectors, flat.sectorIndex) == otherSectors.end())
-                        otherSectors.push_back(flat.sectorIndex);
-
-                const bool mirrors = !otherSectors.empty();
-                const nlohmann::json before = mirrors ? MultiEdit::SectorState(level.sectors[selectedSector]) : nlohmann::json{};
-
-                bool open = true;
-                ImGuiDrawFunctions::MakeDoorRequest makeDoorRequest;
-
-                MapEditorInternal::BeginSectorInspectorEdit(sectorInspectorEdit, level.sectors[selectedSector]);
-
-                ImGuiDrawFunctions::DrawSectorEditor(
-                    level.sectors[selectedSector],
-                    &open,
-                    true,
-                    nullptr,
-                    &makeDoorRequest
-                );
-
-                // Before the mirroring below, as for walls.
-                MapEditorInternal::RecordGeometryInspectorEdit(level, sectorInspectorEdit, "editor.history.edit_sectors");
-
-                if (!open) {
-                    ClearFlatSelection();
-                }
-                else if (mirrors) {
-                    const nlohmann::json after = MultiEdit::SectorState(level.sectors[selectedSector]);
-
-                    if (after != before)
-                        for (const int index : otherSectors) MultiEdit::MirrorSectorEdit(before, after, level.sectors[index]);
-                }
-
-                // Its own undo step, after the inspector's edit is recorded
-                // and mirrored, so the rest of the selection doesn't get it.
-                if (open && makeDoorRequest.floorIndex >= 0) {
-                    const std::string tagName = MapEditorInternal::MakeDoor(level, level.sectors[selectedSector].id,
-                        makeDoorRequest.floorIndex, makeDoorRequest.lip, makeDoorRequest.wait);
-                    if (!tagName.empty())
-                        ImGuiDrawFunctions::ShowNotification((Localisation::Get("sector.make_door_done") + " " + tagName).c_str(), false);
-                }
-
-                if (open && makeDoorRequest.liftFloorIndex >= 0) {
-                    const std::string tagName = MapEditorInternal::MakeLift(level, level.sectors[selectedSector].id,
-                        makeDoorRequest.liftFloorIndex, MapEditorInternal::makeLiftSettings);
-                    if (!tagName.empty())
-                        ImGuiDrawFunctions::ShowNotification((Localisation::Get("sector.make_lift_done") + " " + tagName).c_str(), false);
-                }
-            }
-        }
-
-        // The cursor is free unless the middle button is down, so the browser
-        // is up whenever it could actually be clicked.
-        if (!cameraLooking) {
-            ImGui::Begin((Localisation::Get("editor.asset_browser") + "##RuntimeEditor").c_str());
-
-            if (ImGui::Button(Localisation::Get("editor.asset_browser.refresh").c_str()))  MapEditorInternal::assetBrowser.Refresh();
-
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("%s", Localisation::Get("editor.tooltip.asset_browser_refresh").c_str());
-
-            ImGui::Spacing();
-
-            // Same resolver DrawAssetField uses, so the browser thumbnails and
-            // the inspector previews can never disagree about what a texture
-            // name maps to. Routes back through previewTextureProvider, which
-            // Start() pointed at this renderer.
-            MapEditorInternal::assetBrowser.Draw(&MapEditorInternal::GetPreviewTextureID,
-                [&level](const AssetKind kind, const std::string& reference) { return AssignAssetToSelection(level, kind, reference); });
-
-            ImGui::End();
-
-            if (MapEditorInternal::runtimeHistoryVisible) DrawHistoryWindow(level);
-
-            // This editor's actions that have no key of their own.
-            static const bool paletteCommandsRegistered = [] {
-                CommandPalette::Register("command_palette.command.rt_toggle_tag_explorer", MapEditorInternal::KEYSCOPE_RUNTIME,
-                    [] { MapEditorInternal::runtimeTagExplorerVisible = !MapEditorInternal::runtimeTagExplorerVisible; });
-                CommandPalette::Register("command_palette.command.rt_toggle_comments", MapEditorInternal::KEYSCOPE_RUNTIME,
-                    [] { MapEditorInternal::runtimeCommentsVisible = !MapEditorInternal::runtimeCommentsVisible; });
-                CommandPalette::Register("command_palette.command.rt_toggle_history", MapEditorInternal::KEYSCOPE_RUNTIME,
-                    [] { MapEditorInternal::runtimeHistoryVisible = !MapEditorInternal::runtimeHistoryVisible; });
-                return true;
-            }();
-            (void)paletteCommandsRegistered;
-
-            // The UI editor is reached through the 2D editor.
-            CommandPalette::Draw(MapEditorInternal::KEYSCOPE_RUNTIME, [](const MapEditorInternal::KeyBindScope scope) {
-                backToEditorRequested = true;
-                if (scope == MapEditorInternal::KEYSCOPE_UI) MapEditorInternal::currentState = MapEditorInternal::STATE_UI;
-            });
-
-            if (MapEditorInternal::runtimeTagExplorerVisible) {
-                TagExplorer::Draw(level, (Localisation::Get("tag_explorer.title") + "###RuntimeTagExplorer").c_str(),
-                    &MapEditorInternal::runtimeTagExplorerVisible,
-                    [&level](const EventOwnerKind kind, const ID id) { SelectAndShowOwner(level, kind, id); });
-            }
-
-            // A pin moves the camera to look at it; anything else is selected.
-            if (MapEditorInternal::runtimeCommentsVisible) {
-                Comments::DrawPanel(level, (Localisation::Get("comments.title") + "###RuntimeComments").c_str(),
-                    &MapEditorInternal::runtimeCommentsVisible, [&level](const EditorComment& comment) {
-                        if (comment.target != EditorCommentTarget::PIN) {
-                            SelectAndShowOwner(level, Comments::OwnerKindFor(comment.target), comment.targetID);
-                            return;
-                        }
-
-                        constexpr float PIN_VIEW_DISTANCE = 48.0f;
-                        Vector3 anchor;
-                        if (transform != nullptr && camera != nullptr && Comments::Anchor(level, comment, anchor))
-                            transform->SetPosition(anchor - camera->forward * PIN_VIEW_DISTANCE);
-                    });
-            }
-
-            DrawToolbar();
-        }
-
-        // Outside the check above, so open scripts, flipbooks and prefabs don't
-        // vanish while looking around. No code font: the map editor's belongs to
-        // its own ImGui context, so the script editor uses the default one here.
-        MapEditorInternal::assetBrowser.DrawTextEditorWindow(nullptr);
-        MapEditorInternal::assetBrowser.DrawFlipbookEditorWindows();
-        MapEditorInternal::assetBrowser.DrawPrefabEditorWindows();
-
-        // Centred a little below the toolbar: its 6px margin, 32px buttons
-        // and padding end ~54px down.
-        constexpr float TOAST_TOP_OFFSET = 62.0f;
-
-        ImGuiDrawFunctions::DrawNotificationBelow(ImGui::GetIO().DeltaTime, ImGui::GetMainViewport()->WorkPos.y + TOAST_TOP_OFFSET);
+        sceneDrawList = nullptr;
+        ImGui::End();
+    }
+
+    void Draw(Level& level) {
+        // A panel of the 2D editor, drawn after it in the same frame: in its
+        // dock space, next to its Map panel. Its Asset Browser, History, Tag
+        // Explorer, Comments panel, command palette, script editor, toasts
+        // and inspector serve both panels, so they are not drawn here.
+        // The selection as the 2D editor's input left it this frame.
+        PullSharedSelection(level);
+
+        UpdateEntityMarkers();
+
+        DrawScenePanel(level, MapEditorInternal::mainDockSpaceID);
+
+        // No inspectors here: the 2D editor's one inspector shows the
+        // selection, which is shared.
+
+        // Hidden while looking around, like the panels it opens.
+        if (!cameraLooking) DrawToolbar();
 
         // ── Drop textures straight onto geometry ─────────────────────────────
-        // The 3D view is not an ImGui window, so there is no item to hang a
-        // BeginDragDropTarget() off. Watch the live payload instead and apply it
-        // on release outside every ImGui window. ImGui keeps the payload alive
-        // for the frame the button goes up, so this fires exactly once.
+        // Watched through the live payload rather than a drop target, and
+        // applied on release over the Scene image. ImGui keeps the payload
+        // alive for the frame the button goes up, so this fires exactly once.
         if (const ImGuiPayload* payload = ImGui::GetDragDropPayload();
             payload != nullptr &&
             payload->IsDataType(AssetBrowser::DragDropPayloadTypeFor(AssetKind::Texture))) {
-            // AllowWhenBlockedByActiveItem is required: the drag source owns the
-            // active id, so a plain AnyWindow query always answers false.
-            constexpr ImGuiHoveredFlags hoverFlags =
-                ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
-
-            const bool overViewport = !ImGui::IsWindowHovered(hoverFlags);
+            // sceneHovered allows for the drag source owning the active id.
+            const bool overViewport = sceneHovered;
             const std::string textureReference = PayloadToTextureReference(payload);
             const int dropCount = DropTargetCount();
             const std::string surfaceName = dropCount > 1
@@ -3014,7 +2868,7 @@ namespace RuntimeEditorUi {
             payload != nullptr &&
             payload->IsDataType(AssetBrowser::DragDropPayloadTypeFor(AssetKind::Prefab)) &&
             ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
-            !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+            sceneHovered) {
             PlacePrefabAtHover(level, AssetBrowser::ToAssetReference(static_cast<const char*>(payload->Data), AssetKind::Prefab));
         }
 
@@ -3035,9 +2889,6 @@ namespace RuntimeEditorUi {
 namespace RuntimeEditor {
     void Start(Level& level, IRenderer& renderer) {
         (void)level;
-
-        backToEditorRequested = false;
-        playRequested = false;
 
         spdlog::info("Runtime editor started");
 
@@ -3083,12 +2934,10 @@ namespace RuntimeEditor {
             MapEditorInternal::assetBrowserInitialized = true;
         }
 
-        // The shared inspector widgets (DrawAssetField and the thumbnail
-        // helpers, all defined in MapEditorUI.cpp) resolve previews through the
-        // Map Editor's SDL_Renderer, which does not exist in this process - so
-        // every asset field would draw an empty box. Point them at the live
-        // renderer instead, which hands back IDs the active ImGui backend can
-        // actually bind. Cleared again in Shutdown().
+        // While the 3D view runs, the inspector's thumbnails (DrawAssetField
+        // and the thumbnail helpers, MapEditorUI.cpp) come from this
+        // renderer, which loads them at once, instead of the editor's
+        // background texture cache. Cleared again in Shutdown().
         MapEditorInternal::previewTextureProvider = [](const std::string& fileName) -> ImTextureID {
             return runtimeRenderer != nullptr ? runtimeRenderer->GetImGuiTextureID(fileName) : ImTextureID{};
         };
@@ -3123,21 +2972,17 @@ namespace RuntimeEditor {
 
         const bool middleHeld = InputManager::GetMouseButton(SDL_BUTTON_MIDDLE);
 
-        // The ImGui test gates only the *start* of a look. Once the cursor is
+        // The Scene test gates only the *start* of a look. Once the cursor is
         // hidden ImGui keeps reporting the position it froze at, so re-testing
         // every frame would drop the drag the moment you swing past a panel.
-        // Not WantCaptureMouse: ImGui sets it while any popup is open, wherever
-        // the cursor is, and middle-click does not close popups - so an open
-        // toolbar menu (Steps, Statistics) would block looking entirely.
-        constexpr ImGuiHoveredFlags lookHoverFlags =
-            ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByPopup;
-
+        // sceneHovered, not sceneMouseFree: middle-click does not close popups,
+        // so an open toolbar menu (Steps, Statistics) would block looking.
         const bool windowFocused = editorWindow != nullptr && SDL_GetKeyboardFocus() == editorWindow;
         const bool wantLook =
             windowFocused &&
             middleHeld &&
             !draggingUv &&
-            (cameraLooking || !ImGui::IsWindowHovered(lookHoverFlags));
+            (cameraLooking || sceneHovered);
 
         if (wantLook != cameraLooking) {
             cameraLooking = wantLook;
@@ -3224,19 +3069,20 @@ namespace RuntimeEditor {
 
         const Vector3 rayOrigin = transform->position;
 
-        const Vector2 viewportSize = {
-            static_cast<float>(screenWidth),
-            static_cast<float>(screenHeight)
-        };
+        // The Scene panel's image, in the same units as the mouse; the
+        // renderer's size until the panel has been laid out once.
+        const Vector2 viewportSize = sceneSize.x > 0.0f && sceneSize.y > 0.0f
+            ? sceneSize
+            : Vector2{static_cast<float>(screenWidth), static_cast<float>(screenHeight)};
 
         // Camera look aims through the centre. A UV drag keeps using the point
         // at which its cursor was locked, so hidden relative input cannot move
-        // the ray's absolute screen position.
+        // the ray's absolute screen position. Relative to the Scene image.
         const Vector2 rayScreenPosition = cameraLooking
             ? Vector2{viewportSize.x * 0.5f, viewportSize.y * 0.5f}
             : draggingUv
-                ? cursorBeforeLock
-                : InputManager::GetMousePosition();
+                ? cursorBeforeLock - sceneOrigin
+                : InputManager::GetMousePosition() - sceneOrigin;
 
         const Vector3 rayDirection = GetMouseRayDirection(
             *camera,
@@ -3314,14 +3160,10 @@ namespace RuntimeEditor {
             }
         }
 
-        // Red tint on the hovered surface. Same "over the 3D view" test as
+        // Red tint on the hovered surface. Same "over the Scene image" test as
         // Draw()'s drop target, so it also shows while dragging a texture in
         // from the asset browser, but not while the cursor is over a panel.
-
-        constexpr ImGuiHoveredFlags hoverFlags =
-            ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
-
-        if (cameraLooking || !ImGui::IsWindowHovered(hoverFlags)) {
+        if (cameraLooking || sceneHovered) {
             SurfaceMark mark;
             mark.metaData = SURFACE_META_HOVERED;
 
@@ -3576,15 +3418,13 @@ namespace RuntimeEditor {
         if (windowFocused && !keyboardBlockedByImGui) {
             using MapEditorInternal::GetComboDown;
 
-            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_BACK_TO_EDITOR)) backToEditorRequested = true;
+            // Back to the 2D editor = its Map panel.
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_BACK_TO_EDITOR))
+                MapEditorInternal::FocusEditorPanel(MapEditorInternal::EditorPanel::Map);
             if (GetComboDown(MapEditorInternal::COMBO_COMMAND_PALETTE)) CommandPalette::Open();
 
-            // Same as the map editor's Save & Play; play returns here.
-            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_SAVE_AND_PLAY) &&
-                MapEditorInternal::Save(Editor::currentMap)) {
-                MapEditorInternal::hasUnsavedChanges = false;
-                playRequested = true;
-            }
+            // Same as the map editor's Save & Play.
+            if (MapEditorInternal::GetKeyBindDown(MapEditorInternal::KEYBIND_RT_SAVE_AND_PLAY)) MapEditorInternal::SaveAndPlay();
 
             // Texture copy / paste. With placement wins when both fire.
             const bool copyWithPlacement = GetComboDown(MapEditorInternal::COMBO_RT_COPY_TEXTURE_PLACEMENT);
@@ -3728,7 +3568,7 @@ namespace RuntimeEditor {
                 }
 
                 Comments::Add(level, target, targetID, {hit->position.x, hit->position.z});
-                MapEditorInternal::runtimeCommentsVisible = true;
+                MapEditorInternal::commentsVisible = true;
             }
 
             // Selected floors and ceilings, else the hovered one, to the next
@@ -4033,31 +3873,46 @@ namespace RuntimeEditor {
         // at the end of every inspector edit or UV drag.
         if (InputManager::GetMouseButtonUp(SDL_BUTTON_LEFT)) runtimeRenderer->RefreshTexturesIfLevelNeedsNew();
 
-        if (InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
-            editingEntity = false;
-            editingSector = false;
-            editingWall = false;
-
-            MapEditorInternal::selectedEntities = {};
-            MapEditorInternal::selectedEntity = {};
-            selectedWalls = {};
-            MapEditorInternal::selectedWallID = -1;
-            MapEditorInternal::selectedSectors = {};
-            MapEditorInternal::selectedSectorID = -1;
+        // Clears the shared selection (pushed below).
+        if (!keyboardBlockedByImGui && InputManager::GetKeyDown(SDL_SCANCODE_ESCAPE)) {
+            ClearEntitySelection();
+            ClearWallSelection();
+            ClearFlatSelection();
         }
+
+        // What this view selected this frame, into the shared selection.
+        PushSharedSelection(level);
+
+#ifndef TILKY_STANDALONE
+        // Kept in the level all along, so saving it keeps where the 3D view
+        // looks from (it used to be written when the view closed).
+        level.runtimeCamPos = transform->position;
+        level.runtimeCamRot.x = camera->pitch;
+        level.runtimeCamRot.y = camera->yaw;
+#endif
     } // Update
 
     void Draw(Level &level) {
         RuntimeEditorUi::Draw(level);
     }
 
-    bool BackToEditorRequested() {
-        return backToEditorRequested;
+    bool AssignTextureToSelection(const std::string& reference) {
+        return AssignAssetToSelection(LevelManager::CurrentLevel(), AssetKind::Texture, reference);
     }
 
-    bool PlayRequested() {
-        return playRequested;
+    void MoveCameraTo(const Vector3 position) {
+        if (transform != nullptr) transform->SetPosition(position);
     }
+
+    void ScenePixelSize(int& width, int& height) {
+        width = static_cast<int>(scenePixelSize.x);
+        height = static_cast<int>(scenePixelSize.y);
+    }
+
+    bool SceneMouseFree() {
+        return sceneMouseFree;
+    }
+
 
     void Shutdown(Level& level) {
         (void)level;
@@ -4066,8 +3921,8 @@ namespace RuntimeEditor {
         level.runtimeCamRot.x = camera->pitch;
         level.runtimeCamRot.y = camera->yaw;
 #endif
-        // Must be cleared before control can return to the Map Editor: leaving
-        // it set would feed that editor's SDL backend renderer-specific IDs.
+        // Back to the editor's texture cache: the renderer's textures are
+        // rebuilt for Play.
         MapEditorInternal::previewTextureProvider = nullptr;
 
         // Play mode reuses the renderer; it mustn't inherit the hover tint.

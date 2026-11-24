@@ -1,6 +1,8 @@
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
 #include <algorithm>
+#include <bit>
+#include <cstdint>
 #include <unordered_map>
 #include <spdlog/spdlog.h>
 
@@ -14,16 +16,29 @@ namespace {
     using OpenGLRendererInternal::GpuWall;
     using OpenGLRendererInternal::GpuFlatTriangle;
 
-    // Everything that decides how many flat triangle instances exist and which
-    // (sector, floor) each one points at. Cheap enough to compare every frame.
+    // Everything baked into the flat triangle instances: how many exist,
+    // which (sector, floor) each one points at, and where its corners are -
+    // so a vertex the 2D editor moves shows in its 3D view at once. Cheap
+    // enough to compare every frame.
     size_t ComputeFlatLayoutSignature(const Level& level) {
         constexpr size_t PRIME = 1000003u;
+
+        const auto mixPoint = [](size_t signature, const Vector2 point) {
+            signature = signature * PRIME + std::bit_cast<std::uint32_t>(point.x);
+            return signature * PRIME + std::bit_cast<std::uint32_t>(point.y);
+        };
 
         size_t signature = level.sectors.size();
 
         for (const Sector& sector : level.sectors) {
             signature = signature * PRIME + sector.floors.size();
             signature = signature * PRIME + sector.triangles.size();
+
+            for (const Triangle& triangle : sector.triangles) {
+                signature = mixPoint(signature, triangle.a);
+                signature = mixPoint(signature, triangle.b);
+                signature = mixPoint(signature, triangle.c);
+            }
         }
 
         return signature;

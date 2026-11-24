@@ -316,7 +316,8 @@ bool OpenGL::InitSDL(const std::string& windowName, const bool startHidden) {
     return true;
 }
 
-// Only for the runtime editor; the standalone game has no ImGui.
+// Only for Play in the engine (the runtime editor draws in the editor's own
+// context); the standalone game has no ImGui.
 #ifndef TILKY_STANDALONE
 bool OpenGL::InitImGui() {
     IMGUI_CHECKVERSION();
@@ -326,16 +327,16 @@ bool OpenGL::InitImGui() {
     ImGui::SetCurrentContext(imguiContext);
 
     ImGuiIO& io = ImGui::GetIO();
-    // Its own layout file: sharing the editor's imgui.ini let each context
-    // overwrite the other's window positions and dock ids.
-    io.IniFilename = "imgui_runtime.ini";
+    // No layout file: Play's overlays have no layout worth keeping, and
+    // writing the editor's imgui.ini would let this context overwrite its
+    // window positions and dock ids. (imgui_runtime.ini, which the runtime
+    // editor's own context used to keep, is no longer read.)
+    io.IniFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // the runtime editor's windows dock into each other
 
-    // The same text and icon fonts the editor loads (Editor.cpp), so the
-    // runtime editor's panels - the asset browser's icons especially - look
-    // the same. Each context has its own font atlas, so they're loaded again
-    // here rather than shared. Missing files just fall back.
+    // The same text font the editor loads (Editor.cpp), so Play's overlays
+    // look the same. Each context has its own font atlas, so it's loaded
+    // again here rather than shared. A missing file just falls back.
     std::error_code ec;
 
     if (const std::filesystem::path textFont = ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
@@ -343,14 +344,7 @@ bool OpenGL::InitImGui() {
         if (ImFont* uiFont = io.Fonts->AddFontFromFileTTF(textFont.string().c_str(), 18.0f)) io.FontDefault = uiFont;
     }
 
-    imguiIconFont = nullptr;
-
-    if (const std::filesystem::path iconFont = ProjectManager::FindAssetPath("EngineAssets/Fonts/FontAwesome6-Solid.otf");
-        std::filesystem::exists(iconFont, ec)) {
-        imguiIconFont = io.Fonts->AddFontFromFileTTF(iconFont.string().c_str(), 16.0f);
-    }
-
-    // Whatever design the editor had, so the runtime editor matches it.
+    // Whatever design the editor had, so Play's overlays match it.
     EditorStyle::Apply(EditorStyle::ActiveDesign());
 
     ImGui_ImplSDL3_InitForOpenGL(window, glContext);

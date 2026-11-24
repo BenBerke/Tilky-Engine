@@ -164,7 +164,7 @@ namespace MapEditorInternal {
 
             if (sectorBeingCreated.empty()) return;
 
-            const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
+            const Vector2 mouseWorld = ScreenToWorld(MapMousePosition(), cameraPos);
             const Vector2 previewPoint = ResolveFreehandPoint(mouseWorld);
 
             Vector2 snapTarget{};
@@ -193,7 +193,7 @@ namespace MapEditorInternal {
         void RectanglePreview() {
             if (!rectangleHasFirstCorner) return;
 
-            const Vector2 opposite = ResolveRectangleCorner(ScreenToWorld(InputManager::GetMousePosition(), cameraPos));
+            const Vector2 opposite = ResolveRectangleCorner(ScreenToWorld(MapMousePosition(), cameraPos));
             const float width = std::fabs(opposite.x - rectangleFirstCorner.x);
             const float height = std::fabs(opposite.y - rectangleFirstCorner.y);
             const bool valid = width >= MIN_DRAW_SHAPE_DIMENSION && height >= MIN_DRAW_SHAPE_DIMENSION;
@@ -211,7 +211,7 @@ namespace MapEditorInternal {
         void PolygonPreview() {
             if (!polygonHasCenter) return;
 
-            const Vector2 handle = ResolvePolygonHandle(ScreenToWorld(InputManager::GetMousePosition(), cameraPos));
+            const Vector2 handle = ResolvePolygonHandle(ScreenToWorld(MapMousePosition(), cameraPos));
             const float radius = std::sqrt(Vector2Math::DistanceSquared(polygonCenter, handle));
             const bool valid = radius >= MIN_DRAW_SHAPE_DIMENSION;
             const std::vector<Vector2> corners = BuildRegularPolygon(polygonCenter, handle, polygonSideCount);
@@ -225,7 +225,7 @@ namespace MapEditorInternal {
         void CirclePreview() {
             if (!circleHasCenter) return;
 
-            const Vector2 handle = ResolveCircleHandle(ScreenToWorld(InputManager::GetMousePosition(), cameraPos));
+            const Vector2 handle = ResolveCircleHandle(ScreenToWorld(MapMousePosition(), cameraPos));
             const float radiusX = std::fabs(handle.x - circleCenter.x);
             const float radiusY = std::fabs(handle.y - circleCenter.y);
             const bool valid = radiusX >= MIN_DRAW_SHAPE_DIMENSION && radiusY >= MIN_DRAW_SHAPE_DIMENSION;
@@ -240,7 +240,7 @@ namespace MapEditorInternal {
         void CurvePreview() {
             if (curveStage == CURVE_STAGE_START) return;
 
-            const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
+            const Vector2 mouseWorld = ScreenToWorld(MapMousePosition(), cameraPos);
 
             if (curveStage == CURVE_STAGE_END) {
                 const Vector2 end = ResolveCurveEnd(mouseWorld);
@@ -300,7 +300,7 @@ namespace MapEditorInternal {
         void StaircasePreview() {
             if (!staircaseHasFirstCorner) return;
 
-            const Vector2 opposite = ResolveStaircaseCorner(ScreenToWorld(InputManager::GetMousePosition(), cameraPos));
+            const Vector2 opposite = ResolveStaircaseCorner(ScreenToWorld(MapMousePosition(), cameraPos));
             const StaircasePlan plan = BuildStaircasePlan(staircaseFirstCorner, opposite);
 
             const std::vector<Vector2> outerCorners = {
@@ -344,7 +344,7 @@ namespace MapEditorInternal {
         }
 
         void SnapIndicator() {
-            const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
+            const Vector2 mouseWorld = ScreenToWorld(MapMousePosition(), cameraPos);
             const bool freehandDrawing = currentMode == MODE_SECTOR && currentDrawTool == DRAWTOOL_FREEHAND && !manualSectorMode;
 
             const Vector2 snapped = freehandDrawing ? ResolveFreehandPoint(mouseWorld)
@@ -534,7 +534,7 @@ namespace MapEditorInternal {
             canvas.SetBlend(true);
 
             const Vector2 start = linedefDrawStart;
-            const Vector2 end = ResolveLinedefSnapPoint(ScreenToWorld(InputManager::GetMousePosition(), cameraPos), {});
+            const Vector2 end = ResolveLinedefSnapPoint(ScreenToWorld(MapMousePosition(), cameraPos), {});
             const Vector2 startScreen = Screen(start);
             const Vector2 endScreen = Screen(end);
 
@@ -583,7 +583,7 @@ namespace MapEditorInternal {
                 ID hoveredHandleLinedefID = INVALID_ID;
                 bool hoveredHandleIsStart = false;
                 const bool handleHovered = !drawingLinedef && PickSelectedLinedefEndpointAt(
-                    ScreenToWorld(InputManager::GetMousePosition(), cameraPos), &hoveredHandleLinedefID, &hoveredHandleIsStart);
+                    ScreenToWorld(MapMousePosition(), cameraPos), &hoveredHandleLinedefID, &hoveredHandleIsStart);
 
                 for (const ID linedefID : selectedLinedefs) {
                     const Linedef* linedef = level.GetLinedef(linedefID);
@@ -595,11 +595,11 @@ namespace MapEditorInternal {
 
                 Vector2 unselectedEnd{};
                 if (!drawingLinedef && !handleHovered && !draggingLinedefGeometry &&
-                    PickUnselectedLinedefEndpointAt(ScreenToWorld(InputManager::GetMousePosition(), cameraPos), &unselectedEnd))
+                    PickUnselectedLinedefEndpointAt(ScreenToWorld(MapMousePosition(), cameraPos), &unselectedEnd))
                     EndpointHandle(unselectedEnd, true);
 
                 if (drawingLinedef) {
-                    const Vector2 end = ResolveLinedefSnapPoint(ScreenToWorld(InputManager::GetMousePosition(), cameraPos), {});
+                    const Vector2 end = ResolveLinedefSnapPoint(ScreenToWorld(MapMousePosition(), cameraPos), {});
                     EndpointHandle(linedefDrawStart, false);
                     LengthLabel(linedefDrawStart, end, std::sqrt(Vector2Math::DistanceSquared(linedefDrawStart, end)));
                 }
@@ -618,7 +618,7 @@ namespace MapEditorInternal {
 
             ID hoveredHandleWallID = INVALID_ID;
             bool hoveredHandleIsStart = false;
-            const bool handleHovered = PickSelectedWallEndpointAt(ScreenToWorld(InputManager::GetMousePosition(), cameraPos),
+            const bool handleHovered = PickSelectedWallEndpointAt(ScreenToWorld(MapMousePosition(), cameraPos),
                                                                   &hoveredHandleWallID, &hoveredHandleIsStart);
 
             for (const ID wallID : selectedWalls) {
@@ -860,7 +860,7 @@ namespace MapEditorInternal {
             canvas.layer = Layer::Top;
 
             EntityGizmoPart highlighted = GetActiveEntityGizmoPart();
-            if (highlighted == GIZMO_NONE && !ImGui::GetIO().WantCaptureMouse) highlighted = PickEntityGizmoPart(InputManager::GetMousePosition());
+            if (highlighted == GIZMO_NONE && mapMouseFree) highlighted = PickEntityGizmoPart(MapMousePosition());
 
             const auto colorFor = [highlighted](const EntityGizmoPart part, const Vector3& color) -> const Vector3& {
                 return highlighted == part ? highlightedHandleColor : color;
@@ -882,7 +882,7 @@ namespace MapEditorInternal {
             canvas.layer = Layer::Top;
 
             const Vector2 start = Screen(startWorld);
-            const Vector2 end = InputManager::GetMousePosition();
+            const Vector2 end = MapMousePosition();
             const SDL_FRect box = {std::min(start.x, end.x), std::min(start.y, end.y), std::fabs(end.x - start.x), std::fabs(end.y - start.y)};
 
             canvas.SetBlend(true);
@@ -894,11 +894,11 @@ namespace MapEditorInternal {
         }
 
         void BuildPaintSelectBrush() {
-            if (!IsPaintSelectActive(ImGui::GetIO().WantCaptureMouse)) return;
+            if (!IsPaintSelectActive(!mapMouseFree)) return;
             canvas.layer = Layer::Top;
 
             constexpr int SEGMENTS = 32;
-            const Vector2 center = InputManager::GetMousePosition();
+            const Vector2 center = MapMousePosition();
 
             canvas.SetBlend(true);
             canvas.SetColor(highlightedHandleColor.r, highlightedHandleColor.g, highlightedHandleColor.b, 220);

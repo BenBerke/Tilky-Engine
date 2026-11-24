@@ -85,7 +85,7 @@ namespace {
 
 namespace MapEditorInternal {
     void UpdateEditorZoom(const bool keyboardBlockedByImgui) {
-        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseScreen = MapMousePosition();
         const Vector2 mouseWorldBeforeZoom = ScreenToWorld(mouseScreen, cameraPos);
 
         bool zoomChanged = false;
@@ -1144,7 +1144,7 @@ namespace MapEditorInternal {
             boxSelectDragged = false;
             boxSelectMode = currentMode;
             boxSelectStartWorld = mouseWorld;
-            boxSelectStartScreen = InputManager::GetMousePosition();
+            boxSelectStartScreen = MapMousePosition();
 
             // Carried onto a panel, the press is a drag of the wall under it
             // (Entity Mode and Linedef Mode, where walls aren't picked) or
@@ -1264,7 +1264,7 @@ namespace MapEditorInternal {
                 return;
             }
 
-            const Vector2 mouseScreen = InputManager::GetMousePosition();
+            const Vector2 mouseScreen = MapMousePosition();
 
             if (InputManager::GetMouseButton(SDL_BUTTON_LEFT)) {
                 const float dx = mouseScreen.x - boxSelectStartScreen.x;
@@ -1524,7 +1524,8 @@ namespace MapEditorInternal {
         ImGuiWindow* hoveredWindow = nullptr;
         ImGuiWindow* hoveredWindowUnderMoving = nullptr;
         ImGui::FindHoveredWindowEx(ImGui::GetIO().MousePos, false, &hoveredWindow, &hoveredWindowUnderMoving);
-        if (hoveredWindow == nullptr) return;
+        // The Map panel is the canvas itself, not a panel to drop on.
+        if (hoveredWindow == nullptr || hoveredWindow->ID == mapPanelWindowID) return;
 
         const Entity* entity = LevelManager::CurrentLevel().GetEntity(selectedEntity.id);
         if (entity == nullptr) return;
@@ -1593,7 +1594,8 @@ namespace MapEditorInternal {
         ImGuiWindow* hoveredWindow = nullptr;
         ImGuiWindow* hoveredWindowUnderMoving = nullptr;
         ImGui::FindHoveredWindowEx(ImGui::GetIO().MousePos, false, &hoveredWindow, &hoveredWindowUnderMoving);
-        if (hoveredWindow == nullptr) return;
+        // The Map panel is the canvas itself, not a panel to drop on.
+        if (hoveredWindow == nullptr || hoveredWindow->ID == mapPanelWindowID) return;
 
         const Level& level = LevelManager::CurrentLevel();
         std::string label;
@@ -1850,7 +1852,7 @@ namespace MapEditorInternal {
 
     void HandleCanvasRightClick(const Vector2& mouseWorld) {
         const bool toggle = MultiSelectModifierHeld();
-        const Vector2 screenPosition = InputManager::GetMousePosition();
+        const Vector2 screenPosition = MapMousePosition();
         std::vector<CanvasPick> picks = CanvasPicksAt(mouseWorld);
 
         if (picks.empty()) {
@@ -1916,7 +1918,7 @@ namespace MapEditorInternal {
 
             ImGui::EndPopup();
         }
-        else if (pickLabelTarget.has_value() && pickLabelOthers > 0 && !ImGui::GetIO().WantCaptureMouse && PickStillExists(level, *pickLabelTarget)) {
+        else if (pickLabelTarget.has_value() && pickLabelOthers > 0 && mapMouseFree && PickStillExists(level, *pickLabelTarget)) {
             ImGui::SetTooltip(
                 Localisation::Get("editor.canvas_pick.label").c_str(),
                 EventLinks::OwnerLabel(level, pickLabelTarget->kind, pickLabelTarget->id).c_str(),
@@ -2554,7 +2556,7 @@ namespace MapEditorInternal {
 
             // What a right click here would open, so a repeat click's next
             // object shows before it's clicked.
-            const Vector2 screenPosition = InputManager::GetMousePosition();
+            const Vector2 screenPosition = MapMousePosition();
             const CanvasPick& next = PickCycleContinues(picks, screenPosition)
                 ? pickCycle.picks[(pickCycle.index + 1) % pickCycle.picks.size()]
                 : picks.front();
@@ -2604,7 +2606,7 @@ namespace MapEditorInternal {
 
         if (mouseBlockedByImGui) return false;
 
-        const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
+        const Vector2 mouseWorld = ScreenToWorld(MapMousePosition(), cameraPos);
         teleporterPickHoveredSectorID = SectorIDAt(mouseWorld);
 
         if (!InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) return false;
@@ -2663,7 +2665,7 @@ namespace MapEditorInternal {
 
         if (mouseBlockedByImGui) return false;
 
-        const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
+        const Vector2 mouseWorld = ScreenToWorld(MapMousePosition(), cameraPos);
         gatewayPickHoveredWallID = PickWallAt(mouseWorld);
 
         if (!InputManager::GetMouseButtonDown(SDL_BUTTON_LEFT) && !InputManager::GetMouseButtonDown(SDL_BUTTON_RIGHT)) return false;
@@ -2694,7 +2696,7 @@ namespace MapEditorInternal {
         // inspector can follow the selection again.
         if (!holdingEntity) inspectorPinnedDuringCanvasDrag = INVALID_ID;
 
-        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseScreen = MapMousePosition();
         const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
 
         // A wall/sector press released over a panel last frame and not

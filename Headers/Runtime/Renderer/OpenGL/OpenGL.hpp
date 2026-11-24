@@ -344,10 +344,6 @@ public:
 
     [[nodiscard]] ImTextureID GetImGuiTextureID(const std::string& fileName) override;
 
-    [[nodiscard]] ImFont* GetImGuiIconFont() const override {
-        return imguiIconFont;
-    }
-
 private:
     using Glyph = OpenGLRendererInternal::Glyph;
     using GlyphKey = OpenGLRendererInternal::GlyphKey;
@@ -364,9 +360,9 @@ private:
 
     SDL_Window* window = nullptr;
     SDL_GLContext glContext = nullptr;
-    // Both stay nullptr in the standalone game, which has no ImGui.
+    // Play's overlays (the runtime editor draws in the editor's context).
+    // Stays nullptr in the standalone game, which has no ImGui.
     ImGuiContext* imguiContext = nullptr;
-    ImFont* imguiIconFont = nullptr; // in imguiContext's atlas; see InitImGui
     bool windowShownOnce = false;
 
     GLuint VAO = 0;
@@ -658,6 +654,27 @@ private:
 
     bool InitEditor2D();
     void DestroyEditor2D();
+
+    // The editor panels' offscreen targets (OpenGL.cpp), one per
+    // PanelTarget. In every build, like the 2D editor's members, so the
+    // layout is the same everywhere.
+    struct PanelTargetBuffers {
+        GLuint framebuffer = 0;
+        GLuint colorTexture = 0;
+        GLuint depthStencil = 0;
+        int width = 0;
+        int height = 0;
+    };
+
+    PanelTargetBuffers panelTargets[static_cast<int>(PanelTarget::Count)];
+    // The bound one, or nullptr while drawing to the window.
+    const PanelTargetBuffers* activePanelTarget = nullptr;
+
+    static void DestroyPanelTarget(PanelTargetBuffers& target);
+    void DestroyPanelTargets();
+    // screenWidth/screenHeight for this frame: the panel target's size while
+    // one is bound, else the window's. False if the window size can't be read.
+    bool UpdateScreenSize();
     void DrawEditor2DOverlay(const Editor2D::Frame& frame, int layer);
     // The labels of one Layer (Layer::Count = those drawn after everything).
     void DrawEditor2DLabels(const Editor2D::Frame& frame, int layer);
@@ -666,6 +683,9 @@ private:
 
 public:
     void DrawEditor2D(const Editor2D::Frame& frame) override;
+    void BeginPanelTarget(PanelTarget target, int width, int height) override;
+    void EndPanelTarget() override;
+    [[nodiscard]] unsigned GetPanelTexture(PanelTarget target) const override;
     [[nodiscard]] bool FindLoadedTexture(const std::string& fileName, LoadedTexture* out) const override;
     bool AddDecodedTexture(const std::string& fileName, const std::filesystem::path& path, const void* pixels, int width, int height) override;
 };

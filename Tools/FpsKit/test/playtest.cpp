@@ -213,6 +213,42 @@ static int RoundTrip(const fs::path& assets) {
     return failures;
 }
 
+// The editor's 3D view for `frames` frames, as the editor runs it (game time,
+// particle previews, the view into the Scene panel's texture) minus the
+// editor's own ImGui, which shows that texture in its Scene panel: here it is
+// copied to the window instead, so the captures see it.
+static void EditorViewTick(const int frames) {
+    static GLuint readFramebuffer = 0;
+    if (readFramebuffer == 0) glGenFramebuffers(1, &readFramebuffer);
+
+    for (int i = 0; i < frames; ++i) {
+        InputManager::BeginFrame();
+        // As the editor does each frame (Editor::SyncRuntimeViewWithEdits):
+        // moved entities are in their new sector.
+        Level& level = LevelManager::CurrentLevel();
+        for (ComponentTransform& transform : level.transforms.components) transform.UpdateObjectSectorAndFloor(level.sectors);
+        RuntimeSession::RenderEditorView();
+
+        if (const GLuint texture = renderer->GetPanelTexture(IRenderer::PanelTarget::Scene); texture != 0) {
+            GLint textureWidth = 0, textureHeight = 0;
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &textureWidth);
+            glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &textureHeight);
+
+            int windowWidth = 0, windowHeight = 0;
+            SDL_GetWindowSizeInPixels(renderer->GetWindow(), &windowWidth, &windowHeight);
+
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
+            glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+            glBlitFramebuffer(0, 0, textureWidth, textureHeight, 0, 0, windowWidth, windowHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+
+        renderer->EndFrame();
+    }
+}
+
 // The runtime editor's Play and Stop, and looping in the game's own update.
 // usage: playtest <project.tilky> <level> <outDir> 0 --preview
 static void CheckEmitters() {
@@ -222,12 +258,8 @@ static void CheckEmitters() {
     host.name = "Emitter Test";
     auto* hostTransform = level.transforms.Get(hostID);
 
-    const auto tick = [](const int frames) {
-        for (int i = 0; i < frames; ++i) {
-            InputManager::BeginFrame();
-            RuntimeSession::Update();
-        }
-    };
+    // The editor's 3D view, where the previews play.
+    const auto tick = EditorViewTick;
     const auto ownedBy = [](const ComponentInstanceID id) {
         size_t count = 0;
         for (const auto& particle : ParticleSystem::Particles()) if (particle.style->previewOwner == id) ++count;
@@ -424,7 +456,7 @@ static int CheckCarry() {
     expectEmpty("after stopping Play");
 
     if (!RuntimeSession::Start(RuntimeSession::EDITOR)) return failures + 1;
-    tick(5);
+    EditorViewTick(5);
     expectEmpty("in the runtime editor after Play");
     RuntimeSession::Shutdown();
 
@@ -464,8 +496,9 @@ int main(int argc, char** argv) {
     else AddBot();
     if (!Localisation::LoadLanguage("en")) return 3;
     if (!Editor::LoadLevel(argv[2])) return 4;
-    if (!Editor::Initialize()) return 5;
+    // The editor draws in the renderer's window, so that comes first.
     if (!RuntimeSession::Initialize("playtest")) return 6;
+    if (!Editor::Initialize()) return 5;
     Editor::PrepareLevelForRuntime();
     InputManager::Initialize(Editor::GetWindow());
 
@@ -476,8 +509,9 @@ int main(int argc, char** argv) {
 
     if (checkCarry) {
         const int failures = CheckCarry();
-        RuntimeSession::Destroy();
+        // The editor first: it draws in the runtime's window.
         Editor::Destroy();
+        RuntimeSession::Destroy();
         return failures;
     }
 
@@ -486,8 +520,9 @@ int main(int argc, char** argv) {
         RuntimeSession::Shutdown();
         std::printf("[preview] after leaving: particles %zu, stains %zu, want 0 0\n", ParticleSystem::Particles().size(), ParticleSystem::Stains().size());
         std::fflush(stdout);
-        RuntimeSession::Destroy();
+        // The editor first: it draws in the runtime's window.
         Editor::Destroy();
+        RuntimeSession::Destroy();
         return 0;
     }
 
@@ -556,7 +591,7 @@ int main(int argc, char** argv) {
     std::fflush(stdout);
 
     RuntimeSession::Shutdown();
-    RuntimeSession::Destroy();
     Editor::Destroy();
+    RuntimeSession::Destroy();
     return 0;
 }

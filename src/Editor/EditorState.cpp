@@ -13,6 +13,13 @@ namespace Editor {
 }
 
 namespace MapEditorInternal {
+    Vector2 mapPanelOrigin = {0.0f, 0.0f};
+    Vector2 mapPanelSize = {0.0f, 0.0f};
+    bool mapMouseFree = false;
+    ImGuiID mapPanelWindowID = 0;
+    EditorPanel keyboardPanel = EditorPanel::Map;
+    ImGuiID mainDockSpaceID = 0;
+
     SDL_Window* window = nullptr;
     IRenderer* canvasRenderer = nullptr;
 
@@ -70,7 +77,6 @@ namespace MapEditorInternal {
     bool quit = false;
     bool play = false;
     bool shutdown = false;
-    bool switchToRuntime = false;
 
     std::vector<ID> entityClipboard;
 
@@ -241,11 +247,8 @@ namespace MapEditorInternal {
     bool worldSettingsVisible = true;
     bool assetBrowserVisible = true;
     bool historyVisible = false;
-    bool runtimeHistoryVisible = false;
     bool tagExplorerVisible = false;
-    bool runtimeTagExplorerVisible = false;
     bool commentsVisible = false;
-    bool runtimeCommentsVisible = false;
     EntityMarkerMode entityMarkerMode = EntityMarkerMode::Always;
     GridStyle gridStyle = GridStyle::Dots;
     std::set<std::string> collapsedComponentTypes;

@@ -12,6 +12,8 @@
 // linedefs and entities, and pins standing on their own. Editor-only, shared
 // by the map editor and the runtime editor - the icons on the canvas or in
 // the 3D view, and the Comments panel listing them.
+struct ImDrawList;
+
 namespace Comments {
     // The comment target for an event owner kind (the level has none).
     [[nodiscard]] EditorCommentTarget TargetFor(EventOwnerKind kind);
@@ -31,7 +33,8 @@ namespace Comments {
 
     // The icon of every comment, with its text as a tooltip while the cursor
     // is on it. `mouseOnView` is false while the cursor is over a panel.
-    void DrawIcons(const Level& level, const Projector& project, bool mouseOnView);
+    // Onto `drawList`, or ImGui's background draw list when null.
+    void DrawIcons(const Level& level, const Projector& project, bool mouseOnView, ImDrawList* drawList = nullptr);
 
     // A row's target was clicked: the editor shows that comment.
     using PickCallback = std::function<void(const EditorComment& comment)>;

@@ -24,7 +24,7 @@ namespace Editor {
     // Each time the editor becomes the active mode: resets session state and shows the window.
     void Start();
     void Update();
-    // Leaving the editor for Play / the runtime editor, which go on in the same window.
+    // Leaving the editor for Play, which goes on in the same window.
     void Stop();
     // Once at engine exit, before RuntimeSession::Destroy() ends the window.
     void Destroy();
@@ -35,7 +35,10 @@ namespace Editor {
     bool HoldShutdownForExport();
     bool QuitRequested();
     bool PlayRequested();
-    bool SwitchToRuntimeEditorRequested();
+
+    // The runtime editor (3D view) is a panel of the editor, next to the
+    // map: its session runs from Start() to Stop(), restarted for each level
+    // loaded in between (MapEditorInternal::StartRuntimeView).
     bool LoadLevel(const std::string& levelName);
     // Saves the open level, then switches to levelName on the editor's next
     // frame. What the Levels panel and the Asset Browser use to open a level.

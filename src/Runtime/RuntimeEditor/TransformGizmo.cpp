@@ -81,14 +81,17 @@ namespace {
         const float ndcX = -Vector3Math::Dot(toPoint, view.left) / (depth * view.tanHalfFov * aspect);
         const float ndcY = Vector3Math::Dot(toPoint, view.up) / (depth * view.tanHalfFov);
 
-        screen = {(ndcX + 1.0f) * 0.5f * view.viewportSize.x, (1.0f - ndcY) * 0.5f * view.viewportSize.y};
+        screen = {
+            view.viewportOrigin.x + (ndcX + 1.0f) * 0.5f * view.viewportSize.x,
+            view.viewportOrigin.y + (1.0f - ndcY) * 0.5f * view.viewportSize.y
+        };
         return true;
     }
 
     // The inverse of Project() - same math as the runtime editor's mouse ray.
     Vector3 MouseRay(const View& view, const Vector2 mouse) {
-        const float ndcX = 2.0f * mouse.x / view.viewportSize.x - 1.0f;
-        const float ndcY = 1.0f - 2.0f * mouse.y / view.viewportSize.y;
+        const float ndcX = 2.0f * (mouse.x - view.viewportOrigin.x) / view.viewportSize.x - 1.0f;
+        const float ndcY = 1.0f - 2.0f * (mouse.y - view.viewportOrigin.y) / view.viewportSize.y;
         const float aspect = view.viewportSize.x / view.viewportSize.y;
 
         return Vector3Math::Normalized(
@@ -456,7 +459,9 @@ namespace TransformGizmo {
         return Project(view, point, screen);
     }
 
-    void Draw(const View& view, const Tool tool, const ComponentTransform& transform, const Vector2 mouse, const bool showHover) {
+    void Draw(ImDrawList* drawList, const View& view, const Tool tool, const ComponentTransform& transform, const Vector2 mouse, const bool showHover) {
+        if (drawList == nullptr) return;
+
         Frame frame;
         if (!MakeFrame(view, tool, transform, frame)) return;
 
@@ -464,7 +469,6 @@ namespace TransformGizmo {
             ? activeHandle
             : showHover ? Pick(view, tool, frame, mouse) : Handle::None;
 
-        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
         const Vector3& highlightColor = MapEditorInternal::highlightedHandleColor;
 
         if (tool == Tool::Move) {

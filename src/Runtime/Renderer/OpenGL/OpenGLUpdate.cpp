@@ -254,10 +254,7 @@ void OpenGL::DrawSceneGeometry() {
 }
 
 void OpenGL::DrawNoCameraScreen() {
-    if (!SDL_GetWindowSizeInPixels(window, &screenWidth, &screenHeight)) {
-        spdlog::error("SDL_GetWindowSizeInPixels failed: {}", SDL_GetError());
-        return;
-    }
+    if (!UpdateScreenSize()) return;
 
     glViewport(0, 0, screenWidth, screenHeight);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -313,10 +310,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         }
     }
 
-    if (!SDL_GetWindowSizeInPixels(window, &screenWidth, &screenHeight)) {
-        spdlog::error("SDL_GetWindowSizeInPixels failed: {}", SDL_GetError());
-        return;
-    }
+    if (!UpdateScreenSize()) return;
 
     glViewport(0, 0, screenWidth, screenHeight);
 

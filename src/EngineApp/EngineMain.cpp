@@ -7,7 +7,6 @@
 #include "Headers/Editor/Editor.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "Headers/Runtime/RuntimeSession.hpp"
-#include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -26,10 +25,10 @@
 namespace fs = std::filesystem;
 
 namespace {
+    // The runtime editor is a panel of the editor (its 3D view).
     enum class EngineMode {
         EDITOR,
-        PLAY,
-        RUNTIME_EDITOR
+        PLAY
     };
 
     EngineMode currentMode = EngineMode::EDITOR;
@@ -99,13 +98,6 @@ namespace {
 
                 if (started) spdlog::info("Starting the game loop");
                 break;
-
-            case EngineMode::RUNTIME_EDITOR:
-                started = RuntimeSession::Start(RuntimeSession::EDITOR);
-
-                if (started) spdlog::info("Starting the runtime editor loop");
-
-                break;
         }
 
         if (!started) {
@@ -128,7 +120,6 @@ namespace {
                 break;
 
             case EngineMode::PLAY:
-            case EngineMode::RUNTIME_EDITOR:
                 RuntimeSession::Shutdown();
                 break;
         }
@@ -142,10 +133,8 @@ namespace {
         if (modeActive && currentMode == newMode) return true;
 
         // The runtime editor edits the level too (placed prefabs, scripts), so
-        // Play started from it gets the same preparation.
-        const bool prepareEditorLevelForRuntime =
-            (currentMode == EngineMode::EDITOR && newMode != EngineMode::EDITOR) ||
-            (currentMode == EngineMode::RUNTIME_EDITOR && newMode == EngineMode::PLAY);
+        // Play started from it gets the same preparation: it's in the editor.
+        const bool prepareEditorLevelForRuntime = currentMode == EngineMode::EDITOR && newMode != EngineMode::EDITOR;
 
         StopCurrentMode(prepareEditorLevelForRuntime);
 
@@ -252,6 +241,12 @@ namespace {
         return true;
     }
 
+    // Shift+F1 leaves Play, same as closing its window.
+    bool StopKeyPressed() {
+        const bool shiftHeld = InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
+        return shiftHeld && InputManager::GetKeyDown(SDL_SCANCODE_F1);
+    }
+
     bool UpdateEditorMode() {
         Editor::Update();
 
@@ -260,12 +255,6 @@ namespace {
 
             StopCurrentMode(false);
             return false;
-        }
-
-        if (Editor::SwitchToRuntimeEditorRequested()) {
-            spdlog::info("Runtime editor requested");
-
-            return SwitchMode(EngineMode::RUNTIME_EDITOR);
         }
 
         if (Editor::QuitRequested()) {
@@ -280,49 +269,20 @@ namespace {
         return true;
     }
 
-    // Shift+F1 leaves Play / the runtime editor, same as closing its window.
-    bool StopKeyPressed() {
-        const bool shiftHeld = InputManager::GetKey(SDL_SCANCODE_LSHIFT) || InputManager::GetKey(SDL_SCANCODE_RSHIFT);
-        return shiftHeld && InputManager::GetKeyDown(SDL_SCANCODE_F1);
-    }
-
-    // Play started from the runtime editor goes back there when it ends,
-    // like Play from the map editor goes back to the map editor.
-    bool playFromRuntimeEditor = false;
-
-    bool UpdateRuntimeMode() {
+    bool UpdatePlayMode() {
         RuntimeSession::Update();
 
-        if (currentMode == EngineMode::RUNTIME_EDITOR && RuntimeEditor::PlayRequested()) {
-            playFromRuntimeEditor = true;
-            const bool switched = SwitchMode(EngineMode::PLAY);
-
-            // Play failed to start and the map editor took over instead.
-            if (currentMode != EngineMode::PLAY) playFromRuntimeEditor = false;
-
-            return switched;
-        }
-
-        const bool backToEditor = currentMode == EngineMode::RUNTIME_EDITOR && RuntimeEditor::BackToEditorRequested();
-
         // Game.Quit stops Play like the stop key.
-        const bool gameQuit = currentMode == EngineMode::PLAY && LevelSystem::QuitRequested();
+        if (!InputManager::QuitRequested() && !StopKeyPressed() && !LevelSystem::QuitRequested()) return true;
 
-        if (!InputManager::QuitRequested() && !StopKeyPressed() && !backToEditor && !gameQuit) return true;
-
-        if (currentMode == EngineMode::PLAY && playFromRuntimeEditor) {
-            playFromRuntimeEditor = false;
-            return SwitchMode(EngineMode::RUNTIME_EDITOR);
-        }
-
+        // Back to the editor, its 3D view included.
         return SwitchMode(EngineMode::EDITOR);
     }
 
     bool UpdateCurrentMode() {
         switch (currentMode) {
             case EngineMode::EDITOR:return UpdateEditorMode();
-            case EngineMode::PLAY:
-            case EngineMode::RUNTIME_EDITOR:return UpdateRuntimeMode();
+            case EngineMode::PLAY:return UpdatePlayMode();
         }
 
         spdlog::critical("Unknown engine mode");

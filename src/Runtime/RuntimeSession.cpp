@@ -618,6 +618,12 @@ namespace {
         RuntimeEditor::Start(level, *renderer);
 
         FinishStartup();
+
+        // The 3D view is a panel of the 2D editor, which keeps the mouse: it
+        // is only locked while looking around or dragging a texture
+        // (RuntimeEditor's SetCursorLocked).
+        InputManager::SetRelativeMouseMode(renderer->GetWindow(), false);
+        SDL_ShowCursor();
         return true;
     }
 
@@ -651,14 +657,26 @@ namespace {
         return true;
     }
 
-    void UpdateEditor(Level& level) {
-        const ImGuiIO& io = ImGui::GetIO();
+    // The runtime editor runs inside the 2D editor's frame and ImGui
+    // context (Editor::Update): RenderEditorView before its ImGui frame,
+    // DrawEditorUI inside it, FinishEditorFrame after it was drawn.
 
+    // Whether the Scene panel lacked the mouse as of the last ImGui frame,
+    // read before this frame's: what the runtime editor's input acts on.
+    bool editorMouseBlocked = true;
+
+    // A runtime editor session is running (Start(EDITOR) until Shutdown()).
+    bool editorSessionRunning = false;
+
+    void RenderEditorViewOf(Level& level) {
         // The editor camera dims disabled entities' sprites, which reads
         // ownerEnabled, and the inspector checkbox writes enabled directly.
         level.SyncEntityEnabledStates();
 
-        UpdateMouseCapture(io.WantCaptureMouse, false);
+        // The 3D view is an ImGui panel (Scene), so ImGui always wants the
+        // mouse over it; whether the view itself has the mouse is asked there.
+        editorMouseBlocked = !RuntimeEditor::SceneMouseFree();
+        UpdateMouseCapture(editorMouseBlocked, false);
         SetImGuiControlsCursor(true);
 
         // Texture animations play in the 3D editor view too (game time is
@@ -666,33 +684,38 @@ namespace {
         level.UpdateSurfaceAnimations(GameTime::unscaledDeltaTime);
         ParticleSystem::UpdatePreview(level, GameTime::unscaledDeltaTime);
 
-        {
-            ZoneScopedN("Renderer");
+        ZoneScopedN("Renderer");
 
-            renderer->BeginFrame();
+        // Into the Scene panel's texture, at the size it was last drawn
+        // (the window's before the first frame); ImGui shows it after.
+        int sceneWidth = 0;
+        int sceneHeight = 0;
+        RuntimeEditor::ScenePixelSize(sceneWidth, sceneHeight);
+        renderer->BeginPanelTarget(IRenderer::PanelTarget::Scene, sceneWidth, sceneHeight);
 
-            // TODO: Add a proper debug-view setting.
-            constexpr bool RENDER_DEBUG = true;
-            constexpr bool RENDER_UI = false;
-            renderer->Update(RENDER_DEBUG, RENDER_UI);
+        renderer->BeginFrame();
 
-            renderer->BeginImGuiFrame();
+        // TODO: Add a proper debug-view setting.
+        constexpr bool RENDER_DEBUG = true;
+        constexpr bool RENDER_UI = false;
+        renderer->Update(RENDER_DEBUG, RENDER_UI);
 
-            // The runtime editor writes sector values from its inspector, the
-            // scroll wheel, UV nudges and texture drops. Diffing around it
-            // passes any of those on to child sectors without hooking each one.
-            const auto parentsBeforeDraw = level.SnapshotParentSectorValues();
-            RuntimeEditor::Draw(level);
-            level.PropagateSnapshottedSectorChanges(parentsBeforeDraw);
+        renderer->EndPanelTarget();
+    }
 
-            renderer->EndImGuiFrame();
+    void DrawEditorPanels(Level& level) {
+        // The runtime editor writes sector values from its inspector, the
+        // scroll wheel, UV nudges and texture drops. Diffing around it
+        // passes any of those on to child sectors without hooking each one.
+        const auto parentsBeforeDraw = level.SnapshotParentSectorValues();
+        RuntimeEditor::Draw(level);
+        level.PropagateSnapshottedSectorChanges(parentsBeforeDraw);
+    }
 
-            // No FPS text here: the runtime editor's toolbar has a
-            // Statistics menu for it.
-            EditorFunctions::RenderConsole(renderer.get());
-
-            renderer->EndFrame();
-        }
+    void FinishEditorFrameOf(Level& level, const bool keyboardElsewhere) {
+        // No FPS text here: the runtime editor's toolbar has a
+        // Statistics menu for it. The editor swaps the window after this.
+        EditorFunctions::RenderConsole(renderer.get());
 
         const auto parentsBeforeUpdate = level.SnapshotParentSectorValues();
 
@@ -700,12 +723,13 @@ namespace {
             level,
             *renderer,
             relativeMouseMode,
-            io.WantCaptureMouse,
+            editorMouseBlocked,
             // Only a text field being typed into blocks the shortcuts.
             // WantCaptureKeyboard is true whenever any ImGui window has focus
             // (keyboard nav is on), and the panels that reappear after a
             // middle-mouse look take focus - locking the 1/2 tool keys.
-            io.WantTextInput,
+            // The keys go to one of the editor's two panels at a time.
+            ImGui::GetIO().WantTextInput || keyboardElsewhere,
             renderer->screenWidth,
             renderer->screenHeight
         );
@@ -802,6 +826,9 @@ namespace RuntimeSession {
 
     void SetVSyncMode(const int mode) {
         vsyncMode = std::clamp(mode, -1, 1);
+
+        // The editor draws in the game window too, so it follows at once.
+        if (renderer) renderer->SetVSync(vsyncMode);
     }
 
     int GetVSyncMode() {
@@ -837,7 +864,8 @@ namespace RuntimeSession {
         switch (runtimeType) {
             case EDITOR:
                 activeRuntimeType = EDITOR;
-                return StartEditor(level);
+                editorSessionRunning = StartEditor(level);
+                return editorSessionRunning;
 
             case PLAY:
                 activeRuntimeType = PLAY;
@@ -852,6 +880,35 @@ namespace RuntimeSession {
         return false;
     }
 
+#endif
+
+#ifndef TILKY_STANDALONE
+    bool EditorViewRunning() {
+        return renderer && editorSessionRunning && activeRuntimeType == EDITOR;
+    }
+
+    void RenderEditorView() {
+        if (!EditorViewRunning() || !LevelManager::HasCurrentLevel()) return;
+
+        GameTime::Update();
+        RenderEditorViewOf(LevelManager::CurrentLevel());
+    }
+
+    void DrawEditorUI() {
+        if (!EditorViewRunning() || !LevelManager::HasCurrentLevel()) return;
+
+        DrawEditorPanels(LevelManager::CurrentLevel());
+    }
+
+    void FinishEditorFrame(const bool keyboardElsewhere) {
+        if (!EditorViewRunning() || !LevelManager::HasCurrentLevel()) return;
+
+        Level& level = LevelManager::CurrentLevel();
+        FinishEditorFrameOf(level, keyboardElsewhere);
+
+        // As Update() does for Play: every save made this frame written once.
+        SaveSystem::Flush();
+    }
 #endif
 
     void Update() {
@@ -871,7 +928,8 @@ namespace RuntimeSession {
         UpdateStandalone(level);
 #else
         switch (activeRuntimeType) {
-            case EDITOR: UpdateEditor(level); break;
+            // Run by the 2D editor: RenderEditorView, DrawEditorUI, FinishEditorFrame.
+            case EDITOR: spdlog::error("RuntimeSession::Update() is for Play; the editor runs the runtime editor"); break;
             case PLAY: UpdatePlay(level);break;
             case STANDALONE: spdlog::critical("Invalid runtime type in Tilky_Engine"); break;
         }
@@ -890,6 +948,7 @@ namespace RuntimeSession {
 #ifdef TILKY_STANDALONE
             ShutdownRenderer();
 #else
+            editorSessionRunning = false;
             StopRenderer();
 #endif
             return;
@@ -902,7 +961,10 @@ namespace RuntimeSession {
         ShutdownRenderer();
 #else
         switch (activeRuntimeType) {
-            case EDITOR: ShutdownEditor(level); break;
+            case EDITOR:
+                if (editorSessionRunning) ShutdownEditor(level);
+                editorSessionRunning = false;
+                break;
             case PLAY: ShutdownPlay(level); break;
             case STANDALONE: spdlog::critical("Invalid runtime type in Tilky_Engine");break;
         }

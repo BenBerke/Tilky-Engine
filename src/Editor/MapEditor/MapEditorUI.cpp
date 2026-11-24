@@ -3,6 +3,8 @@
 //
 
 #include "Headers/Runtime/RuntimeSession.hpp"
+#include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
+#include "Headers/Runtime/Renderer/IRenderer.hpp"
 #include "Headers/Runtime/SaveSystem.hpp"
 #include "../EditorInternal.hpp"
 #include "Headers/Editor/TagExplorer.hpp"
@@ -693,6 +695,8 @@ namespace {
     void CreateNewLevel(const std::string &levelName) {
         if (!Editor::currentMap.empty()) Save(Editor::currentMap);
 
+        StopRuntimeView();
+
         Level &level = LevelManager::CurrentLevel();
         level = Level{};
         level.name = levelName;
@@ -722,6 +726,8 @@ namespace {
         MapQueries::RebuildSectorRuntimeLinks(level);
 
         hasUnsavedChanges = false;
+
+        StartRuntimeView();
 
         spdlog::info("Created new level: {}", levelName);
     }
@@ -765,10 +771,48 @@ namespace {
     }
 
     // =========================================================================
-    //  DrawDockSpace
+    //  DrawDockSpaceHost
     // =========================================================================
 
-    void DrawDockSpace() {
+    constexpr const char* MAP_PANEL_WINDOW_NAME = "###MapEditorMap";
+    constexpr const char* SCENE_PANEL_WINDOW_NAME = "###RuntimeEditorScene";
+
+    // The dock node a window is in (0: floating, or never drawn).
+    ImGuiID DockIdOfWindow(const ImGuiID windowID) {
+        if (const ImGuiWindow* window = ImGui::FindWindowByID(windowID)) return window->DockId;
+        if (const ImGuiWindowSettings* settings = ImGui::FindWindowSettingsByID(windowID)) return settings->DockId;
+        return 0;
+    }
+
+    // Once per run, before the dock space is drawn: the Map and Scene panels
+    // side by side (map left, 3D right) unless the layout already keeps them
+    // apart. A layout from before the 3D view was a panel next to the map has
+    // them as tabs of one node, or Scene not at all. Moved later, they stay
+    // where they were put (imgui.ini).
+    void SplitMapAndScenePanels(const ImGuiID dockspaceID) {
+        static bool layoutChecked = false;
+        if (layoutChecked || !RuntimeSession::EditorViewRunning()) return;
+
+        // The node and its middle exist once DockSpace() ran (or the
+        // layout loaded): with none, the panels dock in its middle that
+        // frame, and are split here on the next.
+        const ImGuiDockNode* central = ImGui::DockBuilderGetCentralNode(dockspaceID);
+        if (central == nullptr) return;
+        layoutChecked = true;
+
+        const ImGuiID mapDock = DockIdOfWindow(ImHashStr(MAP_PANEL_WINDOW_NAME));
+        const ImGuiID sceneDock = DockIdOfWindow(ImHashStr(SCENE_PANEL_WINDOW_NAME));
+        if (mapDock != 0 && sceneDock != 0 && mapDock != sceneDock) return;
+
+        ImGuiID left = 0;
+        ImGuiID right = 0;
+        ImGui::DockBuilderSplitNode(central->ID, ImGuiDir_Right, 0.5f, &right, &left);
+        ImGui::DockBuilderDockWindow(MAP_PANEL_WINDOW_NAME, left);
+        ImGui::DockBuilderDockWindow(SCENE_PANEL_WINDOW_NAME, right);
+        ImGui::DockBuilderFinish(dockspaceID);
+    }
+
+    ImGuiID DrawDockSpaceHost() {
         const ImGuiViewport *viewport = ImGui::GetMainViewport();
 
         ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -793,18 +837,93 @@ namespace {
         ImGui::PopStyleVar(3);
 
         const ImGuiID dockspaceID = ImGui::GetID("MainDockspace");
+        SplitMapAndScenePanels(dockspaceID);
         ImGui::DockSpace(dockspaceID, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
 
-        // A prefab dropped on the canvas (the dockspace's empty middle) is
-        // placed under the cursor.
-        std::string droppedPrefab;
-        if (AcceptCanvasAssetDrop(dockspaceID, AssetKind::Prefab, droppedPrefab))
-            PlacePrefab(droppedPrefab, ScreenToWorld(InputManager::GetMousePosition(), cameraPos));
+        ImGui::End();
 
-        // A texture dropped on a wall, sector or sprite is applied to it.
-        std::string droppedTexture;
-        if (AcceptCanvasAssetDrop(dockspaceID, AssetKind::Texture, droppedTexture))
-            DropTextureOnCanvas(droppedTexture, ScreenToWorld(InputManager::GetMousePosition(), cameraPos));
+        // The runtime editor's Scene panel docks in it too (drawn later).
+        mainDockSpaceID = dockspaceID;
+        return dockspaceID;
+    }
+
+    // The map canvas, drawn into the renderer's Map target at this panel's
+    // size (Editor::Update), with the legend and comment icons over it. A
+    // normal dockable window, like the runtime editor's Scene panel; it
+    // starts in the dock space's middle.
+    void DrawMapPanel(const ImGuiID dockSpaceID) {
+        if (const ImGuiDockNode* central = ImGui::DockBuilderGetCentralNode(dockSpaceID))
+            ImGui::SetNextWindowDockID(central->ID, ImGuiCond_FirstUseEver);
+        else
+            ImGui::SetNextWindowDockID(dockSpaceID, ImGuiCond_FirstUseEver);
+
+        // No scrolling (the wheel zooms the map), and clicking it doesn't
+        // lift it over other windows: the toolbar floats above it. No
+        // keyboard navigation inside it, so the arrow keys and Space stay
+        // the canvas's.
+        constexpr ImGuiWindowFlags mapFlags =
+            ImGuiWindowFlags_NoScrollbar |
+            ImGuiWindowFlags_NoScrollWithMouse |
+            ImGuiWindowFlags_NoCollapse |
+            ImGuiWindowFlags_NoBringToFrontOnFocus |
+            ImGuiWindowFlags_NoNavInputs;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        const bool open = ImGui::Begin((Get("editor.map_panel") + MAP_PANEL_WINDOW_NAME).c_str(), nullptr, mapFlags);
+        ImGui::PopStyleVar();
+
+        mapMouseFree = false;
+        mapPanelWindowID = ImGui::GetCurrentWindow()->ID;
+
+        if (!open) {
+            ImGui::End();
+            return;
+        }
+
+        const ImVec2 min = ImGui::GetCursorScreenPos();
+        const ImVec2 available = ImGui::GetContentRegionAvail();
+        const ImVec2 size = {std::max(std::floor(available.x), 1.0f), std::max(std::floor(available.y), 1.0f)};
+
+        mapPanelOrigin = {min.x, min.y};
+        mapPanelSize = {size.x, size.y};
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+        // GL keeps the bottom row first, so the image is flipped. Drawn at
+        // the size it was rendered at (last frame's panel size) so a resize
+        // never stretches it.
+        if (const unsigned texture = canvasRenderer != nullptr ? canvasRenderer->GetPanelTexture(IRenderer::PanelTarget::Map) : 0;
+            texture != 0)
+            drawList->AddImage(static_cast<ImTextureID>(texture), min,
+                               ImVec2(min.x + static_cast<float>(screenWidth), min.y + static_cast<float>(screenHeight)),
+                               ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
+
+        // Takes every button, so clicks reach the canvas instead of
+        // dragging the window around.
+        ImGui::InvisibleButton("##MapCanvas", size,
+                               ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
+
+        mapMouseFree = ImGui::IsItemHovered() || ImGui::IsItemActive();
+
+        // Asset drops: a prefab is placed under the cursor, a texture is
+        // applied to the wall, sector or sprite under it.
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(AssetBrowser::DragDropPayloadTypeFor(AssetKind::Prefab)))
+                PlacePrefab(AssetBrowser::ToAssetReference(static_cast<const char*>(payload->Data), AssetKind::Prefab),
+                            ScreenToWorld(MapMousePosition(), cameraPos));
+
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(AssetBrowser::DragDropPayloadTypeFor(AssetKind::Texture)))
+                DropTextureOnCanvas(AssetBrowser::ToAssetReference(static_cast<const char*>(payload->Data), AssetKind::Texture),
+                                    ScreenToWorld(MapMousePosition(), cameraPos));
+
+            ImGui::EndDragDropTarget();
+        }
+
+        // Clipped to the canvas, like everything drawn on it.
+        drawList->PushClipRect(min, ImVec2(min.x + size.x, min.y + size.y), true);
+        DrawViewModeLegend(drawList);
+        DrawCommentIcons(drawList);
+        drawList->PopClipRect();
 
         ImGui::End();
     }
@@ -3022,34 +3141,38 @@ namespace {
     void MoveRuntimeCameraToMouse() {
         Level& level = LevelManager::CurrentLevel();
 
-        const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
-        Vector3& position = level.runtimeCamPos;
+        const Vector2 mouseWorld = ScreenToWorld(MapMousePosition(), cameraPos);
+
+        // The 3D view's camera, which the level keeps up to date.
+        Vector3 position = level.runtimeCamPos;
 
         position.x = mouseWorld.x;
         position.z = mouseWorld.y;
 
         const int sectorIndex = MapQueries::FindSectorContainingPoint(level.sectors, mouseWorld);
-        if (sectorIndex < 0) return;
 
-        const Sector& sector = level.sectors[sectorIndex];
-        const int floorIndex = MapQueries::FindFloorAtHeight(sector, mouseWorld, position.y);
-        if (floorIndex < 0) return;
+        if (sectorIndex >= 0) {
+            const Sector& sector = level.sectors[sectorIndex];
 
-        position.y = MapQueries::SurfaceHeightAt(sector, sector.floors[floorIndex].floor, mouseWorld) +
-                     ComponentPlayerController{}.eyeHeight;
+            if (const int floorIndex = MapQueries::FindFloorAtHeight(sector, mouseWorld, position.y); floorIndex >= 0)
+                position.y = MapQueries::SurfaceHeightAt(sector, sector.floors[floorIndex].floor, mouseWorld) +
+                             ComponentPlayerController{}.eyeHeight;
+        }
+
+        level.runtimeCamPos = position;
+        RuntimeEditor::MoveCameraTo(position);
     }
 
+    // The 3D view is the Scene panel next to the map: this brings it to the
+    // front and gives it the keys. The level is no longer saved first -
+    // nothing is left for it.
     void OpenRuntimeEditorFromEditor() {
         // In the UI Editor the mouse isn't over the map.
-        if (!rememberCameraPosition && currentState == STATE_MAP) MoveRuntimeCameraToMouse();
+        if (!rememberCameraPosition && currentState == STATE_MAP && RuntimeSession::EditorViewRunning())
+            MoveRuntimeCameraToMouse();
 
-        if (Save(Editor::currentMap)) {
-            hasUnsavedChanges = false;
-            ClearUIUnsavedChanges();
-            SDL_Log("%s", Editor::currentMap.c_str());
-            CancelActiveDrawing(); // don't carry a half-drawn shape into the Runtime Editor
-            switchToRuntime = true;
-        }
+        currentState = STATE_MAP;
+        FocusEditorPanel(EditorPanel::Scene);
     }
 
     void SaveAndQuitFromEditor() {
@@ -3345,7 +3468,7 @@ namespace {
         const float height = ImGui::GetFrameHeight();
         if (ImGui::BeginViewportSideBar("##MapEditorStatusBar", ImGui::GetMainViewport(), ImGuiDir_Down, height, flags)) {
             if (ImGui::BeginMenuBar()) {
-                const Vector2 mouseWorld = ScreenToWorld(InputManager::GetMousePosition(), cameraPos);
+                const Vector2 mouseWorld = ScreenToWorld(MapMousePosition(), cameraPos);
 
                 const char* modeKey = currentMode == MODE_GEOMETRY ? "mode.geometry"
                                     : currentMode == MODE_SECTOR ? "mode.sector"
@@ -3391,9 +3514,13 @@ namespace {
         const ImGuiViewport *viewport = ImGui::GetMainViewport();
         constexpr float margin = 6.0f;
 
-        // WorkPos is already below the main menu bar.
+        // Over the Map panel's top middle once it was drawn (the UI editor
+        // draws it too, over the window). WorkPos is
+        // already below the main menu bar.
+        const bool onMapPanel = currentState == STATE_MAP && mapPanelSize.x > 0.0f && mapPanelSize.y > 0.0f;
         ImGui::SetNextWindowPos(
-            ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + margin),
+            onMapPanel ? ImVec2(mapPanelOrigin.x + mapPanelSize.x * 0.5f, mapPanelOrigin.y + margin)
+                       : ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + margin),
             ImGuiCond_Always,
             ImVec2(0.5f, 0.0f)
         );
@@ -4604,6 +4731,8 @@ namespace {
 
         // The shared inspector window (see DrawSelectionInspectors).
         entityInspectorState.windowTitle = Get("entity.title") + "###" + MAP_INSPECTOR_WINDOW_ID;
+        // A particle emitter's Play/Stop preview plays in the 3D view.
+        entityInspectorState.allowParticlePreview = RuntimeSession::EditorViewRunning();
 
         const bool deleteRequested =
                 ImGuiDrawFunctions::DrawEntityEditor(entity, entityInspectorState, &editingEntity, DRAGGABLE);
@@ -4802,7 +4931,13 @@ namespace {
 
         ImGui::Spacing();
 
-        assetBrowser.Draw(&GetPreviewTextureID, &AssignAssetToCanvasSelection);
+        // Ctrl+click: the selection as the panel with the keys shows it - the
+        // 3D view's picked floors or ceilings, the map's whole sectors.
+        assetBrowser.Draw(&GetPreviewTextureID, [](const AssetKind kind, const std::string& reference) {
+            if (kind == AssetKind::Texture && keyboardPanel == EditorPanel::Scene && RuntimeSession::EditorViewRunning())
+                return RuntimeEditor::AssignTextureToSelection(reference);
+            return AssignAssetToCanvasSelection(kind, reference);
+        });
 
         ImGui::End();
 
@@ -5914,7 +6049,7 @@ namespace MapEditorInternal {
         // ---- Live calculated values - same plan the preview draws ------
         if (!staircaseHasFirstCorner) return;
 
-        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseScreen = MapMousePosition();
         const Vector2 mouseWorld = ScreenToWorld(mouseScreen, cameraPos);
         const Vector2 opposite = ResolveStaircaseCorner(mouseWorld);
 
@@ -6379,12 +6514,67 @@ namespace MapEditorInternal {
         ImGui::End();
     }
 
+    Vector2 MapMousePosition() {
+        const Vector2 mouse = InputManager::GetMousePosition();
+        return {mouse.x - mapPanelOrigin.x, mouse.y - mapPanelOrigin.y};
+    }
+
+    ImGuiID ScenePanelWindowID() {
+        static const ImGuiID id = ImHashStr(SCENE_PANEL_WINDOW_NAME);
+        return id;
+    }
+
+    namespace {
+        // A FocusEditorPanel request, applied on the next ImGui frame.
+        std::optional<EditorPanel> pendingPanelFocus;
+
+        // The panel the mouse was over (0: neither) when no button was down.
+        ImGuiID lastHoveredPanel = 0;
+    }
+
+    void FocusEditorPanel(const EditorPanel panel) {
+        keyboardPanel = panel;
+        pendingPanelFocus = panel;
+    }
+
+    void UpdateKeyboardPanel(const bool sceneRunning) {
+        if (!sceneRunning) {
+            keyboardPanel = EditorPanel::Map;
+            pendingPanelFocus.reset();
+            return;
+        }
+
+        if (pendingPanelFocus.has_value()) {
+            const ImGuiID windowID = *pendingPanelFocus == EditorPanel::Scene ? ScenePanelWindowID() : mapPanelWindowID;
+            if (ImGuiWindow* window = ImGui::FindWindowByID(windowID)) ImGui::FocusWindow(window);
+            pendingPanelFocus.reset();
+        }
+
+        // Not mid-drag: a drag that started over one panel keeps the keys
+        // until it is let go.
+        if (ImGui::IsAnyMouseDown()) return;
+
+        // Hovering the toolbar over a panel isn't the panel.
+        const ImGuiWindow* hovered = GImGui->HoveredWindow;
+        const ImGuiID hoveredID = hovered != nullptr ? hovered->ID : 0;
+        const ImGuiID hoveredPanel = hoveredID == mapPanelWindowID || hoveredID == ScenePanelWindowID() ? hoveredID : 0;
+
+        // Only on entering a panel, so the Runtime Editor key pressed over
+        // the map hands the keys to the 3D view until the mouse moves there
+        // or back.
+        if (hoveredPanel != 0 && hoveredPanel != lastHoveredPanel)
+            keyboardPanel = hoveredPanel == ScenePanelWindowID() ? EditorPanel::Scene : EditorPanel::Map;
+
+        lastHoveredPanel = hoveredPanel;
+    }
+
     void DrawEditorUI() {
         const float dt = std::min(ImGui::GetIO().DeltaTime, 0.1f);
 
         DrawEditorMenuBar();
         DrawStatusBar();
-        DrawDockSpace();
+        const ImGuiID dockSpaceID = DrawDockSpaceHost();
+        DrawMapPanel(dockSpaceID);
         SubmitCanvasEntityDragSource();
         SubmitCanvasRefDragSource();
         DrawCanvasPickUI();
@@ -6433,8 +6623,11 @@ namespace MapEditorInternal {
         }();
         (void)paletteCommandsRegistered;
 
-        CommandPalette::Draw(KEYSCOPE_MAP, [](const KeyBindScope scope) {
-            if (scope == KEYSCOPE_RUNTIME) OpenRuntimeEditorFromEditor();
+        // Also the 3D view's: it runs the commands of whichever panel has
+        // the keys, and switching hands them to the other.
+        CommandPalette::Draw(keyboardPanel == EditorPanel::Scene ? KEYSCOPE_RUNTIME : KEYSCOPE_MAP, [](const KeyBindScope scope) {
+            if (scope == KEYSCOPE_RUNTIME) FocusEditorPanel(EditorPanel::Scene);
+            else if (scope == KEYSCOPE_MAP) FocusEditorPanel(EditorPanel::Map);
             else if (scope == KEYSCOPE_UI) currentState = STATE_UI;
         });
 
