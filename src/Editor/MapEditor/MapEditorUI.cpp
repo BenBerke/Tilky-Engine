@@ -653,7 +653,6 @@ namespace {
     bool userSettingsOpen = false;
     bool userSettingsWasOpen = false;
 
-    bool layoutMenuOpen = false;
     bool engineSettingsOpen = false;
 
     bool createLevelModalRequested = false;
@@ -774,6 +773,8 @@ namespace {
     //  DrawDockSpaceHost
     // =========================================================================
 
+    void DrawToolbarStrip();
+
     constexpr const char* MAP_PANEL_WINDOW_NAME = "###MapEditorMap";
     constexpr const char* SCENE_PANEL_WINDOW_NAME = "###RuntimeEditorScene";
 
@@ -784,14 +785,70 @@ namespace {
         return 0;
     }
 
-    // Once per run, before the dock space is drawn: the Map and Scene panels
-    // side by side (map left, 3D right) unless the layout already keeps them
-    // apart. A layout from before the 3D view was a panel next to the map has
-    // them as tabs of one node, or Scene not at all. Moved later, they stay
-    // where they were put (imgui.ini).
-    void SplitMapAndScenePanels(const ImGuiID dockspaceID) {
+    // Window > Reset Layout: the default layout on the next frame.
+    bool resetLayoutRequested = false;
+
+    // The default layout: the Map and Scene panels side by side in the
+    // middle, the inspector and the level's panels as tabs on the right, the
+    // Asset Browser and the other shared panels as tabs along the bottom.
+    // Windows not open now go there when opened.
+    void BuildDefaultLayout(const ImGuiID dockspaceID) {
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+        ImGui::DockBuilderRemoveNode(dockspaceID);
+        ImGui::DockBuilderAddNode(dockspaceID, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dockspaceID, viewport->WorkSize);
+
+        // The remaining part of each split keeps the middle (central) node,
+        // so it ends up the Map's.
+        ImGuiID right = 0, rest = 0, bottom = 0, middle = 0, scene = 0, map = 0;
+        ImGui::DockBuilderSplitNode(dockspaceID, ImGuiDir_Right, 0.24f, &right, &rest);
+        ImGui::DockBuilderSplitNode(rest, ImGuiDir_Down, 0.28f, &bottom, &middle);
+        ImGui::DockBuilderSplitNode(middle, ImGuiDir_Right, 0.5f, &scene, &map);
+
+        ImGui::DockBuilderDockWindow(MAP_PANEL_WINDOW_NAME, map);
+        ImGui::DockBuilderDockWindow(SCENE_PANEL_WINDOW_NAME, scene);
+
+        // Window names as each panel's Begin() gives them.
+        ImGui::DockBuilderDockWindow("###MapInspector", right);
+        ImGui::DockBuilderDockWindow("###EditorPanel", right);
+        ImGui::DockBuilderDockWindow(Get("editor.world_settings").c_str(), right);
+        ImGui::DockBuilderDockWindow(Get("editor.hierarchy").c_str(), right);
+
+        ImGui::DockBuilderDockWindow(Get("editor.asset_browser").c_str(), bottom);
+        ImGui::DockBuilderDockWindow(Get("editor.history").c_str(), bottom);
+        ImGui::DockBuilderDockWindow("###TagExplorer", bottom);
+        ImGui::DockBuilderDockWindow("###Comments", bottom);
+
+        ImGui::DockBuilderFinish(dockspaceID);
+    }
+
+    // Before the dock space is drawn. The first run (no saved layout for the
+    // Map panel) gets the default layout. Otherwise, once per run, the Map
+    // and Scene panels are put side by side (map left, 3D right) unless the
+    // layout already keeps them apart: a layout from before the 3D view was a
+    // panel next to the map has them as tabs of one node, or Scene not at
+    // all. Moved later, everything stays where it was put (imgui.ini).
+    void ArrangeEditorLayout(const ImGuiID dockspaceID) {
         static bool layoutChecked = false;
-        if (layoutChecked || !RuntimeSession::EditorViewRunning()) return;
+
+        if (resetLayoutRequested) {
+            resetLayoutRequested = false;
+            layoutChecked = true;
+            BuildDefaultLayout(dockspaceID);
+            return;
+        }
+
+        if (layoutChecked) return;
+
+        const ImGuiID mapWindowID = ImHashStr(MAP_PANEL_WINDOW_NAME);
+        if (ImGui::FindWindowByID(mapWindowID) == nullptr && ImGui::FindWindowSettingsByID(mapWindowID) == nullptr) {
+            layoutChecked = true;
+            BuildDefaultLayout(dockspaceID);
+            return;
+        }
+
+        if (!RuntimeSession::EditorViewRunning()) return;
 
         // The node and its middle exist once DockSpace() ran (or the
         // layout loaded): with none, the panels dock in its middle that
@@ -837,7 +894,7 @@ namespace {
         ImGui::PopStyleVar(3);
 
         const ImGuiID dockspaceID = ImGui::GetID("MainDockspace");
-        SplitMapAndScenePanels(dockspaceID);
+        ArrangeEditorLayout(dockspaceID);
         ImGui::DockSpace(dockspaceID, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
 
         ImGui::End();
@@ -858,7 +915,7 @@ namespace {
             ImGui::SetNextWindowDockID(dockSpaceID, ImGuiCond_FirstUseEver);
 
         // No scrolling (the wheel zooms the map), and clicking it doesn't
-        // lift it over other windows: the toolbar floats above it. No
+        // lift it over other windows: the toolbar's menus float above it. No
         // keyboard navigation inside it, so the arrow keys and Space stay
         // the canvas's.
         constexpr ImGuiWindowFlags mapFlags =
@@ -879,6 +936,8 @@ namespace {
             ImGui::End();
             return;
         }
+
+        DrawToolbarStrip();
 
         const ImVec2 min = ImGui::GetCursorScreenPos();
         const ImVec2 available = ImGui::GetContentRegionAvail();
@@ -2886,24 +2945,6 @@ namespace {
     //  Layout Menu Window
     // =========================================================================
 
-    void DrawLayoutMenu() {
-        ImGui::SetNextWindowSize(ImVec2(420.0f, 560.0f), ImGuiCond_FirstUseEver);
-
-        const bool windowVisible = ImGui::Begin(Get("editor.layout_menu").c_str(), &layoutMenuOpen);
-
-        if (windowVisible) {
-            ImGui::Checkbox(Get("editor.layout_menu.hierarchy_visible").c_str(), &hierarchyVisible);
-            ImGui::Checkbox(Get("editor.layout_menu.world_settings_visible").c_str(), &worldSettingsVisible);
-            ImGui::Checkbox(Get("editor.layout_menu.editor_panel_visible").c_str(), &editorPanelVisible);
-            ImGui::Checkbox(Get("editor.layout_menu.asset_browser_visible").c_str(), &assetBrowserVisible);
-            ImGui::Checkbox(Get("editor.layout_menu.history_visible").c_str(), &historyVisible);
-            ImGui::Checkbox(Get("editor.layout_menu.tag_explorer_visible").c_str(), &tagExplorerVisible);
-            ImGui::Checkbox(Get("editor.layout_menu.comments_visible").c_str(), &commentsVisible);
-        }
-
-        ImGui::End();
-    }
-
     // =========================================================================
     //  Project Settings window
     // =========================================================================
@@ -3427,8 +3468,30 @@ namespace {
             if (ImGui::MenuItem(Get("editor.user_settings").c_str(), nullptr, userSettingsOpen))
                 userSettingsOpen = !userSettingsOpen;
 
-            if (ImGui::MenuItem(Get("editor.layout_menu").c_str(), nullptr, layoutMenuOpen))
-                layoutMenuOpen = !layoutMenuOpen;
+            // Which panels are open, and the default layout back.
+            if (ImGui::BeginMenu(Get("editor.menu.window").c_str())) {
+                ImGui::MenuItem(Get("editor.layout_menu.hierarchy_visible").c_str(), nullptr, &hierarchyVisible);
+                ImGui::MenuItem(Get("editor.layout_menu.world_settings_visible").c_str(), nullptr, &worldSettingsVisible);
+                ImGui::MenuItem(Get("editor.layout_menu.editor_panel_visible").c_str(), nullptr, &editorPanelVisible);
+                ImGui::MenuItem(Get("editor.layout_menu.asset_browser_visible").c_str(), nullptr, &assetBrowserVisible);
+                ImGui::MenuItem(Get("editor.layout_menu.history_visible").c_str(), nullptr, &historyVisible);
+                ImGui::MenuItem(Get("editor.layout_menu.tag_explorer_visible").c_str(), nullptr, &tagExplorerVisible);
+                ImGui::MenuItem(Get("editor.layout_menu.comments_visible").c_str(), nullptr, &commentsVisible);
+
+                ImGui::Separator();
+
+                if (ImGui::MenuItem(Get("editor.menu.window.reset_layout").c_str())) {
+                    // The panels the default layout starts with, back open.
+                    hierarchyVisible = true;
+                    worldSettingsVisible = true;
+                    editorPanelVisible = true;
+                    assetBrowserVisible = true;
+                    resetLayoutRequested = true;
+                }
+                HoverTooltip(Get("editor.tooltip.menu.window.reset_layout").c_str());
+
+                ImGui::EndMenu();
+            }
 
             if (ImGui::MenuItem(Get("editor.menu.engine_settings").c_str(), nullptr, engineSettingsOpen))
                 engineSettingsOpen = !engineSettingsOpen;
@@ -3449,7 +3512,6 @@ namespace {
         // every frame it is open. Quitting the editor saves as well.
         if (userSettingsWasOpen && !userSettingsOpen) SaveUserSettings();
         userSettingsWasOpen = userSettingsOpen;
-        if (layoutMenuOpen) DrawLayoutMenu();
         if (engineSettingsOpen) DrawEngineSettingsWindow();
 
         DrawShutdownConfirmModal();
@@ -3510,33 +3572,9 @@ namespace {
         return pressed;
     }
 
-    void DrawToolbar() {
-        const ImGuiViewport *viewport = ImGui::GetMainViewport();
-        constexpr float margin = 6.0f;
-
-        // Over the Map panel's top middle once it was drawn (the UI editor
-        // draws it too, over the window). WorkPos is
-        // already below the main menu bar.
-        const bool onMapPanel = currentState == STATE_MAP && mapPanelSize.x > 0.0f && mapPanelSize.y > 0.0f;
-        ImGui::SetNextWindowPos(
-            onMapPanel ? ImVec2(mapPanelOrigin.x + mapPanelSize.x * 0.5f, mapPanelOrigin.y + margin)
-                       : ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + margin),
-            ImGuiCond_Always,
-            ImVec2(0.5f, 0.0f)
-        );
-
-        ImGui::SetNextWindowBgAlpha(0.0f);
-
-        constexpr ImGuiWindowFlags overlayFlags =
-                ImGuiWindowFlags_NoDecoration |
-                ImGuiWindowFlags_NoMove |
-                ImGuiWindowFlags_NoSavedSettings |
-                ImGuiWindowFlags_NoFocusOnAppearing |
-                ImGuiWindowFlags_NoDocking |
-                ImGuiWindowFlags_AlwaysAutoResize;
-
-        ImGui::Begin("##EditorToolbarOverlay", nullptr, overlayFlags);
-
+    // The toolbar's buttons: in a strip along the top of the Map panel, or
+    // floating over the UI editor's canvas.
+    void DrawToolbarButtons() {
         if (ToolbarButton("save", ICON_FA_FLOPPY_DISK, "S", Get("editor.save"), Get("editor.tooltip.save")))
             SaveLevelFromEditor();
 
@@ -3573,12 +3611,6 @@ namespace {
 
         ImGui::SameLine();
 
-        if (ToolbarButton("runtime_editor", ICON_FA_CUBE, "RT", Get("editor.runtime_editor"),
-                          Get("editor.tooltip.runtime_editor")))
-            OpenRuntimeEditorFromEditor();
-
-        ImGui::SameLine();
-
         // Lit in the UI Editor, where it goes back to the map editor.
         const bool inUIEditor = currentState == STATE_UI;
         if (inUIEditor) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
@@ -3588,27 +3620,83 @@ namespace {
         if (inUIEditor) ImGui::PopStyleColor();
         if (uiPressed) currentState = inUIEditor ? STATE_MAP : STATE_UI;
 
-        // The paint selection brush is a map editor tool.
-        if (inUIEditor) {
-            ImGui::End();
-            return;
+        // The paint selection brush is a map editor tool, lit while on; its
+        // radius beside it.
+        if (!inUIEditor) {
+            ImGui::SameLine();
+
+            const bool paintWasOn = paintSelectTool;
+            if (paintWasOn) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+            if (ToolbarButton("paint_select", ICON_FA_PAINTBRUSH, "PS", Get("editor.paint_select"), FormatKeyBinds(Get("editor.tooltip.paint_select"))))
+                paintSelectTool = !paintSelectTool;
+            if (paintWasOn) ImGui::PopStyleColor();
+
+            if (paintSelectTool) {
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(110.0f);
+                ImGui::SliderFloat("##PaintSelectRadius", &paintSelectRadius, MIN_PAINT_SELECT_RADIUS, MAX_PAINT_SELECT_RADIUS, Get("editor.paint_select.radius").c_str());
+            }
         }
 
         ImGui::SameLine();
 
-        // The paint selection brush, lit while on; its radius beside it.
-        const bool paintWasOn = paintSelectTool;
-        if (paintWasOn) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        if (ToolbarButton("paint_select", ICON_FA_PAINTBRUSH, "PS", Get("editor.paint_select"), FormatKeyBinds(Get("editor.tooltip.paint_select"))))
-            paintSelectTool = !paintSelectTool;
-        if (paintWasOn) ImGui::PopStyleColor();
+        // ---- More: what is used less often (each has a key too)
+        if (ToolbarButton("more", ICON_FA_ELLIPSIS, "...", Get("editor.toolbar.more"), Get("editor.tooltip.toolbar.more")))
+            ImGui::OpenPopup("##EditorToolbarMore");
 
-        if (paintSelectTool) {
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(110.0f);
-            ImGui::SliderFloat("##PaintSelectRadius", &paintSelectRadius, MIN_PAINT_SELECT_RADIUS, MAX_PAINT_SELECT_RADIUS, Get("editor.paint_select.radius").c_str());
+        if (ImGui::BeginPopup("##EditorToolbarMore")) {
+            if (ImGui::MenuItem(Get("editor.runtime_editor").c_str())) OpenRuntimeEditorFromEditor();
+            HoverTooltip(Get("editor.tooltip.runtime_editor").c_str());
+            ImGui::EndPopup();
         }
+    }
 
+    // A strip along the top of the Map panel, above the canvas, so the
+    // windows around the panel never cover it.
+    void DrawToolbarStrip() {
+        constexpr float PADDING = 4.0f;
+        constexpr float BUTTON_SIZE = 32.0f;
+
+        const ImVec2 start = ImGui::GetCursorScreenPos();
+        const float width = ImGui::GetContentRegionAvail().x;
+        const float height = BUTTON_SIZE + PADDING * 2.0f;
+
+        ImGui::GetWindowDrawList()->AddRectFilled(start, ImVec2(start.x + width, start.y + height), ImGui::GetColorU32(ImGuiCol_MenuBarBg));
+
+        // Centred, by last frame's width.
+        static float buttonsWidth = 0.0f;
+        ImGui::SetCursorScreenPos(ImVec2(start.x + std::max(PADDING, (width - buttonsWidth) * 0.5f), start.y + PADDING));
+
+        ImGui::BeginGroup();
+        DrawToolbarButtons();
+        ImGui::EndGroup();
+        buttonsWidth = ImGui::GetItemRectSize().x;
+
+        ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + height));
+    }
+
+    // The UI editor's canvas fills the window, so there the toolbar floats
+    // over its top middle.
+    void DrawToolbarOverlay() {
+        const ImGuiViewport *viewport = ImGui::GetMainViewport();
+        constexpr float margin = 6.0f;
+
+        // WorkPos is already below the main menu bar.
+        ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f, viewport->WorkPos.y + margin),
+                                ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+
+        ImGui::SetNextWindowBgAlpha(0.0f);
+
+        constexpr ImGuiWindowFlags overlayFlags =
+                ImGuiWindowFlags_NoDecoration |
+                ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_NoFocusOnAppearing |
+                ImGuiWindowFlags_NoDocking |
+                ImGuiWindowFlags_AlwaysAutoResize;
+
+        ImGui::Begin("##EditorToolbarOverlay", nullptr, overlayFlags);
+        DrawToolbarButtons();
         ImGui::End();
     }
 } // anonymous namespace
@@ -3619,7 +3707,7 @@ namespace MapEditorInternal {
     }
 
     void DrawEditorToolbar() {
-        DrawToolbar();
+        DrawToolbarOverlay();
     }
 
     void DrawEditorMenuBar() {
@@ -4868,8 +4956,26 @@ namespace {
 
         bool *const flags[5] = {nullptr, &editingSector, &editingEntity, &editingWall, &editingLinedef};
 
+        // Docked as a tab beside other panels, a newly opened inspector is
+        // the tab shown, as it was a window of its own on top before (a few
+        // frames' tries: its tab exists once the dock node updated).
+        static int selectTabTries = 0;
+
         for (int kind = INSPECT_SECTOR; kind <= INSPECT_LINEDEF; ++kind)
-            if (*flags[kind] && !wasOpen[kind]) shown = static_cast<InspectorKind>(kind);
+            if (*flags[kind] && !wasOpen[kind]) {
+                shown = static_cast<InspectorKind>(kind);
+                selectTabTries = 3;
+            }
+
+        if (selectTabTries > 0) {
+            --selectTabTries;
+
+            if (ImGuiWindow* inspector = ImGui::FindWindowByID(ImHashStr((std::string("###") + MAP_INSPECTOR_WINDOW_ID).c_str()));
+                inspector != nullptr && inspector->DockNode != nullptr && inspector->DockNode->TabBar != nullptr) {
+                inspector->DockNode->TabBar->NextSelectedTabId = inspector->TabId;
+                selectTabTries = 0;
+            }
+        }
 
         // The shown one was closed: fall back to any still open.
         if (shown == INSPECT_NONE || !*flags[shown]) {
@@ -6591,7 +6697,6 @@ namespace MapEditorInternal {
         // ---- Other panels -------------------------------------------------
         if (worldSettingsVisible) DrawWorldSettings();
         if (hierarchyVisible) DrawHierarchyPanel(level);
-        DrawToolbar();
 
         //if (editingEntity || editingSector || editingWall) // This cant work because of sector creation
         if (assetBrowserVisible) DrawAssetBrowserPanel();

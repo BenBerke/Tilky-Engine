@@ -2441,8 +2441,8 @@ namespace {
 
 namespace RuntimeEditorUi {
     constexpr bool DRAGGABLE = true;    // =========================================================================
-    //  Toolbar: square icon buttons centred along the top of the window, the
-    //  same look as the Map Editor's (MapEditorUI.cpp, DrawToolbar)
+    //  Toolbar: square icon buttons centred in a strip along the top of the
+    //  Scene panel, the same look as the Map panel's (MapEditorUI.cpp)
     // =========================================================================
 
     void HoverTooltip(const std::string& text) {
@@ -2472,10 +2472,10 @@ namespace RuntimeEditorUi {
     }
 
     // Toolbar menus that stay open until their button is pressed again.
-    bool stepsMenuOpen = false;
     bool gravityMenuOpen = false;
-    bool statisticsMenuOpen = false;
     bool paletteMenuOpen = false;
+    // The "..." menu: field of view, step sizes and statistics.
+    bool moreMenuOpen = false;
 
     // A toolbar menu's window, under the button just drawn. A window rather
     // than a popup: ImGui closes popups on any click outside them, and when
@@ -2509,27 +2509,9 @@ namespace RuntimeEditorUi {
         ImGui::SetNextItemWidth(TOOLBAR_SLIDER_WIDTH);
     }
 
-    void DrawToolbar() {
-        constexpr float MARGIN = 6.0f;
-
-        // Along the top of the Scene panel's image, over the 3D view.
-        ImGui::SetNextWindowPos(
-            ImVec2(sceneOrigin.x + sceneSize.x * 0.5f, sceneOrigin.y + MARGIN),
-            ImGuiCond_Always,
-            ImVec2(0.5f, 0.0f)
-        );
-
-        ImGui::SetNextWindowBgAlpha(0.0f);
-
-        constexpr ImGuiWindowFlags overlayFlags =
-                ImGuiWindowFlags_NoDecoration |
-                ImGuiWindowFlags_NoMove |
-                ImGuiWindowFlags_NoSavedSettings |
-                ImGuiWindowFlags_NoFocusOnAppearing |
-                ImGuiWindowFlags_NoDocking |
-                ImGuiWindowFlags_AlwaysAutoResize;
-
-        ImGui::Begin("##RuntimeEditorToolbar", nullptr, overlayFlags);
+    // The toolbar's buttons. Its menus are left closed while looking around.
+    void DrawToolbarButtons() {
+        const bool showMenus = !cameraLooking;
 
         // ---- Gizmo tools
         if (ToolbarButton("move", ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, "M",
@@ -2556,24 +2538,14 @@ namespace RuntimeEditorUi {
 
         ImGui::SameLine();
 
-        // Edits the user setting itself, so the value is the same one the
-        // map editor's User Settings window shows and saves.
-        const std::string fovFormat = Localisation::Get("editor.runtime_editor.fov") + ": %.0f";
-
-        BeginToolbarSlider();
-        ImGui::SliderFloat("##CameraFov", &MapEditorInternal::runtimeCameraFov,
-                           MapEditorInternal::MIN_RUNTIME_CAMERA_FOV, MapEditorInternal::MAX_RUNTIME_CAMERA_FOV,
-                           fovFormat.c_str());
-
-        ImGui::SameLine();
-
         // ---- Gravity mode
         if (ToolbarButton("gravity", ICON_FA_PERSON_WALKING, "Gr",
                           Localisation::Get("runtime_editor.gravity_mode") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.gravity_mode")),
                           MapEditorInternal::runtimeGravityMode))
             gravityMenuOpen = !gravityMenuOpen;
 
-        if (gravityMenuOpen && BeginToolbarMenu("##RuntimeEditorGravity")) {
+        const bool gravityMenuShown = gravityMenuOpen && showMenus;
+        if (gravityMenuShown && BeginToolbarMenu("##RuntimeEditorGravity")) {
             using namespace MapEditorInternal;
 
             ImGui::Checkbox(Localisation::Get("runtime_editor.gravity_mode").c_str(), &runtimeGravityMode);
@@ -2584,7 +2556,7 @@ namespace RuntimeEditorUi {
             HoverTooltip(Localisation::Get("runtime_editor.tooltip.gravity_mode.eye_height"));
         }
 
-        if (gravityMenuOpen) ImGui::End();
+        if (gravityMenuShown) ImGui::End();
 
         DrawToolbarSeparator();
 
@@ -2615,7 +2587,8 @@ namespace RuntimeEditorUi {
                           paletteMenuOpen))
             paletteMenuOpen = !paletteMenuOpen;
 
-        if (paletteMenuOpen && BeginToolbarMenu("##RuntimeEditorPalette")) {
+        const bool paletteMenuShown = paletteMenuOpen && showMenus;
+        if (paletteMenuShown && BeginToolbarMenu("##RuntimeEditorPalette")) {
             // Fixes the menu's width: the palette's hint wraps to it.
             constexpr float PALETTE_MENU_WIDTH = 280.0f;
             ImGui::Dummy(ImVec2(PALETTE_MENU_WIDTH, 0.0f));
@@ -2626,20 +2599,29 @@ namespace RuntimeEditorUi {
             MapEditorInternal::DrawEntityPalette("runtime_editor.palette.hint");
         }
 
-        if (paletteMenuOpen) ImGui::End();
+        if (paletteMenuShown) ImGui::End();
 
         ImGui::SameLine();
 
-        // ---- Step sizes
-        if (ToolbarButton("steps", ICON_FA_SLIDERS, "Sz",
-                          Localisation::Get("runtime_editor.steps") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.steps")),
-                          stepsMenuOpen))
-            stepsMenuOpen = !stepsMenuOpen;
+        // ---- More: the settings changed less often
+        if (ToolbarButton("more", ICON_FA_ELLIPSIS, "...",
+                          Localisation::Get("runtime_editor.more") + "\n" + Localisation::Get("runtime_editor.tooltip.more"),
+                          moreMenuOpen))
+            moreMenuOpen = !moreMenuOpen;
 
-        if (stepsMenuOpen && BeginToolbarMenu("##RuntimeEditorSteps")) {
+        const bool moreMenuShown = moreMenuOpen && showMenus;
+        if (moreMenuShown && BeginToolbarMenu("##RuntimeEditorMore")) {
             using namespace MapEditorInternal;
 
+            // Edits the user setting itself, so the value is the same one the
+            // User Settings window shows and saves.
+            const std::string fovFormat = Localisation::Get("editor.runtime_editor.fov") + ": %.0f";
+            ImGui::SetNextItemWidth(TOOLBAR_SLIDER_WIDTH);
+            ImGui::SliderFloat("##CameraFov", &runtimeCameraFov, MIN_RUNTIME_CAMERA_FOV, MAX_RUNTIME_CAMERA_FOV, fovFormat.c_str());
+
+            ImGui::Spacing();
             ImGui::TextUnformatted(Localisation::Get("runtime_editor.steps").c_str());
+            HoverTooltip(FormatKeyBinds(Localisation::Get("runtime_editor.tooltip.steps")));
             ImGui::Separator();
 
             const std::string defaultLabel = Localisation::Get("runtime_editor.steps.default");
@@ -2659,47 +2641,12 @@ namespace RuntimeEditorUi {
 
                 ImGui::PopID();
             }
-        }
 
-        if (stepsMenuOpen) ImGui::End();
-
-        ImGui::SameLine();
-
-        // ---- History
-        if (ToolbarButton("history", ICON_FA_CLOCK_ROTATE_LEFT, "H",
-                          Localisation::Get("editor.history") + "\n" + Localisation::Get("runtime_editor.tooltip.history"),
-                          MapEditorInternal::historyVisible))
-            MapEditorInternal::historyVisible = !MapEditorInternal::historyVisible;
-
-        ImGui::SameLine();
-
-        // ---- Tag Explorer
-        if (ToolbarButton("tag_explorer", ICON_FA_TAGS, "T",
-                          Localisation::Get("tag_explorer.title") + "\n" + Localisation::Get("tag_explorer.tooltip"),
-                          MapEditorInternal::tagExplorerVisible))
-            MapEditorInternal::tagExplorerVisible = !MapEditorInternal::tagExplorerVisible;
-
-        ImGui::SameLine();
-
-        // ---- Comments
-        if (ToolbarButton("comments", ICON_FA_NOTE_STICKY, "C",
-                          Localisation::Get("comments.title") + "\n" + MapEditorInternal::FormatKeyBinds(Localisation::Get("comments.tooltip")),
-                          MapEditorInternal::commentsVisible))
-            MapEditorInternal::commentsVisible = !MapEditorInternal::commentsVisible;
-
-        ImGui::SameLine();
-
-        // ---- Statistics
-        if (ToolbarButton("statistics", ICON_FA_CHART_SIMPLE, "St",
-                          Localisation::Get("runtime_editor.statistics") + "\n" + Localisation::Get("runtime_editor.tooltip.statistics"),
-                          statisticsMenuOpen))
-            statisticsMenuOpen = !statisticsMenuOpen;
-
-        if (statisticsMenuOpen && BeginToolbarMenu("##RuntimeEditorStatistics")) {
             // ImGui's own running average, so the number is readable instead
             // of changing every frame.
             const float framerate = ImGui::GetIO().Framerate;
 
+            ImGui::Spacing();
             ImGui::TextUnformatted(Localisation::Get("runtime_editor.statistics").c_str());
             ImGui::Separator();
             ImGui::Text("%s: %.0f", Localisation::Get("runtime_editor.statistics.fps").c_str(), framerate);
@@ -2707,9 +2654,33 @@ namespace RuntimeEditorUi {
                         framerate > 0.0f ? 1000.0f / framerate : 0.0f);
         }
 
-        if (statisticsMenuOpen) ImGui::End();
+        if (moreMenuShown) ImGui::End();
+    }
 
-        ImGui::End();
+    // A strip along the top of the Scene panel, above the 3D view, so the
+    // windows around the panel never cover it. Greyed out while looking
+    // around.
+    void DrawToolbarStrip() {
+        constexpr float PADDING = 4.0f;
+
+        const ImVec2 start = ImGui::GetCursorScreenPos();
+        const float width = ImGui::GetContentRegionAvail().x;
+        const float height = TOOLBAR_BUTTON_SIZE + PADDING * 2.0f;
+
+        ImGui::GetWindowDrawList()->AddRectFilled(start, ImVec2(start.x + width, start.y + height), ImGui::GetColorU32(ImGuiCol_MenuBarBg));
+
+        // Centred, by last frame's width.
+        static float buttonsWidth = 0.0f;
+        ImGui::SetCursorScreenPos(ImVec2(start.x + std::max(PADDING, (width - buttonsWidth) * 0.5f), start.y + PADDING));
+
+        ImGui::BeginGroup();
+        ImGui::BeginDisabled(cameraLooking);
+        DrawToolbarButtons();
+        ImGui::EndDisabled();
+        ImGui::EndGroup();
+        buttonsWidth = ImGui::GetItemRectSize().x;
+
+        ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + height));
     }
 
     // The 3D view, rendered into a texture at this panel's size (see
@@ -2722,7 +2693,8 @@ namespace RuntimeEditorUi {
             ImGui::SetNextWindowDockID(dockSpaceID, ImGuiCond_FirstUseEver);
 
         // No scrolling (the wheel belongs to the 3D view), and clicking it
-        // doesn't lift it over other windows: the toolbar floats above it.
+        // doesn't lift it over other windows: the toolbar's menus float
+        // above it.
         // No keyboard navigation inside it, so Space and the arrow keys (fly
         // keys) never press the view or draw a nav frame around it.
         constexpr ImGuiWindowFlags sceneFlags =
@@ -2743,6 +2715,8 @@ namespace RuntimeEditorUi {
             ImGui::End();
             return;
         }
+
+        DrawToolbarStrip();
 
         const ImVec2 min = ImGui::GetCursorScreenPos();
         const ImVec2 available = ImGui::GetContentRegionAvail();
@@ -2813,10 +2787,7 @@ namespace RuntimeEditorUi {
         DrawScenePanel(level, MapEditorInternal::mainDockSpaceID);
 
         // No inspectors here: the 2D editor's one inspector shows the
-        // selection, which is shared.
-
-        // Hidden while looking around, like the panels it opens.
-        if (!cameraLooking) DrawToolbar();
+        // selection, which is shared. The toolbar is part of the Scene panel.
 
         // ── Drop textures straight onto geometry ─────────────────────────────
         // Watched through the live payload rather than a drop target, and

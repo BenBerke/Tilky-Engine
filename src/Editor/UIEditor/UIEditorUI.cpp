@@ -1322,7 +1322,10 @@ namespace {
     // ---------------------------------------------------------------------
 
     void DrawUIHierarchyPanel(Level& level) {
-        ImGui::Begin(Get("editor.ui.hierarchy").c_str());
+        // A window of its own, not the Map's Hierarchy (same title): drawn
+        // here while the map's dock space isn't, that one would be pulled
+        // out of the map's layout.
+        ImGui::Begin((Get("editor.ui.hierarchy") + "###UIHierarchy").c_str());
 
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - 4.0f);
         ImGui::InputText("##UIHierarchySearch", uiHierarchySearchBuf, sizeof(uiHierarchySearchBuf));
@@ -1544,9 +1547,10 @@ namespace {
     // is anonymous-namespace-local there and only ever gets called from
     // DrawEditorUI(), so it never renders while in the UI Editor. This
     // mirrors that function's body closely enough to behave the same,
-    // using the SAME window title/localisation key and the SAME shared
-    // `assetBrowser`/`assetBrowserInitialized` externs, so it's the same
-    // persistent window either editor draws it from, not a second one.
+    // using the same window title and the SAME shared
+    // `assetBrowser`/`assetBrowserInitialized` externs. Its window is the
+    // UI editor's own (###UIAssetBrowser): drawn here while the map's dock
+    // space isn't, the map's one would be pulled out of the map's layout.
     // ---------------------------------------------------------------------
 
     void DrawUIAssetBrowserPanel() {
@@ -1555,7 +1559,7 @@ namespace {
             assetBrowserInitialized = true;
         }
 
-        ImGui::Begin(Get("editor.asset_browser").c_str());
+        ImGui::Begin((Get("editor.asset_browser") + "###UIAssetBrowser").c_str());
 
         if (ImGui::Button(Get("editor.asset_browser.refresh").c_str()))
             assetBrowser.Refresh();
