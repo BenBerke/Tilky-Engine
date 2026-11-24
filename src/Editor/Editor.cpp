@@ -71,12 +71,21 @@ namespace {
     float panCursorY = 0.0f;
     std::optional<SDL_Rect> mouseRectBeforePan;
 
+    // The OS window the map panel is in (the editor's, or its own when
+    // pulled out), held while locked.
+    SDL_Window* panWindow = nullptr;
+
     void SetPanCursorLocked(const bool locked) {
-        SDL_Window* window = Editor::GetWindow();
-        if (window == nullptr || locked == panCursorLocked) return;
+        if (locked == panCursorLocked) return;
+
+        SDL_Window* window = locked ? MapEditorInternal::PanelSdlWindow(MapEditorInternal::mapPanelWindowID) : panWindow;
+        if (window == nullptr) return;
 
         if (locked) {
-            SDL_GetMouseState(&panCursorX, &panCursorY);
+            panWindow = window;
+            const Vector2 inWindow = MapEditorInternal::MouseInPanelWindow(MapEditorInternal::mapPanelWindowID);
+            panCursorX = inWindow.x;
+            panCursorY = inWindow.y;
 
             const SDL_Rect* previousRect = SDL_GetWindowMouseRect(window);
             mouseRectBeforePan = previousRect != nullptr ? std::optional<SDL_Rect>{*previousRect} : std::nullopt;
@@ -99,6 +108,7 @@ namespace {
 
         InputManager::SetRelativeMouseMode(window, false);
         panCursorLocked = false;
+        panWindow = nullptr;
         mouseRectBeforePan.reset();
     }
 
@@ -330,10 +340,12 @@ namespace Editor {
 
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // When you comment this out somethings break for some reason
-        // No ImGuiConfigFlags_ViewportsEnable: the SDL_Renderer backend the
-        // editor used couldn't put panels in windows of their own, so they
-        // always stayed inside the editor window. The OpenGL backend can, but
-        // only with platform windows managed every frame; they stay inside.
+        // Panels can be pulled out of the editor window, Unity style: each
+        // becomes an OS window of its own (drawn at the end of Update()),
+        // without a task bar button. ImGui positions are then desktop
+        // positions - see MapEditorInternal::EditorMousePosition.
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+        io.ConfigViewportsNoTaskBarIcon = true;
 
         // The editor's own text font. The script editor's monospace font is
         // added first, so without this it would be the default for the whole UI.
@@ -362,6 +374,18 @@ namespace Editor {
         // the cursor go.
         SetPanCursorLocked(false);
         StopRuntimeView();
+
+        // Panels pulled out of the window would stay up, frozen, through
+        // Play; they come back with the editor's next frame.
+        // (Not DestroyPlatformWindows(): that also ends the editor window's
+        // own platform data, which ImGui needs until Destroy().)
+        if (imguiContext != nullptr) {
+            ImGui::SetCurrentContext(imguiContext);
+            ImGuiContext& g = *GImGui;
+            for (ImGuiViewport* viewport : g.Viewports)
+                if (viewport != ImGui::GetMainViewport() && viewport->PlatformWindowCreated)
+                    ImGui::DestroyPlatformWindow(static_cast<ImGuiViewportP*>(viewport));
+        }
         editorRunning = false;
 
 #ifndef TILKY_STANDALONE
@@ -516,6 +540,17 @@ namespace Editor {
 
         glViewport(0, 0, windowWidth, windowHeight);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // The panels pulled out of the window, each into its own OS window
+        // (its GL context shares textures with this one); then this window's
+        // context is current again.
+        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+            SDL_Window* currentWindow = SDL_GL_GetCurrentWindow();
+            SDL_GLContext currentContext = SDL_GL_GetCurrentContext();
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+            SDL_GL_MakeCurrent(currentWindow, currentContext);
+        }
 
         if (sceneRunning) {
             // Its overlays, then its input (as it always ran: after drawing).

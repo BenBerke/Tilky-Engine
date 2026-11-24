@@ -214,6 +214,12 @@ bool OpenGL::InitializeOpenGL() {
         return false;
     }
 
+    // Back to what the window has (its pixel format was picked when it was
+    // created, see InitSDL): the attributes stay set for every window made
+    // later, and no pixel format has a 64-bit depth buffer - the editor's
+    // panels pulled out into windows of their own couldn't be created.
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress))) {
         spdlog::critical("Failed to initialize GLAD");
         return false;

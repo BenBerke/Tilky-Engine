@@ -360,7 +360,17 @@ namespace EditorStyle {
 
         activeDesign = design->id;
 
-        if (ImGui::GetCurrentContext() != nullptr) design->apply();
+        if (ImGui::GetCurrentContext() == nullptr) return;
+
+        design->apply();
+
+        // Panels pulled out of the editor window are OS windows of their own:
+        // square and opaque there, as ImGui recommends, so they look the same.
+        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+            ImGuiStyle& style = ImGui::GetStyle();
+            style.WindowRounding = 0.0f;
+            style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+        }
     }
 }
 

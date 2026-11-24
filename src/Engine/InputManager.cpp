@@ -24,6 +24,8 @@ namespace {
     bool relativeMouseMode = false;
 
     bool quitRequested = false;
+    // The window InputManager was initialized with (0: none).
+    SDL_WindowID mainWindowID = 0;
 
     std::vector<InputManager::DroppedFile> droppedFiles;
 
@@ -306,6 +308,7 @@ namespace {
 
 namespace InputManager {
     void Initialize(SDL_Window* window) {
+        mainWindowID = window != nullptr ? SDL_GetWindowID(window) : 0;
         SDL_PumpEvents();
 
         keyboardState = SDL_GetKeyboardState(nullptr);
@@ -351,8 +354,12 @@ namespace InputManager {
                 case SDL_EVENT_MOUSE_WHEEL: mouseWheelScrollAmount += event.wheel.y; break;
                 case SDL_EVENT_QUIT: quitRequested = true; break;
                 // SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE is off in the engine, so
-                // closing the window doesn't end SDL; treat it as a quit.
-                case SDL_EVENT_WINDOW_CLOSE_REQUESTED: quitRequested = true; break;
+                // closing the window doesn't end SDL; treat it as a quit. Only
+                // the main window: a panel pulled out of the editor into a
+                // window of its own closes just that panel (ImGui's backend).
+                case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                    if (mainWindowID == 0 || event.window.windowID == mainWindowID) quitRequested = true;
+                    break;
                 case SDL_EVENT_DROP_BEGIN: externalDragActive = true; break;
 
                 case SDL_EVENT_DROP_POSITION:

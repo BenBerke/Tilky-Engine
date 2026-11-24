@@ -6637,8 +6637,50 @@ namespace MapEditorInternal {
     }
 
     Vector2 MapMousePosition() {
-        const Vector2 mouse = InputManager::GetMousePosition();
+        const Vector2 mouse = EditorMousePosition();
         return {mouse.x - mapPanelOrigin.x, mouse.y - mapPanelOrigin.y};
+    }
+
+    Vector2 EditorMousePosition() {
+        if (ImGui::GetCurrentContext() != nullptr && ImGui::IsMousePosValid()) {
+            const ImVec2 mouse = ImGui::GetIO().MousePos;
+            return {mouse.x, mouse.y};
+        }
+
+        // No position from ImGui (the mouse left every window): the editor
+        // window's, moved to where that window is.
+        const Vector2 mouse = InputManager::GetMousePosition();
+        const ImVec2 origin = ImGui::GetCurrentContext() != nullptr ? ImGui::GetMainViewport()->Pos : ImVec2(0.0f, 0.0f);
+        return {mouse.x + origin.x, mouse.y + origin.y};
+    }
+
+    namespace {
+        const ImGuiViewport* ViewportOfWindow(const ImGuiID windowID) {
+            const ImGuiWindow* window = windowID != 0 ? ImGui::FindWindowByID(windowID) : nullptr;
+            return window != nullptr && window->Viewport != nullptr ? window->Viewport : ImGui::GetMainViewport();
+        }
+    }
+
+    SDL_Window* PanelSdlWindow(const ImGuiID windowID) {
+        if (ImGui::GetCurrentContext() == nullptr) return Editor::GetWindow();
+
+        // The SDL3 backend keeps each OS window's SDL ID as its handle.
+        const ImGuiViewport* viewport = ViewportOfWindow(windowID);
+        SDL_Window* window = SDL_GetWindowFromID(static_cast<SDL_WindowID>(reinterpret_cast<intptr_t>(viewport->PlatformHandle)));
+        return window != nullptr ? window : Editor::GetWindow();
+    }
+
+    Vector2 MouseInPanelWindow(const ImGuiID windowID) {
+        const Vector2 mouse = EditorMousePosition();
+        if (ImGui::GetCurrentContext() == nullptr) return mouse;
+
+        const ImVec2 origin = ViewportOfWindow(windowID)->Pos;
+        return {mouse.x - origin.x, mouse.y - origin.y};
+    }
+
+    Vector2 MouseInEditorWindow() {
+        // Window ID 0: the main viewport, the editor window.
+        return MouseInPanelWindow(0);
     }
 
     ImGuiID ScenePanelWindowID() {

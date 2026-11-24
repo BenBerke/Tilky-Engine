@@ -1002,7 +1002,7 @@ namespace MapEditorInternal {
             return uiDragPart;
         if (uiDragMode != UIDragMode::None || uiMouseBlockedLastFrame) return UI_GIZMO_NONE;
 
-        return PickUIGizmoPart(InputManager::GetMousePosition());
+        return PickUIGizmoPart(MouseInEditorWindow());
     }
 
     const std::vector<UISnapGuide>& GetUISnapGuides() {
@@ -1013,7 +1013,7 @@ namespace MapEditorInternal {
         if (uiDragMode != UIDragMode::BoxSelect) return false;
 
         *startScreen = UICanvasToScreen(uiDragStartMouseCanvas);
-        *endScreen = InputManager::GetMousePosition();
+        *endScreen = MouseInEditorWindow();
         return true;
     }
 
@@ -1129,7 +1129,7 @@ namespace MapEditorInternal {
 
         SyncUISelection(level);
 
-        const Vector2 mouseScreen = InputManager::GetMousePosition();
+        const Vector2 mouseScreen = MouseInEditorWindow();
         const Vector2 mouseCanvas = ScreenToUICanvas(mouseScreen);
 
         // A drag keeps going over a panel, so releasing there still ends it.

@@ -57,6 +57,23 @@ namespace MapEditorInternal {
     // panel's origin. What WorldToScreen/ScreenToWorld work in.
     [[nodiscard]] Vector2 MapMousePosition();
 
+    // The mouse in ImGui's positions. Panels can be pulled out of the
+    // editor window (multi-viewports), so ImGui positions are desktop
+    // positions, not the window's: anything compared with a panel's rect or
+    // drawn on it uses this, never InputManager::GetMousePosition().
+    [[nodiscard]] Vector2 EditorMousePosition();
+
+    // The OS window an ImGui window (a panel) is in - the editor's, or its
+    // own once pulled out - and the mouse in that OS window's coordinates,
+    // for cursor locks and warps.
+    [[nodiscard]] SDL_Window* PanelSdlWindow(ImGuiID windowID);
+    [[nodiscard]] Vector2 MouseInPanelWindow(ImGuiID windowID);
+
+    // The mouse in the editor window's own coordinates, wherever it is (also
+    // while a drag from a pulled-out panel holds the mouse): the UI editor's
+    // canvas, drawn into that window.
+    [[nodiscard]] Vector2 MouseInEditorWindow();
+
     // The editor's two side-by-side panels: the 2D map and the runtime
     // editor's 3D view (Scene).
     enum class EditorPanel {

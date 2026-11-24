@@ -370,7 +370,7 @@ namespace MapEditorInternal {
 
         void CanvasLabels(Frame& frame, Level& level, const std::unordered_map<ID, const ComponentUITransform*>& transformsByOwner) {
             if (const std::string& readout = GetUIDragReadout(); !readout.empty()) {
-                const Vector2 mouse = InputManager::GetMousePosition();
+                const Vector2 mouse = MouseInEditorWindow();
                 Tag(frame, readout, {mouse.x + 16.0f, mouse.y + 16.0f});
                 return;
             }

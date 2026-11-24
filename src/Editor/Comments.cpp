@@ -118,7 +118,9 @@ namespace Comments {
         if (!showIcons || level.comments.empty()) return;
 
         if (drawList == nullptr) drawList = ImGui::GetBackgroundDrawList();
-        const Vector2 mouse = InputManager::GetMousePosition();
+        // ImGui's positions, like the icons (panels can be in other windows).
+        const ImVec2 imguiMouse = ImGui::GetIO().MousePos;
+        const Vector2 mouse = {imguiMouse.x, imguiMouse.y};
         const EditorComment* hovered = nullptr;
 
         for (const EditorComment& comment : level.comments) {

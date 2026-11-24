@@ -328,7 +328,11 @@ namespace {
     bool cameraLooking = false;
 
     bool cursorLocked = false;
+    // Where the cursor was: in ImGui's positions, and in the OS window that
+    // was locked (the Scene panel's).
     Vector2 cursorBeforeLock = {};
+    Vector2 cursorBeforeLockInWindow = {};
+    SDL_Window* lockWindow = nullptr;
     std::optional<SDL_Rect> mouseRectBeforeLock;
 
     // Set true to print the live payload next to the cursor while dragging.
@@ -554,43 +558,53 @@ namespace {
         if (locked) {
             if (cursorLocked) return;
 
-            SDL_GetMouseState(&cursorBeforeLock.x, &cursorBeforeLock.y);
+            // The Scene panel's OS window: the editor's, or its own when the
+            // panel was pulled out. Kept until unlocked.
+            lockWindow = MapEditorInternal::PanelSdlWindow(MapEditorInternal::ScenePanelWindowID());
 
-            const SDL_Rect* previousRect = SDL_GetWindowMouseRect(editorWindow);
+            // In ImGui's positions (the Scene panel's), and in that window's.
+            cursorBeforeLock = MapEditorInternal::EditorMousePosition();
+            const Vector2 inWindow = MapEditorInternal::MouseInPanelWindow(MapEditorInternal::ScenePanelWindowID());
+            cursorBeforeLockInWindow = inWindow;
+
+            const SDL_Rect* previousRect = SDL_GetWindowMouseRect(lockWindow);
             mouseRectBeforeLock = previousRect != nullptr
                 ? std::optional<SDL_Rect>{*previousRect}
                 : std::nullopt;
 
-            InputManager::SetRelativeMouseMode(editorWindow, true);
+            InputManager::SetRelativeMouseMode(lockWindow, true);
 
             const SDL_Rect lockRect = {
-                static_cast<int>(cursorBeforeLock.x),
-                static_cast<int>(cursorBeforeLock.y),
+                static_cast<int>(cursorBeforeLockInWindow.x),
+                static_cast<int>(cursorBeforeLockInWindow.y),
                 1, 1
             };
 
-            if (!SDL_SetWindowMouseRect(editorWindow, &lockRect))
+            if (!SDL_SetWindowMouseRect(lockWindow, &lockRect))
                 spdlog::warn("Runtime editor could not fix the cursor position: {}", SDL_GetError());
 
             cursorLocked = true;
             return;
         }
 
+        SDL_Window* window = lockWindow != nullptr ? lockWindow : editorWindow;
+
         if (cursorLocked) {
             if (!SDL_SetWindowMouseRect(
-                    editorWindow,
+                    window,
                     mouseRectBeforeLock.has_value() ? &*mouseRectBeforeLock : nullptr))
                 spdlog::warn("Runtime editor could not restore the mouse rectangle: {}", SDL_GetError());
 
             // Do not move the pointer over another application after focus loss.
-            if (SDL_GetMouseFocus() == editorWindow)
-                SDL_WarpMouseInWindow(editorWindow, cursorBeforeLock.x, cursorBeforeLock.y);
+            if (SDL_GetMouseFocus() == window)
+                SDL_WarpMouseInWindow(window, cursorBeforeLockInWindow.x, cursorBeforeLockInWindow.y);
 
             cursorLocked = false;
             mouseRectBeforeLock.reset();
         }
 
-        InputManager::SetRelativeMouseMode(editorWindow, false);
+        InputManager::SetRelativeMouseMode(window, false);
+        lockWindow = nullptr;
     }
 
     // The gizmo only shows while an entity's inspector is open.
@@ -2011,7 +2025,7 @@ namespace {
         if (slopeDrag.active) {
             char text[64];
             std::snprintf(text, sizeof(text), "%.1f\xC2\xB0", surface->slopeStrength);
-            const Vector2 mouse = InputManager::GetMousePosition();
+            const Vector2 mouse = MapEditorInternal::EditorMousePosition();
             drawList->AddText({mouse.x + 14.0f, mouse.y + 10.0f}, IM_COL32(255, 255, 255, 255), text);
         }
     }
@@ -2764,7 +2778,7 @@ namespace RuntimeEditorUi {
                     view,
                     gizmoTool,
                     *gizmoTarget,
-                    InputManager::GetMousePosition(),
+                    MapEditorInternal::EditorMousePosition(),
                     !cameraLooking && sceneMouseFree
                 );
             }
@@ -2948,7 +2962,10 @@ namespace RuntimeEditor {
         // every frame would drop the drag the moment you swing past a panel.
         // sceneHovered, not sceneMouseFree: middle-click does not close popups,
         // so an open toolbar menu (Steps, Statistics) would block looking.
-        const bool windowFocused = editorWindow != nullptr && SDL_GetKeyboardFocus() == editorWindow;
+        // The OS window the Scene panel is in has the keyboard (its own,
+        // when the panel was pulled out of the editor window).
+        const bool windowFocused = editorWindow != nullptr &&
+            SDL_GetKeyboardFocus() == MapEditorInternal::PanelSdlWindow(MapEditorInternal::ScenePanelWindowID());
         const bool wantLook =
             windowFocused &&
             middleHeld &&
@@ -3053,7 +3070,7 @@ namespace RuntimeEditor {
             ? Vector2{viewportSize.x * 0.5f, viewportSize.y * 0.5f}
             : draggingUv
                 ? cursorBeforeLock - sceneOrigin
-                : InputManager::GetMousePosition() - sceneOrigin;
+                : MapEditorInternal::EditorMousePosition() - sceneOrigin;
 
         const Vector3 rayDirection = GetMouseRayDirection(
             *camera,
@@ -3202,7 +3219,7 @@ namespace RuntimeEditor {
             !cameraLooking) {
             gizmoChangedTransform = false;
 
-            if (TransformGizmo::BeginDrag(gizmoView, gizmoTool, *gizmoTarget, InputManager::GetMousePosition()))
+            if (TransformGizmo::BeginDrag(gizmoView, gizmoTool, *gizmoTarget, MapEditorInternal::EditorMousePosition()))
                 gizmoUndo = CaptureEntities(level, gizmoTool == TransformGizmo::Tool::Move
                     ? "runtime_editor.history.move_entities"
                     : "runtime_editor.history.rotate_entities");
@@ -3214,7 +3231,7 @@ namespace RuntimeEditor {
             const Vector3 positionBefore = gizmoTarget->position;
             const Quaternion rotationBefore = gizmoTarget->rotation;
 
-            if (TransformGizmo::UpdateDrag(gizmoView, *gizmoTarget, InputManager::GetMousePosition(), snap)) {
+            if (TransformGizmo::UpdateDrag(gizmoView, *gizmoTarget, MapEditorInternal::EditorMousePosition(), snap)) {
                 gizmoChangedTransform = true;
 
                 // Lighting and the entity's sector both follow its position.
@@ -3249,7 +3266,7 @@ namespace RuntimeEditor {
         // Slope handles of the selected floor or ceiling, before the texture
         // drag, so a press on a handle doesn't slide the texture under it.
         hoveredSlopeHandle = haveGizmoView && windowFocused && !mouseBlockedByImGui && !cameraLooking && !draggingUv
-            ? PickSlopeHandle(level, gizmoView, InputManager::GetMousePosition())
+            ? PickSlopeHandle(level, gizmoView, MapEditorInternal::EditorMousePosition())
             : -1;
 
         const bool slopeDragTakesMouse = haveGizmoView && UpdateSlopeDrag(level, gizmoView,

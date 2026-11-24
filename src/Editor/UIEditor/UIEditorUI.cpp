@@ -1324,7 +1324,14 @@ namespace {
     void DrawUIHierarchyPanel(Level& level) {
         // A window of its own, not the Map's Hierarchy (same title): drawn
         // here while the map's dock space isn't, that one would be pulled
-        // out of the map's layout.
+        // out of the map's layout. First shown inside the editor window: sized
+        // to its contents it would be taller than the window, and stick out
+        // into a window of its own.
+        {
+            const ImGuiViewport* viewport = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 10.0f, viewport->WorkPos.y + 50.0f), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(280.0f, viewport->WorkSize.y * 0.5f), ImGuiCond_FirstUseEver);
+        }
         ImGui::Begin((Get("editor.ui.hierarchy") + "###UIHierarchy").c_str());
 
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - 4.0f);
@@ -1559,6 +1566,13 @@ namespace {
             assetBrowserInitialized = true;
         }
 
+        // First shown inside the editor window, along its bottom left (sized
+        // to its contents it would stick out, into a window of its own).
+        {
+            const ImGuiViewport* viewport = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 10.0f, viewport->WorkPos.y + viewport->WorkSize.y * 0.58f), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x * 0.45f, viewport->WorkSize.y * 0.4f), ImGuiCond_FirstUseEver);
+        }
         ImGui::Begin((Get("editor.asset_browser") + "###UIAssetBrowser").c_str());
 
         if (ImGui::Button(Get("editor.asset_browser.refresh").c_str()))
@@ -1864,7 +1878,7 @@ namespace {
         // under the cursor.
         std::string droppedPrefab;
         if (AcceptCanvasAssetDrop(dockspaceID, AssetKind::Prefab, droppedPrefab))
-            PlaceUIPrefab(droppedPrefab, ScreenToUICanvas(InputManager::GetMousePosition()));
+            PlaceUIPrefab(droppedPrefab, ScreenToUICanvas(MouseInEditorWindow()));
 
         ImGui::End();
     }
