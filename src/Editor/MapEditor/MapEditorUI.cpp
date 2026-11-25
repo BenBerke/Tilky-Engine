@@ -6,6 +6,7 @@
 #include "Headers/Runtime/RuntimeEditor/RuntimeEditor.hpp"
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
 #include "Headers/Runtime/SaveSystem.hpp"
+#include "Headers/Runtime/Sound/SoundManager.hpp"
 #include "../EditorInternal.hpp"
 #include "Headers/Editor/TagExplorer.hpp"
 #include "Headers/Editor/Comments.hpp"
@@ -238,6 +239,16 @@ namespace {
     // Set when a quit was held back for the running export.
     bool exitAfterGameExport = false;
     bool exportQuitPopupRequested = false;
+
+    // Sounds and the texture atlas load in the background after the editor
+    // opens. Save & Play pressed before they are in waits for them, so Play
+    // never starts with anything missing.
+    bool playWhenLoaded = false;
+
+    bool BackgroundLoadsPending() {
+        const IRenderer* renderer = RuntimeSession::GetRenderer();
+        return SoundManager::IsBackgroundLoading() || (renderer != nullptr && renderer->IsBackgroundLoading());
+    }
 
     void CancelGameExport(GameExportJob& job) {
         std::lock_guard lock(job.processMutex);
@@ -3182,6 +3193,13 @@ namespace {
             ClearUIUnsavedChanges();
             SDL_Log("%s", Editor::currentMap.c_str());
             CancelActiveDrawing(); // don't leave a half-drawn shape pending while playing
+
+            // DrawPlayWaitModal starts it once everything is in.
+            if (BackgroundLoadsPending()) {
+                playWhenLoaded = true;
+                return;
+            }
+
             quit = true;
             play = true;
         }
@@ -3591,6 +3609,70 @@ namespace {
         }
     }
 
+    // One bar for the sounds and the texture atlas loading in the background.
+    void DrawBackgroundLoadBar(const float width) {
+        const SoundManager::BackgroundLoadProgress sounds = SoundManager::GetBackgroundLoadProgress();
+        const IRenderer* renderer = RuntimeSession::GetRenderer();
+        const IRenderer::BackgroundLoadProgress textures =
+            renderer != nullptr ? renderer->GetBackgroundLoadProgress() : IRenderer::BackgroundLoadProgress{};
+
+        const bool soundsLoading = SoundManager::IsBackgroundLoading();
+        const bool texturesLoading = renderer != nullptr && renderer->IsBackgroundLoading();
+
+        // Until both folders are scanned the totals aren't known; the bar
+        // sits at the start rather than jumping back.
+        const size_t total = sounds.total + textures.total;
+        const size_t done = std::min(sounds.done + textures.done, total);
+        const bool scanned = (!soundsLoading || sounds.listed) && (!texturesLoading || textures.listed);
+        const float progress = scanned && total > 0 ? static_cast<float>(done) / static_cast<float>(total) : 0.0f;
+
+        char label[64];
+        std::snprintf(label, sizeof(label), Get("editor.loading.progress").c_str(), static_cast<int>(progress * 100.0f));
+        ImGui::ProgressBar(progress, ImVec2(width, ImGui::GetTextLineHeightWithSpacing()), label);
+
+        if (ImGui::BeginItemTooltip()) {
+            if (soundsLoading) {
+                if (sounds.listed) ImGui::Text(Get("editor.loading.sounds").c_str(), static_cast<int>(sounds.done), static_cast<int>(sounds.total));
+                else ImGui::Text("%s", Get("editor.loading.sounds_scanning").c_str());
+            }
+            if (texturesLoading) {
+                if (textures.listed) ImGui::Text(Get("editor.loading.textures").c_str(), static_cast<int>(textures.done), static_cast<int>(textures.total));
+                else ImGui::Text("%s", Get("editor.loading.textures_scanning").c_str());
+            }
+            ImGui::TextDisabled("%s", Get("editor.loading.tooltip").c_str());
+            ImGui::EndTooltip();
+        }
+    }
+
+    // Save & Play pressed while sounds or textures were still loading: Play
+    // starts by itself once they are in, unless cancelled.
+    void DrawPlayWaitModal() {
+        if (!playWhenLoaded) return;
+
+        if (!BackgroundLoadsPending()) {
+            playWhenLoaded = false;
+            quit = true;
+            play = true;
+            return;
+        }
+
+        if (!ImGui::IsPopupOpen("##PlayWaitForLoad")) ImGui::OpenPopup("##PlayWaitForLoad");
+
+        if (ImGui::BeginPopupModal("##PlayWaitForLoad", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+            ImGui::Text("%s", Get("editor.loading.play_wait_message").c_str());
+            ImGui::Spacing();
+            DrawBackgroundLoadBar(std::max(ImGui::GetContentRegionAvail().x, 320.0f));
+            ImGui::Spacing();
+
+            if (ImGui::Button(Get("common.cancel").c_str())) {
+                playWhenLoaded = false;
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+    }
+
     void DrawMainMenuBar() {
         if (ImGui::BeginMainMenuBar()) {
             if (ImGui::BeginMenu(Get("editor.menu.project").c_str())) {
@@ -3654,6 +3736,11 @@ namespace {
                 DrawGameExportBar(GameExportBarWidth());
             }
 
+            if (BackgroundLoadsPending()) {
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetStyle().ItemSpacing.x);
+                DrawBackgroundLoadBar(GameExportBarWidth());
+            }
+
             ImGui::EndMainMenuBar();
         }
 
@@ -3668,6 +3755,7 @@ namespace {
 
         DrawShutdownConfirmModal();
         DrawExportQuitModal();
+        DrawPlayWaitModal();
         DrawExportRendererModal();
         DrawRendererRestartModal();
     }

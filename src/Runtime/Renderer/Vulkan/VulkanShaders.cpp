@@ -19,14 +19,22 @@
 #include "Headers/Runtime/Renderer/Vulkan/Vulkan.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <type_traits>
 
+#include <glslang/build_info.h>
 #include <glslang/Include/glslang_c_interface.h>
 #include <glslang/Public/resource_limits_c.h>
 #include <spdlog/spdlog.h>
+
+#include "Headers/Engine/BuildVariant.hpp"
+#include "Headers/Project/ProjectManager.hpp"
 
 using namespace VulkanInternal;
 
@@ -483,6 +491,208 @@ namespace {
         return out;
     }
 
+    // ---- Shader cache ----
+    //
+    // Translating and compiling every program took ~2 s of each engine
+    // start. The engine keeps what it made under the user's Tilky Engine
+    // folder and reuses it while the input is the same: the GLSL of both
+    // stages, the define, glslang's version and this file's build stamp (the
+    // translator above lives here, so rebuilding it starts the cache over).
+    // The exported game compiles as before: it doesn't write to the player's
+    // Documents folder.
+
+    constexpr uint32_t CACHE_FORMAT = 1;
+    constexpr char CACHE_MAGIC[4] = {'T', 'S', 'P', 'V'};
+    constexpr const char* CACHE_EXTENSION = ".tspv";
+    // Files no engine has used for this long are removed when a new one is written.
+    constexpr auto CACHE_UNUSED_LIFETIME = std::chrono::hours(24 * 30);
+
+    struct CachedProgram {
+        std::unordered_map<std::string, UniformField> uniforms;
+        uint32_t blockSize = 0;
+        bool writesClipDistance = false;
+        std::vector<uint32_t> vertexSpirv;
+        std::vector<uint32_t> fragmentSpirv;
+    };
+
+    std::filesystem::path ShaderCacheFolder() {
+        return ProjectManager::GetDefaultProjectsFolder().parent_path() / "Cache" / "VulkanShaders";
+    }
+
+    std::string ShaderCacheInput(const std::string& name, const char* define, const std::string& vertexSource,
+                                 const std::string& fragmentSource) {
+        std::string input = "build " __DATE__ " " __TIME__ "\n";
+        input += "glslang " + std::to_string(GLSLANG_VERSION_MAJOR) + "." + std::to_string(GLSLANG_VERSION_MINOR) + "." +
+                 std::to_string(GLSLANG_VERSION_PATCH) + GLSLANG_VERSION_FLAVOR + "\n";
+        input += name;
+        input += '\0';
+        input += define != nullptr ? define : "";
+        input += '\0';
+        input += vertexSource;
+        input += '\0';
+        input += fragmentSource;
+        return input;
+    }
+
+    std::filesystem::path ShaderCachePath(const std::string& name, const std::string& input) {
+        // The name keeps the folder readable; the hash tells inputs apart (the
+        // file holds the whole input too, so a clash just misses).
+        std::string fileName;
+        for (const char c : name) fileName += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
+
+        char hash[17];
+        std::snprintf(hash, sizeof(hash), "%016llx", static_cast<unsigned long long>(std::hash<std::string>{}(input)));
+        return ShaderCacheFolder() / (fileName + "-" + hash + CACHE_EXTENSION);
+    }
+
+    template <typename T>
+    void WriteValue(std::string& out, const T& value) {
+        static_assert(std::is_trivially_copyable_v<T>);
+        out.append(reinterpret_cast<const char*>(&value), sizeof(T));
+    }
+
+    void WriteString(std::string& out, const std::string& text) {
+        WriteValue(out, static_cast<uint64_t>(text.size()));
+        out += text;
+    }
+
+    void WriteWords(std::string& out, const std::vector<uint32_t>& words) {
+        WriteValue(out, static_cast<uint64_t>(words.size()));
+        out.append(reinterpret_cast<const char*>(words.data()), words.size() * sizeof(uint32_t));
+    }
+
+    struct CacheReader {
+        const std::string& data;
+        size_t position = 0;
+
+        template <typename T>
+        bool Read(T& value) {
+            static_assert(std::is_trivially_copyable_v<T>);
+            if (data.size() - position < sizeof(T)) return false;
+            std::memcpy(&value, data.data() + position, sizeof(T));
+            position += sizeof(T);
+            return true;
+        }
+
+        bool ReadString(std::string& text) {
+            uint64_t size = 0;
+            if (!Read(size) || data.size() - position < size) return false;
+            text.assign(data, position, size);
+            position += size;
+            return true;
+        }
+
+        bool ReadWords(std::vector<uint32_t>& words) {
+            uint64_t count = 0;
+            if (!Read(count) || count > (data.size() - position) / sizeof(uint32_t)) return false;
+            words.resize(count);
+            std::memcpy(words.data(), data.data() + position, count * sizeof(uint32_t));
+            position += count * sizeof(uint32_t);
+            return true;
+        }
+    };
+
+    bool LoadCachedProgram(const std::filesystem::path& path, const std::string& input, CachedProgram& out) {
+        std::string data;
+        if (!ReadFile(path, data)) return false;
+
+        CacheReader reader{data};
+
+        char magic[4];
+        uint32_t format = 0;
+        std::string storedInput;
+        if (!reader.Read(magic) || std::memcmp(magic, CACHE_MAGIC, 4) != 0 || !reader.Read(format) || format != CACHE_FORMAT ||
+            !reader.ReadString(storedInput) || storedInput != input)
+            return false;
+
+        uint64_t uniformCount = 0;
+        if (!reader.Read(out.blockSize) || !reader.Read(out.writesClipDistance) || !reader.Read(uniformCount)) return false;
+
+        for (uint64_t i = 0; i < uniformCount; ++i) {
+            std::string uniformName;
+            UniformField field;
+            if (!reader.ReadString(uniformName) || !reader.ReadString(field.type) || !reader.Read(field.offset) ||
+                !reader.Read(field.size) || !reader.Read(field.stride) || !reader.Read(field.count) || !reader.Read(field.sampler))
+                return false;
+            out.uniforms.emplace(std::move(uniformName), std::move(field));
+        }
+
+        if (!reader.ReadWords(out.vertexSpirv) || !reader.ReadWords(out.fragmentSpirv)) return false;
+        if (out.vertexSpirv.empty() || out.fragmentSpirv.empty() || reader.position != data.size()) return false;
+
+        // Used: it stays past the clean-up below.
+        std::error_code ec;
+        std::filesystem::last_write_time(path, std::filesystem::file_time_type::clock::now(), ec);
+        return true;
+    }
+
+    void RemoveUnusedCacheFiles() {
+        std::error_code ec;
+        const auto now = std::filesystem::file_time_type::clock::now();
+
+        for (std::filesystem::directory_iterator it(ShaderCacheFolder(), ec), end; !ec && it != end; it.increment(ec)) {
+            if (!it->is_regular_file() || it->path().extension() != CACHE_EXTENSION) continue;
+
+            std::error_code timeError;
+            const auto writeTime = it->last_write_time(timeError);
+            if (!timeError && now - writeTime > CACHE_UNUSED_LIFETIME) {
+                std::error_code removeError;
+                std::filesystem::remove(it->path(), removeError);
+            }
+        }
+    }
+
+    void SaveCachedProgram(const std::filesystem::path& path, const std::string& input, const Program& program,
+                           const std::vector<uint32_t>& vertexSpirv, const std::vector<uint32_t>& fragmentSpirv) {
+        std::string data;
+        data.append(CACHE_MAGIC, 4);
+        WriteValue(data, CACHE_FORMAT);
+        WriteString(data, input);
+        WriteValue(data, program.blockSize);
+        WriteValue(data, program.writesClipDistance);
+        WriteValue(data, static_cast<uint64_t>(program.uniforms.size()));
+
+        for (const auto& [uniformName, field] : program.uniforms) {
+            WriteString(data, uniformName);
+            WriteString(data, field.type);
+            WriteValue(data, field.offset);
+            WriteValue(data, field.size);
+            WriteValue(data, field.stride);
+            WriteValue(data, field.count);
+            WriteValue(data, field.sampler);
+        }
+
+        WriteWords(data, vertexSpirv);
+        WriteWords(data, fragmentSpirv);
+
+        std::error_code ec;
+        std::filesystem::create_directories(path.parent_path(), ec);
+        if (ec) {
+            spdlog::warn("Vulkan: can't create the shader cache folder {}: {}", path.parent_path().string(), ec.message());
+            return;
+        }
+
+        RemoveUnusedCacheFiles();
+
+        // Written aside and moved in, so another engine reading it never
+        // sees half a file.
+        std::filesystem::path temporary = path;
+        temporary += ".tmp" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+
+        {
+            std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+            if (!file || !file.write(data.data(), static_cast<std::streamsize>(data.size()))) {
+                spdlog::warn("Vulkan: can't write the shader cache file {}", temporary.string());
+                file.close();
+                std::filesystem::remove(temporary, ec);
+                return;
+            }
+        }
+
+        std::filesystem::rename(temporary, path, ec);
+        if (ec) std::filesystem::remove(temporary, ec);
+    }
+
     VkShaderModule MakeModule(const VkDevice device, const std::vector<uint32_t>& spirv) {
         VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
         info.codeSize = spirv.size() * sizeof(uint32_t);
@@ -510,14 +720,40 @@ size_t VulkanInternal::PipelineKeyHash::operator()(const PipelineKey& key) const
 std::unique_ptr<Program> Vulkan::LoadProgram(const std::string& name, const std::filesystem::path& vertexPath,
                                              const std::filesystem::path& fragmentPath, const char* define,
                                              std::vector<VertexAttribute> attributes) {
-    EnsureGlslang();
-
     std::string vertexSource;
     std::string fragmentSource;
     if (!ReadFile(vertexPath, vertexSource) || !ReadFile(fragmentPath, fragmentSource)) {
         spdlog::error("Vulkan: shader files for {} not found ({}, {})", name, vertexPath.string(), fragmentPath.string());
         return nullptr;
     }
+
+    const bool useCache = !BuildVariant::IsStandalone();
+    const std::string cacheInput = useCache ? ShaderCacheInput(name, define, vertexSource, fragmentSource) : std::string();
+    const std::filesystem::path cachePath = useCache ? ShaderCachePath(name, cacheInput) : std::filesystem::path();
+
+    if (CachedProgram cached; useCache && LoadCachedProgram(cachePath, cacheInput, cached)) {
+        auto program = std::make_unique<Program>();
+        program->name = name;
+        program->attributes = attributes;
+        program->uniforms = std::move(cached.uniforms);
+        program->blockSize = cached.blockSize;
+        program->values.assign(program->blockSize, 0);
+        program->writesClipDistance = cached.writesClipDistance;
+        program->vertex = MakeModule(device, cached.vertexSpirv);
+        program->fragment = MakeModule(device, cached.fragmentSpirv);
+
+        if (program->vertex != VK_NULL_HANDLE && program->fragment != VK_NULL_HANDLE) {
+            spdlog::info("Vulkan: loaded {} from the shader cache ({} uniform bytes)", name, program->blockSize);
+            return program;
+        }
+
+        // A file that doesn't make modules is compiled again below, and replaced.
+        spdlog::warn("Vulkan: the shader cache for {} didn't load; compiling it", name);
+        if (program->vertex != VK_NULL_HANDLE) vkDestroyShaderModule(device, program->vertex, nullptr);
+        if (program->fragment != VK_NULL_HANDLE) vkDestroyShaderModule(device, program->fragment, nullptr);
+    }
+
+    EnsureGlslang();
 
     std::string vertexCode;
     std::string fragmentCode;
@@ -570,6 +806,8 @@ std::unique_ptr<Program> Vulkan::LoadProgram(const std::string& name, const std:
         if (program->fragment != VK_NULL_HANDLE) vkDestroyShaderModule(device, program->fragment, nullptr);
         return nullptr;
     }
+
+    if (useCache) SaveCachedProgram(cachePath, cacheInput, *program, vertexSpirv, fragmentSpirv);
 
     spdlog::info("Vulkan: compiled {} ({} uniform bytes)", name, program->blockSize);
     return program;

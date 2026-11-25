@@ -4,10 +4,13 @@
 #include "Headers/Runtime/Renderer/RendererCore.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <set>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -57,10 +60,10 @@ namespace {
 
     // Every image the Asset Browser shows as a texture, anywhere under
     // Assets, as the same Assets-relative reference the browser hands out.
-    std::vector<std::string> CollectProjectImageFileNames() {
+    // Safe on any thread: the background atlas load runs it on a worker.
+    std::vector<std::string> CollectProjectImageFileNames(const fs::path& assetsPath) {
         static const std::set<std::string> kImageExtensions = {".png", ".jpg", ".jpeg"};
 
-        const fs::path assetsPath = ProjectManager::GetAssetsPath();
         std::vector<std::string> imageNames;
 
         std::error_code ec;
@@ -97,15 +100,168 @@ namespace {
     std::unordered_map<std::string, size_t> cachedWriteTimes; // project images only
 #endif
 
-    size_t WriteTimeHash(const std::string& fileName) {
+    std::vector<std::string> CollectProjectImageFileNames() {
+        return CollectProjectImageFileNames(ProjectManager::GetAssetsPath());
+    }
+
+    size_t WriteTimeHash(const fs::path& assetsPath, const std::string& fileName) {
         std::error_code ec;
-        const fs::file_time_type writeTime =
-            fs::last_write_time(ProjectManager::GetAssetsPath() / fs::path(fileName).lexically_normal(), ec);
+        const fs::file_time_type writeTime = fs::last_write_time(assetsPath / fs::path(fileName).lexically_normal(), ec);
         return ec ? 0 : std::hash<long long>{}(static_cast<long long>(writeTime.time_since_epoch().count()));
+    }
+
+    size_t WriteTimeHash(const std::string& fileName) {
+        return WriteTimeHash(ProjectManager::GetAssetsPath(), fileName);
+    }
+
+    // Reads an image to tightly packed RGBA8. Safe on any thread. The
+    // parallel decodes below are quiet: a file they can't read is tried
+    // again by GetDecodedImage, which reports it once.
+    bool DecodeImageFile(const fs::path& path, DecodedImage& out, const bool logErrors = true) {
+        std::error_code ec;
+        const fs::file_time_type writeTime = fs::last_write_time(path, ec);
+        if (ec) {
+            if (logErrors) spdlog::error("Texture file does not exist: {}", path.string());
+            return false;
+        }
+
+        const std::string key = path.string();
+        SDL_Surface* loadedSurface = IMG_Load(key.c_str());
+
+        if (loadedSurface == nullptr) {
+            if (logErrors) spdlog::error("IMG_Load failed for {}: {}", key, SDL_GetError());
+            return false;
+        }
+
+        SDL_Surface* surface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
+        SDL_DestroySurface(loadedSurface);
+
+        if (surface == nullptr) {
+            if (logErrors) spdlog::error("SDL_ConvertSurface failed for {}: {}", key, SDL_GetError());
+            return false;
+        }
+
+        out.width = surface->w;
+        out.height = surface->h;
+        out.writeTime = writeTime;
+        out.pixels.resize(static_cast<std::size_t>(out.width) * out.height * 4);
+
+        for (int row = 0; row < out.height; ++row) {
+            const unsigned char* srcRow = static_cast<unsigned char*>(surface->pixels) + row * surface->pitch;
+            std::memcpy(out.pixels.data() + static_cast<std::size_t>(row) * out.width * 4, srcRow, out.width * 4);
+        }
+
+        SDL_DestroySurface(surface);
+        return true;
+    }
+
+    // Decodes `paths` on several threads (this one among them); a file that
+    // fails stays empty. Stops early once `cancelled` is set, and counts
+    // each decoded file in `done`.
+    std::vector<std::optional<DecodedImage>> DecodeImagesInParallel(const std::vector<fs::path>& paths,
+                                                                     const std::atomic<bool>* cancelled = nullptr,
+                                                                     std::atomic<size_t>* done = nullptr) {
+        std::vector<std::optional<DecodedImage>> images(paths.size());
+        std::atomic<size_t> next{0};
+
+        const auto work = [&] {
+            while (cancelled == nullptr || !*cancelled) {
+                const size_t index = next.fetch_add(1);
+                if (index >= paths.size()) return;
+
+                if (DecodedImage image; DecodeImageFile(paths[index], image, false)) images[index] = std::move(image);
+                if (done != nullptr) done->fetch_add(1);
+            }
+        };
+
+        // Up to six threads, leaving cores for the editor and the sound load.
+        const unsigned cores = std::max(2u, std::thread::hardware_concurrency());
+        const size_t helperCount = std::min<size_t>({cores - 1, 5, paths.empty() ? 0 : paths.size() - 1});
+
+        std::vector<std::thread> helpers;
+        helpers.reserve(helperCount);
+        for (size_t i = 0; i < helperCount; ++i) helpers.emplace_back(work);
+
+        work();
+        for (std::thread& helper : helpers) helper.join();
+
+        return images;
     }
 }
 
+// The engine's first atlas: the image list, its write times and every image
+// decoded on a worker, then built on the main thread by UpdateBackgroundLoad
+// (or FinishBackgroundLoad, which Play calls) from what it left in the caches.
+struct RendererCore::BackgroundAtlasLoad {
+    fs::path assetsPath;
+    std::uint64_t imageGeneration = 0; // the image watcher's, read before the scan
+
+    // Written by the worker before `finished`.
+    std::vector<std::string> projectImages;
+    std::unordered_map<std::string, size_t> writeTimes;
+    std::vector<std::pair<std::string, DecodedImage>> decoded; // keyed as decodedImageCache is
+
+    std::atomic<bool> listed{false};
+    std::atomic<size_t> total{0};
+    std::atomic<size_t> done{0};
+    std::atomic<bool> cancelled{false};
+    std::atomic<bool> finished{false};
+
+    std::thread worker;
+
+    ~BackgroundAtlasLoad() {
+        cancelled = true;
+        if (worker.joinable()) worker.join();
+    }
+
+    void Run() {
+        projectImages = CollectProjectImageFileNames(assetsPath);
+
+        std::vector<fs::path> paths;
+        paths.reserve(projectImages.size());
+
+        for (const std::string& fileName : projectImages) {
+            if (cancelled) break;
+            writeTimes.emplace(fileName, WriteTimeHash(assetsPath, fileName));
+            paths.push_back(assetsPath / fs::path(fileName).lexically_normal());
+        }
+
+        total = paths.size();
+        listed = true;
+
+        std::vector<std::optional<DecodedImage>> images = DecodeImagesInParallel(paths, &cancelled, &done);
+
+        decoded.reserve(images.size());
+        for (size_t i = 0; i < images.size(); ++i)
+            if (images[i]) decoded.emplace_back(paths[i].string(), std::move(*images[i]));
+
+        finished = true;
+    }
+};
+
 bool RendererCore::BuildTextureAtlasFromLevel() {
+#ifndef TILKY_STANDALONE
+    // Still decoding: UpdateBackgroundLoad builds it, with whatever the
+    // level uses by then. Until then the 3D view draws untextured.
+    if (backgroundAtlas) return true;
+
+    // The engine's first atlas decodes in the background so the editor
+    // opens at once; the exported game builds its own before the first frame.
+    if (!backgroundAtlasStarted && !AtlasExists()) {
+        backgroundAtlasStarted = true;
+
+        auto job = std::make_shared<BackgroundAtlasLoad>();
+        job->assetsPath = ProjectManager::GetAssetsPath();
+        // Read before the scan, like below: a change during it rescans.
+        job->imageGeneration = imageWatcher.Generation(job->assetsPath);
+        job->worker = std::thread([raw = job.get()] { raw->Run(); });
+        backgroundAtlas = std::move(job);
+
+        spdlog::info("Building the texture atlas in the background");
+        return true;
+    }
+#endif
+
     const Level& level = LevelManager::CurrentLevel();
 
     // Every image in Assets, in name order, so a texture first named at
@@ -204,6 +360,24 @@ bool RendererCore::BuildTextureAtlasFromLevel() {
     placements.reserve(referencedFileNames.size());
 
     std::unordered_set<std::string> stillOnDisk;
+
+    // Images never decoded before, decoded together on several threads.
+    // Ones decoded already but changed since are few; GetDecodedImage
+    // redoes those below.
+    {
+        std::vector<fs::path> notDecoded;
+
+        for (const std::string& fileName : referencedFileNames) {
+            fs::path path = ProjectManager::GetAssetsPath() / fs::path(fileName).lexically_normal();
+            if (!decodedImageCache.contains(path.string())) notDecoded.push_back(std::move(path));
+        }
+
+        if (notDecoded.size() > 1) {
+            std::vector<std::optional<DecodedImage>> images = DecodeImagesInParallel(notDecoded);
+            for (size_t i = 0; i < images.size(); ++i)
+                if (images[i]) decodedImageCache[notDecoded[i].string()] = std::move(*images[i]);
+        }
+    }
 
     int page = 0;
     int cursorX = ATLAS_PADDING;
@@ -362,35 +536,62 @@ const DecodedImage* RendererCore::GetDecodedImage(const fs::path& path) {
     if (const auto found = decodedImageCache.find(key); found != decodedImageCache.end() && found->second.writeTime == writeTime)
         return &found->second;
 
-    SDL_Surface* loadedSurface = IMG_Load(key.c_str());
-
-    if (loadedSurface == nullptr) {
-        spdlog::error("IMG_Load failed for {}: {}", key, SDL_GetError());
-        return nullptr;
-    }
-
-    SDL_Surface* surface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
-    SDL_DestroySurface(loadedSurface);
-
-    if (surface == nullptr) {
-        spdlog::error("SDL_ConvertSurface failed for {}: {}", key, SDL_GetError());
-        return nullptr;
-    }
-
     DecodedImage image;
-    image.width = surface->w;
-    image.height = surface->h;
-    image.writeTime = writeTime;
-    image.pixels.resize(static_cast<std::size_t>(image.width) * image.height * 4);
-
-    for (int row = 0; row < image.height; ++row) {
-        const unsigned char* srcRow = static_cast<unsigned char*>(surface->pixels) + row * surface->pitch;
-        std::memcpy(image.pixels.data() + static_cast<std::size_t>(row) * image.width * 4, srcRow, image.width * 4);
-    }
-
-    SDL_DestroySurface(surface);
+    if (!DecodeImageFile(path, image)) return nullptr;
 
     return &(decodedImageCache[key] = std::move(image));
+}
+
+void RendererCore::UpdateBackgroundLoad() {
+    if (backgroundAtlas && backgroundAtlas->finished) FinishBackgroundLoad();
+}
+
+void RendererCore::FinishBackgroundLoad() {
+    if (!backgroundAtlas) return;
+
+    if (!backgroundAtlas->finished) spdlog::info("Waiting for the background texture atlas to finish");
+
+    const std::shared_ptr<BackgroundAtlasLoad> job = std::move(backgroundAtlas);
+    if (job->worker.joinable()) job->worker.join();
+
+#ifndef TILKY_STANDALONE
+    // What the worker found is what a scan here would: the build below
+    // reuses it and only decodes what the level adds from outside Assets.
+    cachedProjectImages = std::move(job->projectImages);
+    cachedWriteTimes = std::move(job->writeTimes);
+    cachedImageGeneration = job->imageGeneration;
+#endif
+
+    for (auto& [key, image] : job->decoded) decodedImageCache[key] = std::move(image);
+
+    // Names that went unresolved while there was no atlas may be in it now.
+    unresolvedLevelTextures.clear();
+
+    if (!BuildTextureAtlasFromLevel()) {
+        spdlog::error("Failed to build texture atlas from level");
+        return;
+    }
+
+    spdlog::info("Built texture atlas with {} texture region(s) in the background", textureRegions.size());
+}
+
+bool RendererCore::IsBackgroundLoading() const {
+    return backgroundAtlas != nullptr;
+}
+
+IRenderer::BackgroundLoadProgress RendererCore::GetBackgroundLoadProgress() const {
+    if (!backgroundAtlas) return {};
+
+    BackgroundLoadProgress progress;
+    progress.listed = backgroundAtlas->listed;
+    progress.total = backgroundAtlas->total;
+    progress.done = backgroundAtlas->done;
+    return progress;
+}
+
+void RendererCore::CancelBackgroundAtlas() {
+    // Its destructor stops the worker and waits for it.
+    backgroundAtlas.reset();
 }
 
 // The full refresh rescans every image under Assets and reloads the fonts,
@@ -584,6 +785,9 @@ void RendererCore::RefreshTexturesFromLevel() {
         return;
     }
 
+    // Still in the background: FinishBackgroundLoad reports it.
+    if (backgroundAtlas) return;
+
     spdlog::info("Built texture atlas with {} texture region(s)", textureRegions.size());
 }
 
@@ -609,6 +813,7 @@ void RendererCore::DestroyAllTextures() {
     textures.clear();
     textureIndexByName.clear();
 
+    CancelBackgroundAtlas();
     DestroyAtlas();
 }
 

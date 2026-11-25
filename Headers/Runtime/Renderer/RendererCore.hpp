@@ -13,6 +13,7 @@
 #include <array>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -288,6 +289,11 @@ public:
     bool BuildTextureAtlasFromLevel();
     const RendererGpu::DecodedImage* GetDecodedImage(const std::filesystem::path& path);
 
+    void UpdateBackgroundLoad() override;
+    void FinishBackgroundLoad() override;
+    [[nodiscard]] bool IsBackgroundLoading() const override;
+    [[nodiscard]] BackgroundLoadProgress GetBackgroundLoadProgress() const override;
+
 protected:
     using Glyph = RendererGpu::Glyph;
     using GlyphKey = RendererGpu::GlyphKey;
@@ -335,6 +341,13 @@ protected:
     // Fingerprint of the image list, their file times and the sampling
     // setting the atlas was built from; an unchanged one skips the rebuild.
     size_t atlasSignature = 0;
+
+    // The engine's first atlas, decoding on worker threads (RendererCoreTextures.cpp).
+    // Shared so the type can stay in that file; it joins its threads when destroyed.
+    struct BackgroundAtlasLoad;
+    std::shared_ptr<BackgroundAtlasLoad> backgroundAtlas;
+    bool backgroundAtlasStarted = false; // only the first build goes to the background
+    void CancelBackgroundAtlas();
 
     std::vector<RendererGpu::GPUTextureRegion> textureRegions;
     std::unordered_map<std::string, int> textureRegionIndexByName;

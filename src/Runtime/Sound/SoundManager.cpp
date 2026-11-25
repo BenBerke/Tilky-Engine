@@ -8,12 +8,19 @@
 #include <AL/alc.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <ranges>
 #include <string>
+#include <thread>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <spdlog/spdlog.h>
@@ -91,92 +98,260 @@ namespace SoundManager {
         return 0;
     }
 
-    // Hands 16-bit PCM to a new buffer.
-    bool PCMToOpenALBuffer(const SoundDecoders::PCM& pcm, const std::string& path, ALuint& buffer) {
-        ALenum format = 0;
-        if (pcm.channels == 1) format = AL_FORMAT_MONO16;
-        else if (pcm.channels == 2) format = AL_FORMAT_STEREO16;
-
-        if (format == 0) {
-            spdlog::error("Unsupported sound {}: {} channels; use mono or stereo", path, pcm.channels);
-            return false;
-        }
-
-        alGenBuffers(1, &buffer);
-        if (!CheckALErrors("alGenBuffers failed")) return false;
-
-        alBufferData(buffer, format, pcm.samples.data(), static_cast<ALsizei>(pcm.samples.size() * sizeof(int16_t)), pcm.sampleRate);
-
-        if (!CheckALErrors("alBufferData failed")) {
-            alDeleteBuffers(1, &buffer);
-            buffer = 0;
-            return false;
-        }
-
-        spdlog::info("Loaded sound into OpenAL buffer: {}", path);
-        return true;
-    }
-
-    bool LoadWAVToOpenALBuffer(const char* path, ALuint& buffer) {
-        SDL_AudioSpec wavSpec{};
+    // A sound file read and decoded, ready for alBufferData. Made on any
+    // thread: decoding touches no OpenAL state, so the editor's background
+    // load runs it on worker threads and only the upload on the main one.
+    struct DecodedSound {
+        // 16-bit PCM from SoundDecoders, or SDL_LoadWAV's own buffer.
+        std::vector<int16_t> pcm;
         Uint8* wavData = nullptr;
         Uint32 wavLength = 0;
 
-        if (!SDL_LoadWAV(path, &wavSpec, &wavData, &wavLength)) {
-            spdlog::error("SDL_LoadWAV failed for {}: {}", path, SDL_GetError());
+        ALenum format = 0;
+        int frequency = 0;
 
-            return false;
+        DecodedSound() = default;
+        DecodedSound(const DecodedSound&) = delete;
+        DecodedSound& operator=(const DecodedSound&) = delete;
+
+        DecodedSound(DecodedSound&& other) noexcept
+            : pcm(std::move(other.pcm)), wavData(std::exchange(other.wavData, nullptr)),
+              wavLength(std::exchange(other.wavLength, 0)), format(other.format), frequency(other.frequency) {}
+
+        DecodedSound& operator=(DecodedSound&& other) noexcept {
+            if (this != &other) {
+                SDL_free(wavData);
+                pcm = std::move(other.pcm);
+                wavData = std::exchange(other.wavData, nullptr);
+                wavLength = std::exchange(other.wavLength, 0);
+                format = other.format;
+                frequency = other.frequency;
+            }
+            return *this;
         }
 
-        const ALenum format = GetOpenALFormat(wavSpec);
+        ~DecodedSound() { SDL_free(wavData); }
 
-        if (format == 0) {
-            spdlog::error(
-                "Unsupported WAV format. Channels: {}, Format: {}. "
-                "Use 8-bit or 16-bit PCM mono/stereo WAV",
-                wavSpec.channels,
-                static_cast<int>(wavSpec.format)
-            );
-
-            SDL_free(wavData);
-            return false;
+        [[nodiscard]] const void* Data() const {
+            return wavData != nullptr ? static_cast<const void*>(wavData) : static_cast<const void*>(pcm.data());
         }
 
-        alGenBuffers(1, &buffer);
-
-        if (!CheckALErrors("alGenBuffers failed")) {
-            SDL_free(wavData);
-            return false;
+        [[nodiscard]] ALsizei Size() const {
+            return static_cast<ALsizei>(wavData != nullptr ? wavLength : pcm.size() * sizeof(int16_t));
         }
+    };
 
-        alBufferData(buffer, format, wavData, static_cast<ALsizei>(wavLength), wavSpec.freq);
+    // WAV through SDL, MP3 / OGG / FLAC through SoundDecoders. Safe on any thread.
+    bool DecodeSoundFile(const fs::path& path, DecodedSound& out) {
+        const std::string pathText = path.string();
 
-        SDL_free(wavData);
+        if (!SoundDecoders::IsCompressedExtension(path.extension().string())) {
+            SDL_AudioSpec wavSpec{};
 
-        if (!CheckALErrors("alBufferData failed")) {
-            alDeleteBuffers(1, &buffer);
-            buffer = 0;
-            return false;
+            if (!SDL_LoadWAV(pathText.c_str(), &wavSpec, &out.wavData, &out.wavLength)) {
+                spdlog::error("SDL_LoadWAV failed for {}: {}", pathText, SDL_GetError());
+                return false;
+            }
+
+            out.format = GetOpenALFormat(wavSpec);
+            out.frequency = wavSpec.freq;
+
+            if (out.format == 0) {
+                spdlog::error(
+                    "Unsupported WAV format. Channels: {}, Format: {}. "
+                    "Use 8-bit or 16-bit PCM mono/stereo WAV",
+                    wavSpec.channels,
+                    static_cast<int>(wavSpec.format)
+                );
+                return false;
+            }
+
+            return true;
         }
-
-        spdlog::info("Loaded WAV into OpenAL buffer: {}", path);
-
-        return true;
-    }
-
-    // WAV through SDL, MP3 / OGG / FLAC through SoundDecoders.
-    bool LoadSoundToOpenALBuffer(const fs::path& path, ALuint& buffer) {
-        if (!SoundDecoders::IsCompressedExtension(path.extension().string()))
-            return LoadWAVToOpenALBuffer(path.string().c_str(), buffer);
 
         SoundDecoders::PCM pcm;
         std::string error;
         if (!SoundDecoders::Decode(path, pcm, error)) {
-            spdlog::error("Couldn't decode {}: {}", path.string(), error);
+            spdlog::error("Couldn't decode {}: {}", pathText, error);
             return false;
         }
 
-        return PCMToOpenALBuffer(pcm, path.string(), buffer);
+        if (pcm.channels == 1) out.format = AL_FORMAT_MONO16;
+        else if (pcm.channels == 2) out.format = AL_FORMAT_STEREO16;
+
+        if (out.format == 0) {
+            spdlog::error("Unsupported sound {}: {} channels; use mono or stereo", pathText, pcm.channels);
+            return false;
+        }
+
+        out.frequency = pcm.sampleRate;
+        out.pcm = std::move(pcm.samples);
+        return true;
+    }
+
+    // Hands a decoded sound to a new buffer. Main thread.
+    bool UploadDecodedSound(const DecodedSound& sound, const fs::path& path, ALuint& buffer) {
+        alGenBuffers(1, &buffer);
+        if (!CheckALErrors("alGenBuffers failed")) return false;
+
+        alBufferData(buffer, sound.format, sound.Data(), sound.Size(), sound.frequency);
+
+        if (!CheckALErrors("alBufferData failed")) {
+            alDeleteBuffers(1, &buffer);
+            buffer = 0;
+            return false;
+        }
+
+        spdlog::info("Loaded sound into OpenAL buffer: {}", path.string());
+        return true;
+    }
+
+    bool LoadSoundToOpenALBuffer(const fs::path& path, ALuint& buffer) {
+        DecodedSound sound;
+        return DecodeSoundFile(path, sound) && UploadDecodedSound(sound, path, buffer);
+    }
+
+    // A sound file under Assets, as GenerateSounds() and the background load find it.
+    struct SoundFile {
+        std::string fileName; // the key: its path inside Assets
+        fs::path path;
+        fs::file_time_type writeTime;
+        bool hasWriteTime = false;
+    };
+
+    // Every sound under Assets, one per key. Touches no OpenAL state, so
+    // the background load runs it on its own thread.
+    std::vector<SoundFile> ListSoundFiles(const fs::path& assetsPath) {
+        std::vector<SoundFile> files;
+
+        // Sounds can live anywhere under Assets, like textures and models.
+
+        if (!fs::is_directory(assetsPath)) {
+            spdlog::error("Assets path is not a directory: {}", assetsPath.string());
+            return files;
+        }
+
+        std::unordered_set<std::string> seen;
+        std::error_code iteratorError;
+
+        for (fs::recursive_directory_iterator iterator(assetsPath, iteratorError);
+             !iteratorError && iterator != fs::recursive_directory_iterator(); iterator.increment(iteratorError)) {
+            const fs::directory_entry &entry = *iterator;
+
+            if (!entry.is_regular_file()) continue;
+            if (!IsSupportedSoundExtension(entry.path().extension().string())) continue;
+
+            std::error_code relativeError;
+            const fs::path relativePath = fs::relative(entry.path(), assetsPath, relativeError);
+
+            if (relativeError) {
+                spdlog::error("Failed to create relative sound path for {}: {}", entry.path().string(),
+                              relativeError.message());
+                continue;
+            }
+
+            SoundFile file;
+            file.fileName = NormalizeSoundFileName(relativePath.generic_string());
+
+            if (!seen.insert(file.fileName).second) {
+                spdlog::warn("Ignoring duplicate sound filename '{}'", file.fileName);
+                continue;
+            }
+
+            file.path = entry.path();
+
+            std::error_code timeError;
+            file.writeTime = entry.last_write_time(timeError);
+            file.hasWriteTime = !timeError;
+
+            files.push_back(std::move(file));
+        }
+
+        if (iteratorError) spdlog::error("Failed while scanning Assets folder {}: {}", assetsPath.string(),
+                                         iteratorError.message());
+
+        return files;
+    }
+
+    // The editor's first load of every sound, off the main thread so the
+    // editor opens at once. One manager thread lists the files, then it and
+    // its helpers decode them; the main thread uploads what is ready each
+    // frame (UpdateBackgroundLoad). Play waits for it (FinishBackgroundLoad).
+    struct BackgroundSoundLoad {
+        struct Result {
+            size_t file = 0;
+            bool decoded = false;
+            DecodedSound sound;
+        };
+
+        fs::path assetsPath;            // set before the manager starts
+        std::vector<SoundFile> files;   // written by the manager before `listed`
+        std::atomic<bool> listed{false};
+        std::atomic<size_t> nextFile{0};
+        std::atomic<bool> cancelled{false};
+        std::atomic<bool> workersDone{false};
+
+        std::mutex mutex;
+        std::condition_variable changed;
+        std::vector<Result> ready;      // guarded by mutex
+
+        std::thread manager;
+
+        // Main thread only.
+        size_t handled = 0;
+        size_t loaded = 0;
+
+        BackgroundSoundLoad() = default;
+        BackgroundSoundLoad(const BackgroundSoundLoad&) = delete;
+        BackgroundSoundLoad& operator=(const BackgroundSoundLoad&) = delete;
+
+        // Never leaves a thread running, even when the engine exits
+        // without DestroyOpenAL.
+        ~BackgroundSoundLoad() {
+            cancelled = true;
+            if (manager.joinable()) manager.join();
+        }
+    };
+
+    std::unique_ptr<BackgroundSoundLoad> backgroundLoad;
+
+    void DecodeBackgroundSounds(BackgroundSoundLoad& job) {
+        while (!job.cancelled) {
+            const size_t index = job.nextFile.fetch_add(1);
+            if (index >= job.files.size()) return;
+
+            BackgroundSoundLoad::Result result;
+            result.file = index;
+            result.decoded = DecodeSoundFile(job.files[index].path, result.sound);
+
+            {
+                std::lock_guard lock(job.mutex);
+                job.ready.push_back(std::move(result));
+            }
+            job.changed.notify_all();
+        }
+    }
+
+    void RunBackgroundSoundLoad(BackgroundSoundLoad& job) {
+        job.files = ListSoundFiles(job.assetsPath);
+        job.listed = true;
+
+        // Up to six threads, leaving cores for the editor and the atlas load.
+        const unsigned cores = std::max(2u, std::thread::hardware_concurrency());
+        const size_t helperCount = std::min<size_t>({cores - 2, 5, job.files.size() > 0 ? job.files.size() - 1 : 0});
+
+        std::vector<std::thread> helpers;
+        helpers.reserve(helperCount);
+        for (size_t i = 0; i < helperCount; ++i) helpers.emplace_back(DecodeBackgroundSounds, std::ref(job));
+
+        DecodeBackgroundSounds(job);
+        for (std::thread& helper : helpers) helper.join();
+
+        {
+            std::lock_guard lock(job.mutex);
+            job.workersDone = true;
+        }
+        job.changed.notify_all();
     }
 
     bool CreateSource(const std::string& name) {
@@ -269,7 +444,15 @@ namespace SoundManager {
         return CheckALErrors("Failed to resume source");
     }
 
+    void CancelBackgroundLoad() {
+        // Its destructor stops the threads and waits for them.
+        backgroundLoad.reset();
+    }
+
     void GenerateSounds() {
+        // A full reload replaces whatever the background load had left to do.
+        CancelBackgroundLoad();
+
         for (const ALuint source: sources | std::views::values) {
             alSourceStop(source);
             alSourcei(source, AL_BUFFER, 0);
@@ -283,53 +466,12 @@ namespace SoundManager {
 
         int reusedCount = 0;
 
-        const auto deleteUnusedPrevious = [&] {
-            for (auto &[fileName, buffer]: previousBuffers)
-                if (buffer != 0) alDeleteBuffers(1, &buffer);
-        };
-
-        // Sounds can live anywhere under Assets, like textures and models.
-        const fs::path assetsPath = ProjectManager::GetAssetsPath();
-
-        if (!fs::is_directory(assetsPath)) {
-            spdlog::error("Assets path is not a directory: {}", assetsPath.string());
-            deleteUnusedPrevious();
-            return;
-        }
-
-        std::error_code iteratorError;
-
-        for (fs::recursive_directory_iterator iterator(assetsPath, iteratorError);
-             !iteratorError && iterator != fs::recursive_directory_iterator(); iterator.increment(iteratorError)) {
-            const fs::directory_entry &entry = *iterator;
-
-            if (!entry.is_regular_file()) continue;
-            if (!IsSupportedSoundExtension(entry.path().extension().string())) continue;
-
-            std::error_code relativeError;
-            const fs::path relativePath = fs::relative(entry.path(), assetsPath, relativeError);
-
-            if (relativeError) {
-                spdlog::error("Failed to create relative sound path for {}: {}", entry.path().string(),
-                              relativeError.message());
-                continue;
-            }
-
-            const std::string fileName = NormalizeSoundFileName(relativePath.generic_string());
-
-            if (buffers.contains(fileName)) {
-                spdlog::warn("Ignoring duplicate sound filename '{}'", fileName);
-                continue;
-            }
-
-            std::error_code timeError;
-            const fs::file_time_type writeTime = entry.last_write_time(timeError);
-
-            if (const auto previous = previousBuffers.find(fileName);
-                !timeError && previous != previousBuffers.end() && previous->second != 0 &&
-                previousWriteTimes[fileName] == writeTime) {
-                buffers.emplace(fileName, previous->second);
-                bufferWriteTimes.emplace(fileName, writeTime);
+        for (const SoundFile& file : ListSoundFiles(ProjectManager::GetAssetsPath())) {
+            if (const auto previous = previousBuffers.find(file.fileName);
+                file.hasWriteTime && previous != previousBuffers.end() && previous->second != 0 &&
+                previousWriteTimes[file.fileName] == file.writeTime) {
+                buffers.emplace(file.fileName, previous->second);
+                bufferWriteTimes.emplace(file.fileName, file.writeTime);
                 previousBuffers.erase(previous);
                 ++reusedCount;
                 continue;
@@ -337,22 +479,121 @@ namespace SoundManager {
 
             ALuint buffer = 0;
 
-            if (!LoadSoundToOpenALBuffer(entry.path(), buffer)) {
-                spdlog::error("Failed to load sound '{}'", fileName);
+            if (!LoadSoundToOpenALBuffer(file.path, buffer)) {
+                spdlog::error("Failed to load sound '{}'", file.fileName);
                 continue;
             }
 
-            buffers.emplace(fileName, buffer);
-            if (!timeError) bufferWriteTimes.emplace(fileName, writeTime);
-            spdlog::info("Loaded sound '{}'", fileName);
+            buffers.emplace(file.fileName, buffer);
+            if (file.hasWriteTime) bufferWriteTimes.emplace(file.fileName, file.writeTime);
+            spdlog::info("Loaded sound '{}'", file.fileName);
         }
 
-        if (iteratorError) spdlog::error("Failed while scanning Assets folder {}: {}", assetsPath.string(),
-                                         iteratorError.message());
-
-        deleteUnusedPrevious();
+        for (auto &[fileName, buffer]: previousBuffers)
+            if (buffer != 0) alDeleteBuffers(1, &buffer);
 
         spdlog::info("Generated {} sound buffer(s), {} reused unchanged", buffers.size(), reusedCount);
+    }
+
+    // Uploads the decoded sounds waiting for it, for at most `budget` of this
+    // frame (one at least), and ends the load once every file is in.
+    static void PumpBackgroundLoad(const std::chrono::steady_clock::duration budget) {
+        if (!backgroundLoad) return;
+        BackgroundSoundLoad& job = *backgroundLoad;
+
+        const auto start = std::chrono::steady_clock::now();
+        bool workersDone = false;
+
+        while (true) {
+            std::vector<BackgroundSoundLoad::Result> results;
+            {
+                std::lock_guard lock(job.mutex);
+                workersDone = job.workersDone;
+                results.swap(job.ready);
+            }
+
+            for (size_t i = 0; i < results.size(); ++i) {
+                // Out of time: the rest wait for the next frame, in front.
+                if (i > 0 && std::chrono::steady_clock::now() - start >= budget) {
+                    std::lock_guard lock(job.mutex);
+                    job.ready.insert(job.ready.begin(), std::make_move_iterator(results.begin() + static_cast<std::ptrdiff_t>(i)),
+                                     std::make_move_iterator(results.end()));
+                    return;
+                }
+
+                BackgroundSoundLoad::Result& result = results[i];
+                const SoundFile& file = job.files[result.file];
+                ++job.handled;
+
+                // Previewed in the inspector meanwhile, which loaded it then.
+                if (buffers.contains(file.fileName)) {
+                    ++job.loaded;
+                    continue;
+                }
+
+                ALuint buffer = 0;
+                if (!result.decoded || !UploadDecodedSound(result.sound, file.path, buffer)) {
+                    spdlog::error("Failed to load sound '{}'", file.fileName);
+                    continue;
+                }
+
+                buffers.emplace(file.fileName, buffer);
+                if (file.hasWriteTime) bufferWriteTimes.emplace(file.fileName, file.writeTime);
+                ++job.loaded;
+                spdlog::info("Loaded sound '{}'", file.fileName);
+            }
+
+            // Results that came in while uploading go too, time allowing.
+            if (workersDone || std::chrono::steady_clock::now() - start >= budget) break;
+
+            std::lock_guard lock(job.mutex);
+            if (job.ready.empty()) break;
+        }
+
+        if (!workersDone) return;
+
+        {
+            std::lock_guard lock(job.mutex);
+            if (!job.ready.empty()) return;
+        }
+
+        job.manager.join();
+        spdlog::info("Generated {} sound buffer(s) in the background", job.loaded);
+        backgroundLoad.reset();
+    }
+
+    void UpdateBackgroundLoad() {
+        // A few milliseconds a frame, so the editor stays smooth.
+        PumpBackgroundLoad(std::chrono::milliseconds(4));
+    }
+
+    void FinishBackgroundLoad() {
+        if (!backgroundLoad) return;
+
+        spdlog::info("Waiting for the background sound load to finish");
+
+        while (backgroundLoad) {
+            PumpBackgroundLoad(std::chrono::steady_clock::duration::max());
+            if (!backgroundLoad) break;
+
+            BackgroundSoundLoad& job = *backgroundLoad;
+            std::unique_lock lock(job.mutex);
+            job.changed.wait_for(lock, std::chrono::milliseconds(50), [&job] { return !job.ready.empty() || job.workersDone; });
+        }
+    }
+
+    bool IsBackgroundLoading() {
+        return backgroundLoad != nullptr;
+    }
+
+    BackgroundLoadProgress GetBackgroundLoadProgress() {
+        if (!backgroundLoad) return {};
+
+        BackgroundLoadProgress progress;
+        progress.listed = backgroundLoad->listed;
+        if (progress.listed) progress.total = backgroundLoad->files.size();
+        progress.done = backgroundLoad->handled;
+        return progress;
     }
 
     bool InitializeOpenAL() {
@@ -394,7 +635,15 @@ namespace SoundManager {
         // The exported game loads its sounds once and watches nothing.
         if (!BuildVariant::IsStandalone()) generatedSoundGeneration = soundWatcher.Generation(ProjectManager::GetAssetsPath());
 
-        GenerateSounds();
+        // The exported game has every sound before its first frame. The
+        // editor opens at once and loads them in the background; Play waits
+        // for the rest (BeginSession).
+        if (BuildVariant::IsStandalone()) GenerateSounds();
+        else {
+            backgroundLoad = std::make_unique<BackgroundSoundLoad>();
+            backgroundLoad->assetsPath = ProjectManager::GetAssetsPath();
+            backgroundLoad->manager = std::thread(RunBackgroundSoundLoad, std::ref(*backgroundLoad));
+        }
 
         SetListenerPosition({0.0f, 0.0f, 0.0f});
         SetListenerVelocity({0.0f, 0.0f, 0.0f});
@@ -403,7 +652,7 @@ namespace SoundManager {
         // would play at full volume, unpositioned.
         SetListenerOrientation({0.0f, 0.0f, 1.0f});
 
-        spdlog::info("Sounds generated");
+        spdlog::info(backgroundLoad ? "Sounds loading in the background" : "Sounds generated");
 
         return true;
     }
@@ -428,6 +677,9 @@ namespace SoundManager {
     }
 
     void BeginSession() {
+        // Play never starts with sounds missing.
+        FinishBackgroundLoad();
+
         // Picks up sounds added, removed or edited since the last session.
         // Read before the walk, like in InitializeOpenAL().
         if (const std::uint64_t generation = soundWatcher.Generation(ProjectManager::GetAssetsPath());
@@ -453,6 +705,8 @@ namespace SoundManager {
     }
 
     void DestroyOpenAL() {
+        CancelBackgroundLoad();
+
         for (ALuint source : sources | std::views::values) {
             alSourceStop(source);
             alDeleteSources(1, &source);

@@ -5,6 +5,7 @@
 #ifndef TILKY_ENGINE_SOUNDMANAGER_H
 #define TILKY_ENGINE_SOUNDMANAGER_H
 
+#include <cstddef>
 #include <string>
 
 #include <AL/al.h>
@@ -22,6 +23,23 @@ namespace SoundManager {
     void EndSession();
 
     void GenerateSounds();
+
+    // The engine loads every sound in the background after OpenAL starts,
+    // so the editor opens at once. The exported game doesn't: it loads them
+    // all before its first frame.
+    struct BackgroundLoadProgress {
+        bool listed = false; // false while the Assets folder is still being scanned
+        size_t total = 0;
+        size_t done = 0;
+    };
+
+    // Uploads the sounds decoded since the last call, a few milliseconds'
+    // worth. Once a frame, on the main thread.
+    void UpdateBackgroundLoad();
+    // Waits for the rest. BeginSession does, so Play has every sound.
+    void FinishBackgroundLoad();
+    [[nodiscard]] bool IsBackgroundLoading();
+    [[nodiscard]] BackgroundLoadProgress GetBackgroundLoadProgress();
 
     bool CreateSource(const std::string& name);
     void DestroySource(const std::string& sourceName);

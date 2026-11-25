@@ -7,6 +7,8 @@
 #include "Headers/Editor/Editor.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "Headers/Runtime/RuntimeSession.hpp"
+#include "Headers/Runtime/Renderer/IRenderer.hpp"
+#include "Headers/Runtime/Sound/SoundManager.hpp"
 
 #include <filesystem>
 #include <memory>
@@ -247,7 +249,19 @@ namespace {
         return shiftHeld && InputManager::GetKeyDown(SDL_SCANCODE_F1);
     }
 
+    // Sounds and the texture atlas load in the background after the editor
+    // opens; this hands the main thread's share of the work over each frame.
+    void UpdateBackgroundLoads() {
+        SoundManager::UpdateBackgroundLoad();
+
+        if (IRenderer* renderer = RuntimeSession::GetRenderer(); renderer != nullptr && renderer->IsBackgroundLoading()) {
+            renderer->MakeCurrent();
+            renderer->UpdateBackgroundLoad();
+        }
+    }
+
     bool UpdateEditorMode() {
+        UpdateBackgroundLoads();
         Editor::Update();
 
         if (InputManager::QuitRequested() || Editor::ShutdownRequested()) {

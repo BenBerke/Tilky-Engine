@@ -158,6 +158,12 @@ namespace {
         }
 
         renderer->MakeCurrent();
+
+        // Play never starts untextured: the atlas the engine began building
+        // in the background is finished first. The editor's 3D view doesn't
+        // wait; it shows the textures once they are in.
+        if (!useEditorCamera) renderer->FinishBackgroundLoad();
+
         renderer->SetVSync(vsyncMode);
         renderer->SetUseEditorCamera(useEditorCamera);
         renderer->SetDrawMode(IRenderer::DrawMode::SOLID);

@@ -77,6 +77,23 @@ public:
         RefreshTexturesFromLevel();
     }
 
+    // The engine's first texture atlas is built in the background, so the
+    // editor opens at once; the 3D view shows untextured surfaces until it
+    // is in. The exported game builds it before its first frame instead.
+    struct BackgroundLoadProgress {
+        bool listed = false; // false while the Assets folder is still being scanned
+        size_t total = 0;
+        size_t done = 0;
+    };
+
+    // Builds the atlas once its images are decoded. Once a frame, on the
+    // main thread, with this renderer current.
+    virtual void UpdateBackgroundLoad() {}
+    // Waits for the atlas and builds it. Play does, so it never starts untextured.
+    virtual void FinishBackgroundLoad() {}
+    [[nodiscard]] virtual bool IsBackgroundLoading() const { return false; }
+    [[nodiscard]] virtual BackgroundLoadProgress GetBackgroundLoadProgress() const { return {}; }
+
     virtual void RenderTextRaw(const std::string& text, Vector2 position, Vector2 scale, Vector3 color) = 0;
 
     // Text in a project font (relative to Assets, empty = the default font)
