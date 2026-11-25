@@ -1053,7 +1053,7 @@
   "settings.rendering.sky.mode.equirectangular": "Equirectangular",
   "settings.rendering.tooltip.sky.mode.equirectangular": "One 2:1 panorama wrapped around a sphere. The middle of the image faces Front (+Z).",
   "settings.rendering.sky.mode.cylinder": "Cylinder (DOOM)",
-  "settings.rendering.tooltip.sky.mode.cylinder": "DOOM's sky: one strip that repeats every 90 degrees and stays fixed to the screen vertically, ignoring looking up and down.",
+  "settings.rendering.tooltip.sky.mode.cylinder": "DOOM's sky: one strip that repeats every 90 degrees, wrapped on a cylinder around the camera so it stays in place when looking up and down.",
   "settings.rendering.sky.texture": "Sky Texture",
   "settings.rendering.tooltip.sky.texture": "The sky image. Without one, the fallback color is shown.",
   "settings.rendering.sky.face.right": "Right (-X)",

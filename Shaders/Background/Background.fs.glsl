@@ -106,24 +106,28 @@ vec4 SampleCubemap(vec3 direction) {
     return textureLod(faceBack, vec2(0.5 + 0.5 * p.x, 0.5 - 0.5 * p.y), 0.0);
 }
 
-// DOOM's sky: 1024 texture pixels around 360 degrees (a 256 wide sky repeats
-// 4 times), and rows tied to the screen rather than the view angle: 200 rows
-// from top to bottom with row 100 on the screen's centre, whatever the FOV.
-// It ignores pitch, like DOOM, and repeats vertically.
-vec4 SampleCylinder() {
-    float tanHalfFovX = tanHalfFovY * aspect;
+// DOOM's sky on a real cylinder around the camera: 1024 texture pixels around
+// 360 degrees (a 256 wide sky repeats 4 times), and rows sized like DOOM's
+// screen-tied sky: looking level, 200 rows fill the screen from top to bottom
+// with row 100 on the horizon, whatever the FOV. Each pixel's own view ray
+// picks its row, so the sky stays put in the world when the camera pitches.
+// Above the strip the top row is stretched up to the zenith; below the horizon
+// it repeats, like DOOM.
+vec4 SampleCylinder(vec3 direction) {
+    float azimuth = Azimuth(direction) - rotation;
 
-    vec3 forward = normalize(vec3(cameraForward.x, 0.0, cameraForward.z));
-    vec3 right = normalize(vec3(cameraRight.x, 0.0, cameraRight.z));
-    vec3 ray = forward + vNdc.x * tanHalfFovX * right;
+    // Height on a cylinder of radius 1, i.e. tan(elevation). Near the poles
+    // it grows huge, which only ever lands in the clamped or repeated rows.
+    float height = direction.y / max(length(direction.xz), 1e-4);
 
-    float azimuth = Azimuth(ray) - rotation;
+    // The offset is an angle at the horizon, turned into rows.
+    float rowsPerUnit = 100.0 / tanHalfFovY;
+    float offsetRows = rowsPerUnit * tan(clamp(horizonOffset, -HALF_PI + 0.01, HALF_PI - 0.01));
 
-    // The offset is an angle at the screen's centre, turned into rows.
-    float offsetRows = 100.0 * tan(clamp(horizonOffset, -HALF_PI + 0.01, HALF_PI - 0.01)) / tanHalfFovY;
-
-    vec2 texel = vec2(-degrees(azimuth) * (1024.0 / 360.0), 100.0 - 100.0 * vNdc.y + offsetRows);
-    vec2 uv = texel / max(skyTextureSize, vec2(1.0));
+    vec2 texel = vec2(-degrees(azimuth) * (1024.0 / 360.0), 100.0 - rowsPerUnit * height + offsetRows);
+    vec2 size = max(skyTextureSize, vec2(1.0));
+    texel.y = max(texel.y, 0.5); // stretch the top row's centre, no wrap bleed
+    vec2 uv = texel / size;
 
     // Derivatives before wrapping, so the repeat seams don't pick a tiny mip.
     vec2 duvdx = dFdx(uv);
@@ -149,7 +153,7 @@ void main() {
 
     vec4 color;
     if (skyMode == SKY_CUBEMAP) color = SampleCubemap(direction);
-    else if (skyMode == SKY_CYLINDER) color = SampleCylinder();
+    else if (skyMode == SKY_CYLINDER) color = SampleCylinder(direction);
     else color = SampleEquirectangular(direction);
 
     // Transparent parts of the image show the fallback color.

@@ -14,7 +14,7 @@
 enum class SkyMode : int {
     Cubemap = 0,         // six square images, one per face
     Equirectangular = 1, // one 2:1 panorama on a sphere
-    Cylinder = 2,        // DOOM's sky: one strip, 4 repeats around, fixed to the screen vertically
+    Cylinder = 2,        // DOOM's sky: one strip, 4 repeats around, on a cylinder around the camera
 };
 
 // Directions in world space: Front is +Z (where yaw 0 looks), Right is -X
