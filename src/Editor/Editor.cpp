@@ -4,7 +4,6 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "imgui_impl_sdl3.h"
-#include "imgui_impl_opengl3.h"
 
 #include <filesystem>
 #include <optional>
@@ -23,7 +22,6 @@
 #include "Headers/Runtime/RuntimeSession.hpp"
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
 
-#include <glad/glad.h>
 
 namespace MapEditorInternal {
     int screenWidth = 1080;
@@ -42,10 +40,7 @@ namespace {
     // own background would show.
     void ClearWindowBehindPanels() {
         const ImVec4 emptyBackground = ImGui::GetStyle().Colors[ImGuiCol_DockingEmptyBg];
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, windowWidth, windowHeight);
-        glClearColor(emptyBackground.x, emptyBackground.y, emptyBackground.z, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        MapEditorInternal::canvasRenderer->ClearWindow({emptyBackground.x, emptyBackground.y, emptyBackground.z, 1.0f}, windowWidth, windowHeight);
     }
 
     // User settings are read from disk on the first Start() only, so values
@@ -299,7 +294,7 @@ namespace Editor {
     bool Initialize() {
         using namespace MapEditorInternal;
 
-        // The editors draw in the renderer's window, with its GL context.
+        // The editors draw in the renderer's window, with its graphics API.
         canvasRenderer = RuntimeSession::GetRenderer();
         if (canvasRenderer == nullptr) {
             spdlog::critical("The editor needs the renderer's window; RuntimeSession::Initialize() failed or hasn't run");
@@ -308,10 +303,9 @@ namespace Editor {
 
         canvasRenderer->MakeCurrent();
         window = canvasRenderer->GetWindow();
-        SDL_GLContext glContext = SDL_GL_GetCurrentContext();
 
-        if (window == nullptr || glContext == nullptr) {
-            spdlog::critical("The renderer has no window or GL context for the editor");
+        if (window == nullptr) {
+            spdlog::critical("The renderer has no window for the editor");
             return false;
         }
 
@@ -361,8 +355,10 @@ namespace Editor {
         // The saved design replaces this once LoadUserSettings() in Start() runs.
         EditorStyle::Apply(EditorStyle::ActiveDesign());
 
-        ImGui_ImplSDL3_InitForOpenGL(window, glContext);
-        ImGui_ImplOpenGL3_Init("#version 430");
+        if (!canvasRenderer->InitImGuiBackend()) {
+            spdlog::critical("The {} renderer could not start the editor's ImGui", canvasRenderer->GetName());
+            return false;
+        }
 
         return true;
     }
@@ -434,9 +430,7 @@ namespace Editor {
 #ifndef TILKY_STANDALONE
             cameraPos = LevelManager::CurrentLevel().editorCamPos;
 #endif
-            glViewport(0, 0, windowWidth, windowHeight);
-            glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
+            canvasRenderer->ClearWindow({1.0f, 1.0f, 1.0f, 1.0f}, windowWidth, windowHeight);
             canvasRenderer->EndFrame();
             return;
         }
@@ -453,8 +447,7 @@ namespace Editor {
         // Before the editor's ImGui frame: into the Scene panel's texture.
         if (sceneRunning) RuntimeSession::RenderEditorView();
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL3_NewFrame();
+        canvasRenderer->ImGuiBackendNewFrame();
         ImGui::NewFrame();
 
         const ImGuiIO &io = ImGui::GetIO();
@@ -538,19 +531,10 @@ namespace Editor {
             if (!SDL_StartTextInput(window))
                 spdlog::error("SDL_StartTextInput failed: {}", SDL_GetError());
 
-        glViewport(0, 0, windowWidth, windowHeight);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        canvasRenderer->RenderImGuiDrawData(ImGui::GetDrawData(), windowWidth, windowHeight);
 
-        // The panels pulled out of the window, each into its own OS window
-        // (its GL context shares textures with this one); then this window's
-        // context is current again.
-        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-            SDL_Window* currentWindow = SDL_GL_GetCurrentWindow();
-            SDL_GLContext currentContext = SDL_GL_GetCurrentContext();
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-            SDL_GL_MakeCurrent(currentWindow, currentContext);
-        }
+        // The panels pulled out of the window, each into its own OS window.
+        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) canvasRenderer->RenderImGuiPlatformWindows();
 
         if (sceneRunning) {
             // Its overlays, then its input (as it always ran: after drawing).
@@ -590,12 +574,11 @@ namespace Editor {
         if (userSettingsSafeToSave) SaveUserSettings();
         else spdlog::warn("Not saving user settings on close: the existing file could not be loaded");
 
-        // The backend frees its GL objects, so the renderer's context must
-        // be current: Destroy() runs before RuntimeSession::Destroy().
+        // The backend frees its GPU objects, so the renderer must still be
+        // there: Destroy() runs before RuntimeSession::Destroy().
         if (canvasRenderer != nullptr) canvasRenderer->MakeCurrent();
         ImGui::SetCurrentContext(imguiContext);
-        ImGui_ImplOpenGL3_Shutdown();
-        ImGui_ImplSDL3_Shutdown();
+        if (canvasRenderer != nullptr) canvasRenderer->ShutdownImGuiBackend();
         ImGui::DestroyContext(imguiContext);
         imguiContext = nullptr;
 

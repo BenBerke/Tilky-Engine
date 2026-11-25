@@ -43,6 +43,7 @@
 
 #include "Headers/Runtime/Renderer/IRenderer.hpp"
 #include "Headers/Runtime/Renderer/RendererFactory.hpp"
+#include "Headers/Runtime/Renderer/RendererBackend.hpp"
 
 #ifndef TILKY_STANDALONE
 #include "Headers/Runtime/RuntimeEditor/EditorFunctions.hpp"
@@ -89,21 +90,36 @@ namespace {
     // launch, hidden; the standalone game once per run, visible.
     bool CreateRenderer(const std::string& windowName, const bool startHidden) {
         ZoneScopedN("CreateRenderer");
-        // TODO: TILKY_TODO Try Vulkan first when Vulkan support is ready.
-        renderer = RendererFactory::CreateRenderer(RendererBackend::OPENGL);
+
+        // The project's choice (Project > Switch Renderer, or what Export
+        // Game wrote into the game's project file).
+        const RendererBackend wanted = RendererBackendFromName(ProjectManager::GetRenderer());
+        renderer = RendererFactory::CreateRenderer(wanted);
+
+        if (renderer && !renderer->Initialize(windowName, startHidden)) {
+            spdlog::critical("Failed to initialize {} renderer: {}", renderer->GetName(), SDL_GetError());
+            // Vulkan undoes what it got to (its window, device...) itself.
+            if (wanted != RendererBackend::OPENGL) renderer->Shutdown();
+            renderer.reset();
+        }
+
+        // Vulkan that can't start (no driver, too old a GPU) falls back to OpenGL.
+        if (!renderer && wanted != RendererBackend::OPENGL) {
+            spdlog::warn("The Vulkan renderer could not start; falling back to OpenGL");
+            renderer = RendererFactory::CreateRenderer(RendererBackend::OPENGL);
+
+            if (renderer && !renderer->Initialize(windowName, startHidden)) {
+                spdlog::critical("Failed to initialize {} renderer: {}", renderer->GetName(), SDL_GetError());
+                renderer.reset();
+            }
+        }
 
         if (!renderer) {
             spdlog::critical("Failed to create renderer");
             return false;
         }
 
-        if (!renderer->Initialize(windowName, startHidden)) {
-            spdlog::critical("Failed to initialize {} renderer: {}", renderer->GetName(), SDL_GetError());
-
-            renderer.reset();
-            return false;
-        }
-
+        spdlog::info("Drawing with the {} renderer", renderer->GetName());
         return true;
     }
 

@@ -121,7 +121,7 @@ namespace EditorTextureCache {
 
         // Already loaded by the game or the runtime editor.
         if (IRenderer::LoadedTexture loaded; textureRenderer->FindLoadedTexture(relativeFileName, &loaded)) {
-            const auto [it, inserted] = cache.emplace(relativeFileName, Texture{static_cast<ImTextureID>(loaded.id), loaded.id, loaded.width, loaded.height});
+            const auto [it, inserted] = cache.emplace(relativeFileName, Texture{loaded.imguiID, loaded.id, loaded.width, loaded.height});
             return &*it->second;
         }
 
@@ -184,7 +184,7 @@ namespace EditorTextureCache {
             }
 
             if (textureRenderer->FindLoadedTexture(image.name, &loaded))
-                texture = Texture{static_cast<ImTextureID>(loaded.id), loaded.id, loaded.width, loaded.height};
+                texture = Texture{loaded.imguiID, loaded.id, loaded.width, loaded.height};
 
             if (!texture.has_value()) spdlog::warn("EditorTextureCache: failed to load {}: {}", image.fullPath.string(), image.error);
             else spdlog::info("EditorTextureCache: loaded {}", image.fullPath.string());

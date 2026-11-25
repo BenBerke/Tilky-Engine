@@ -3344,7 +3344,26 @@ namespace {
         }
     }
 
+    // Systems never check whether a world entity has a Transform, so one
+    // missing from the file (an old or hand-edited level) is given a default.
+    void EnsureWorldTransforms(Level& level) {
+        for (Entity& entity : level.entities) {
+            if (level.transforms.Has(entity.id) || level.ui_transforms.Has(entity.id)) continue;
+
+            spdlog::warn("Entity {} ('{}') had no Transform in the level file - gave it a default one", entity.id, entity.name);
+            level.transforms.Add(entity.id);
+            entity.componentsMask.set(CMP_TRANSFORM);
+        }
+    }
+
+    void LoadComponentsFromJson(const json &levelData, Level &level);
+
     void LoadComponents(const json &levelData, Level &level) {
+        LoadComponentsFromJson(levelData, level);
+        EnsureWorldTransforms(level);
+    }
+
+    void LoadComponentsFromJson(const json &levelData, Level &level) {
 #define CLEAR_STORAGE(Type, Bit, Storage, LabelKey) level.Storage.Clear();
         TILKY_COMPONENTS(CLEAR_STORAGE)
 #undef CLEAR_STORAGE

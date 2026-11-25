@@ -365,8 +365,7 @@ namespace {
 
     float TargetRadius(const Level& level, const ID targetID) {
         const ComponentCollider* collider = PhysicsSystem::FindBaseCollider(level, targetID);
-        const ComponentTransform* transform = level.transforms.Get(targetID);
-        return collider != nullptr && transform != nullptr ? collider->Radius(*transform) : 0.0f;
+        return collider != nullptr ? collider->Radius(*level.transforms.Get(targetID)) : 0.0f;
     }
 
     // Doom's A_Chase turn: one octant toward where it walks, per chase step.
@@ -435,13 +434,14 @@ namespace PathfinderSystem {
             // Only an entity's first pathfinder moves it.
             if (level.pathfinders.Get(ownerID) != &pathfinder) continue;
 
-            ComponentTransform* transform = level.transforms.Get(ownerID);
-            if (transform == nullptr || !pathfinder.isActive) {
+            if (!pathfinder.isActive) {
                 const bool wasMoving = pathfinder.moving;
                 Release(pathfinder, rigidbody);
                 if (wasMoving) notices.push_back({ownerID, NoticeKind::STOPPED_MOVING, INVALID_ID});
                 continue;
             }
+
+            ComponentTransform* transform = level.transforms.Get(ownerID);
 
             // ── Push ─────────────────────────────────────────────────────
             // What changed the velocity since physics left it wasn't the

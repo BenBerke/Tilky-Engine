@@ -13,10 +13,7 @@
 #include <glad/glad.h>
 #include <SDL3/SDL.h>
 
-#include <ft2build.h>
-#include FT_FREETYPE_H
-
-#include "Headers/Runtime/Renderer/IRenderer.hpp"
+#include "Headers/Runtime/Renderer/RendererCore.hpp"
 #include "Headers/Runtime/Renderer/Shader.hpp"
 
 #include "Headers/Math/Vector/Vector2.hpp"
@@ -29,171 +26,10 @@
 struct Texture;
 
 namespace OpenGLRendererInternal {
-    inline constexpr float FLAT_NEAR_PLANE = 0.1f;
-
-    inline constexpr int RENDER_WALL = 0;
-    inline constexpr int RENDER_FLAT = 1;
-    inline constexpr int RENDER_SPRITE = 2;
-    inline constexpr int RENDER_COLLIDER = 4;
-    inline constexpr int RENDER_MODEL = 5;
-    inline constexpr int RENDER_ENTITY_MARKER = 6;
-    inline constexpr int RENDER_EDITOR_GIZMO = 7;
-    inline constexpr int RENDER_GATEWAY = 8;
-
-    inline constexpr int ATLAS_SIZE = 4096;
-    inline constexpr int ATLAS_PADDING = 2;
-
-    // Pixel size RenderTextRaw's scale 1 stands for (the console and debug text).
-    inline constexpr float UI_FONT_SIZE = 48.0f;
-    // Inset of UI Text from its rectangle's top-left, at the project's UI Reference Height.
-    inline constexpr float UI_TEXT_PADDING = 8.0f;
-
-    // Glyphs are rasterized the first time they're drawn, into single-channel
-    // GLYPH_PAGE_SIZE square atlas pages. When GLYPH_MAX_PAGES are full the
-    // whole atlas is dropped and refilled with whatever is drawn next.
-    inline constexpr int GLYPH_PAGE_SIZE = 1024;
-    inline constexpr int GLYPH_MAX_PAGES = 8;
-    inline constexpr int GLYPH_PADDING = 2;
-    inline constexpr unsigned MAX_GLYPH_PIXEL_SIZE = 512;
+    // The GPU structs and constants are shared with every backend.
+    using namespace RendererGpu;
 
     inline constexpr SDL_WindowFlags WINDOW_FLAGS = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED;
-
-    // One rasterized glyph: a font face, a pixel size and a glyph index
-    // (not a character, so fallback and "missing" glyphs share the cache).
-    struct GlyphKey {
-        FT_Face face = nullptr;
-        unsigned pixelSize = 0;
-        unsigned glyphIndex = 0;
-
-        bool operator==(const GlyphKey&) const = default;
-    };
-
-    struct GlyphKeyHash {
-        size_t operator()(const GlyphKey& key) const noexcept {
-            size_t hash = std::hash<const void*>{}(key.face);
-            hash ^= std::hash<unsigned>{}(key.pixelSize) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-            hash ^= std::hash<unsigned>{}(key.glyphIndex) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-            return hash;
-        }
-    };
-
-    struct Glyph {
-        int page = -1;              // atlas page, -1 = nothing to draw (spaces)
-        Vector4 uv;                 // uMin, vMin, uMax, vMax
-        Vector2 size;               // bitmap size in pixels
-        Vector2 bearing;            // left, top: from the pen position to the bitmap's top-left
-        float advance = 0.0f;       // pixels to the next pen position
-    };
-
-    // Structs that will be pushed to the GPU
-    struct GpuFlatTriangle {
-        Vector4 a;
-        Vector4 b;
-        Vector4 c;
-        Vector4 color;
-        Vector4 data;
-    };
-
-    struct GpuWall {
-        Vector4 startEnd;
-        Vector4 color;
-        Vector4 heights;
-        Vector4 data;
-        //data.x = texture region/index;
-        //data.y = 0 seen from the front sector, 1 from the back;
-        //data.z = texture anchor height (world height of V = 0);
-        //data.w = SurfaceMetaData flags of this piece;
-        Vector4 data2;
-        //x = textureOffset.x
-        //y = textureOffset.y
-        //z = textureScale.x
-        //w = textureScale.y
-        Vector4 data3;
-        //x = flipX
-        //y = flipY
-        //z = distance from the wall's start to the piece's start
-        //w = length of the whole wall
-    };
-
-    struct alignas(16) IntVector4 {
-        int x = -1;
-        int y = -1;
-        int z = -1;
-        int w = -1;
-    };
-
-    struct GpuSprite {
-        Vector4 positionSize;
-        Vector4 color;
-
-        IntVector4 textureIndices0; // N, NE, E, SE
-        IntVector4 textureIndices1; // S, SW, W, NW
-
-        Vector4 data;
-        // data.x = sprite width / scale.x
-        // data.y = sideCount
-        // data.z = facing.x (rotation's local +Z on the map)
-        // data.w = facing.z
-
-        Vector4 rotation;
-        // Quaternion: x, y, z, w
-
-        IntVector4 flags;
-        // flags.x = isStatic
-    };
-
-    static_assert(sizeof(GpuSprite) == 112);
-
-    struct GpuSector {
-        Vector4 floorData; // x = offset into sectorFloors, y = floor count
-        // minX, minY, maxX, maxY of the sector's flat triangles in map XY -
-        // the rectangle slopes are measured from (WallPieces::SectorBounds).
-        Vector4 bounds;
-    };
-
-    struct GpuSectorFloor {
-        Vector4 heights;
-        Vector4 slopeData;
-        Vector4 floorColor;
-        Vector4 ceilingColor;
-        Vector4 textureData; // x/y = floor/ceiling texture region, z/w = floor/ceiling SurfaceMetaData flags
-
-        // xy = floor offset, zw = ceiling offset
-        Vector4 textureOffsets;
-
-        // xy = floor flip X/Y, zw = ceiling flip X/Y
-        Vector4 textureFlip;
-        //todo TILKYTODO bitpacking
-
-        // xy = floor scale X/Y, zw = ceiling scale X/Y
-        Vector4 textureScales = {1.0f, 1.0f, 1.0f, 1.0f};
-    };
-
-    struct GpuCollider {
-        Vector4 positionType; // World x, y, z; type. 0 = sphere, 1 = AABB
-        Vector4 scale; // if sphere, x = radius. if box use vec3 is x y z
-    };
-
-    static_assert(sizeof(GpuCollider) == sizeof(float) * 8);
-
-    // One corner of a runtime editor gizmo (facing arrows, camera frustums),
-    // built on the CPU in world space.
-    struct GpuEditorGizmoVertex {
-        Vector4 position; // w unused
-        Vector4 color;
-    };
-
-    static_assert(sizeof(GpuEditorGizmoVertex) == sizeof(float) * 8);
-
-    // One entity drawing a model. Matches ModelInstance in Rendering.vs.glsl
-    // (std430, SSBO binding 3). Matrices are column major.
-    struct alignas(16) GpuModelInstance {
-        float modelMatrix[16]{};  // mat4: transform.position * rotation * scale
-        float normalMatrix[12]{}; // mat3: std430 pads each column to a vec4
-        Vector4 color;            // rgb = sector light, a = SurfaceMetaData flags
-    };
-
-    static_assert(sizeof(GpuModelInstance) == 128);
 
     struct GpuMesh {
         GLuint vao = 0;
@@ -233,38 +69,6 @@ namespace OpenGLRendererInternal {
         GLsizei instanceCount = 0;
     };
 
-    struct GPUTexture {
-        GLuint id = 0;
-        int width = 0;
-        int height = 0;
-
-        // The file it was loaded from, so an atlas rebuild can reload just
-        // the textures whose file changed.
-        std::filesystem::path path;
-        std::filesystem::file_time_type writeTime{};
-    };
-
-    struct GPUTextureRegion {
-        Vector4 uvRect; // x = uMin, y = vMin, z = uMax, w = vMax
-        Vector4 data;   // x = valid, y = atlas page (texture array layer), z/w = image width/height in pixels
-    };
-
-    // An image decoded to tightly packed RGBA8, kept between atlas rebuilds
-    // until its file changes on disk.
-    struct DecodedImage {
-        std::vector<unsigned char> pixels;
-        int width = 0;
-        int height = 0;
-        std::filesystem::file_time_type writeTime;
-    };
-
-    struct LoadedTextureSurface {
-        SDL_Surface* surface = nullptr;
-        int textureIndex = -1;
-        int x = 0;
-        int y = 0;
-    };
-
     // Min/mag filtering and mipmaps for the texture bound to `target`,
     // following the level's texture setting. Shared by the atlas (a
     // GL_TEXTURE_2D_ARRAY, one layer per page) and model textures so both
@@ -272,7 +76,7 @@ namespace OpenGLRendererInternal {
     void ApplyTextureSampling(RendererTextureSettings setting, GLenum target = GL_TEXTURE_2D);
 }
 
-class OpenGL final : public IRenderer {
+class OpenGL final : public RendererCore {
 public:
     OpenGL() = default;
     ~OpenGL() override = default;
@@ -292,32 +96,9 @@ public:
     // On resize Window
     void OnResize(int width, int height) override;
 
-    int CreateTexture(const std::string& fileName) override;
-
     bool CreateMap() override;
     void ReloadMap() override;
 
-    void RenderText(
-        const Shader &shader,
-        const std::string &text,
-        float x,
-        float y,
-        Vector2 scale,
-        Vector3 color
-    );
-
-    // Calls the RenderText function with the default text rendering shader
-    void RenderTextRaw(
-        const std::string &text,
-        Vector2 position,
-        Vector2 scale,
-        Vector3 color
-    ) override;
-
-    [[nodiscard]] FontMetrics GetFontMetrics(const std::string& font, float pixelSize) override;
-    [[nodiscard]] float MeasureTextLine(const std::string& font, float pixelSize, const std::string& text) override;
-    void DrawTextLine(const std::string& font, float pixelSize, const std::string& text,
-                      Vector2 baseline, Vector4 color) override;
     void DrawScreenRectangle(Vector2 position, Vector2 size, Vector4 color, const std::string& texture) override;
 
     void DrawUIRectangle(
@@ -336,25 +117,37 @@ public:
         return "OPENGL";
     }
 
-    bool BuildTextureAtlasFromLevel();
-    const OpenGLRendererInternal::DecodedImage* GetDecodedImage(const std::filesystem::path& path);
-
     void BeginImGuiFrame() const override;
     void EndImGuiFrame() const override;
 
-    [[nodiscard]] ImTextureID GetImGuiTextureID(const std::string& fileName) override;
+    bool InitImGuiBackend() override;
+    void ShutdownImGuiBackend() override;
+    void ImGuiBackendNewFrame() override;
+    void RenderImGuiDrawData(ImDrawData* drawData, int width, int height) override;
+    void RenderImGuiPlatformWindows() override;
+    void ClearWindow(Vector4 color, int width, int height) override;
+
+protected:
+    [[nodiscard]] bool AtlasExists() const override;
+    [[nodiscard]] int MaxAtlasPages() const override;
+    void CreateAtlasGpu(int pageCount) override;
+    void UploadAtlasPage(int page, const unsigned char* pixels) override;
+    void FinishAtlasGpu(RendererTextureSettings setting) override;
+    void DestroyAtlasGpu() override;
+
+    unsigned UploadTextureGpu(const void* pixels, int width, int height) override;
+    void DestroyTextureGpu(unsigned id) override;
+    [[nodiscard]] ImTextureID TextureImGuiID(unsigned id) const override;
+
+    void AddGlyphPageGpu() override;
+    void UploadGlyphGpu(int page, int x, int y, int width, int height, const unsigned char* coverage) override;
+    void DestroyGlyphPagesGpu() override;
+    void BeginTextGpu(Vector4 color) override;
+    void DrawGlyphsGpu(int page, const std::vector<float>& vertices) override;
+    void EndTextGpu() override;
 
 private:
-    using Glyph = OpenGLRendererInternal::Glyph;
-    using GlyphKey = OpenGLRendererInternal::GlyphKey;
-    using GpuFlatTriangle = OpenGLRendererInternal::GpuFlatTriangle;
-    using GpuWall = OpenGLRendererInternal::GpuWall;
-    using GpuSprite = OpenGLRendererInternal::GpuSprite;
-    using GpuSector = OpenGLRendererInternal::GpuSector;
-    using GPUTexture = OpenGLRendererInternal::GPUTexture;
-    using GpuCollider = OpenGLRendererInternal::GpuCollider;
-    using GpuSectorFloor = OpenGLRendererInternal::GpuSectorFloor;
-    using GpuModelInstance = OpenGLRendererInternal::GpuModelInstance;
+    using GpuEditorGizmoVertex = RendererGpu::GpuEditorGizmoVertex;
     using GpuModelAsset = OpenGLRendererInternal::GpuModelAsset;
     using GpuModelBatch = OpenGLRendererInternal::GpuModelBatch;
 
@@ -368,9 +161,6 @@ private:
     GLuint VAO = 0;
     GLuint wallSSBO = 0;
     GLuint sectorFloorSSBO = 0;
-
-    std::vector<GpuSector> gpuSectors;
-    std::vector<GpuSectorFloor> gpuSectorFloors;
 
     GLuint textVAO = 0;
     GLuint textVBO = 0;
@@ -389,34 +179,16 @@ private:
     GLint projectionUniform = -1;
 
     // ---- Text (OpenGLText.cpp) ----
-    FT_Library ft = nullptr;
-    FT_Face defaultFontFace = nullptr; // EngineAssets/Fonts/Notosans.ttf, also the fallback for missing characters
-    // Project fonts by absolute path. nullptr = failed to load (not retried
-    // until RefreshTexturesFromLevel).
-    std::unordered_map<std::string, FT_Face> fontFaces;
-    std::unordered_map<GlyphKey, Glyph, OpenGLRendererInternal::GlyphKeyHash> glyphCache;
     std::vector<GLuint> glyphPages; // GL_TEXTURE_2D, GL_R8
-    int glyphCursorX = 0;
-    int glyphCursorY = 0;
-    int glyphShelfHeight = 0;
-    std::unordered_set<std::string> warnedMissingCharacters; // "font|codepoint", warned once
+    GLboolean textDepthWasEnabled = GL_FALSE;
+    GLboolean textBlendWasEnabled = GL_FALSE;
 
     GLuint flatSSBO = 0;
-    GLsizei flatTriangleCount = 0;
-
     GLuint spriteSSBO = 0;
-    GLsizei spriteCount = 0;
-
     GLuint sectorSSBO = 0;
-
     GLuint colliderSSBO = 0;
-    GLsizei colliderCount = 0;
-
     GLuint entityMarkerSSBO = 0;
-    GLsizei entityMarkerCount = 0;
-
     GLuint editorGizmoSSBO = 0;
-    GLsizei editorGizmoVertexCount = 0; // triangles
 
     GLuint modelSSBO = 0;
     GLsizeiptr modelSSBOCapacity = 0;
@@ -434,25 +206,8 @@ private:
     GLint distanceLightDarkestUniform = -1;
     GLint viewportSizeUniform = -1;
 
-    std::vector<GpuWall> gpuWalls;
-    GLsizei gpuWallCount = 0;
-
-    std::vector<GpuFlatTriangle> flatTriangles;
-
-    // Each sector's run of flatTriangles, by sector index -
-    // BuildFlatTrianglesFromSectors writes them sector by sector.
-    struct FlatSectorRange {
-        GLint first = 0;
-        GLsizei count = 0;
-    };
-    std::vector<FlatSectorRange> flatSectorRanges;
-    // Each sector's bounds from the same triangles, so slopes on the GPU
-    // match the baked flats (GpuSector::bounds).
-    std::vector<Vector4> flatSectorBounds;
     GLint flatInstanceOffsetUniform = -1;
 
-    // This frame's working gateways.
-    std::vector<Gateways::Opening> gatewayOpenings;
     GLint clipPlaneUniform = -1;
     GLint gatewayCornersUniform = -1;
     GLint gatewayFarDepthUniform = -1;
@@ -460,52 +215,21 @@ private:
     // The window got a stencil buffer. Without one gateways draw black.
     bool hasStencil = false;
 
-    // Visibility culling, decided each frame by UpdateVisibleSectors. Only on
-    // with the game camera (Play and the standalone game); the runtime
-    // editor's camera always draws everything.
-    bool visibilityCulling = false;
-    std::vector<const Sector*> visibleSectors;
-    std::vector<uint8_t> sectorVisible; // by sector index
-    // Visible or next to a visible sector: an entity standing by a portal
-    // can reach into the sector the camera sees.
-    std::vector<uint8_t> sectorShowsEntities;
-
-    // Fingerprint of the sector/floor/triangle layout flatTriangles was built
-    // from. Floors can be added or removed while the level is live, so the
-    // instance list has to follow them.
-    size_t flatLayoutSignature = 0;
-
-    std::vector<GpuSprite> gpuSprites;
-    std::vector<GpuCollider> gpuColliders;
-    std::vector<Vector4> gpuEntityMarkers; // xyz = position
-    std::vector<OpenGLRendererInternal::GpuEditorGizmoVertex> gpuEditorGizmoTriangles;
-
     // Keyed by ComponentModel::fileName. Assets nobody used for
     // MODEL_UNUSED_LIFETIME_MS are released; failed loads are remembered so a
     // broken reference is not retried every frame (cleared by
     // RefreshTexturesFromLevel, the editor's "assets may have changed" signal).
     std::unordered_map<std::string, GpuModelAsset> modelAssets;
-    std::unordered_set<std::string> failedModelFiles;
     RendererTextureSettings modelTextureSetting = PIXEL_ART_SHIMMERY;
 
     std::vector<GpuModelInstance> gpuModelInstances;
     std::vector<GpuModelInstance> uploadedModelInstances;
     std::vector<GpuModelBatch> modelBatches;
 
-    std::vector<GPUTexture> textures;
     GLuint atlasTexture = 0; // GL_TEXTURE_2D_ARRAY, one ATLAS_SIZE layer per page
-    std::unordered_map<std::string, OpenGLRendererInternal::DecodedImage> decodedImageCache; // keyed by absolute path
     GLuint textureRegionSSBO = 0;
-    // Fingerprint of the image list, their file times and the sampling
-    // setting the atlas was built from; an unchanged one skips the rebuild.
-    size_t atlasSignature = 0;
-
-    std::vector<OpenGLRendererInternal::GPUTextureRegion> textureRegions;
-    std::unordered_map<std::string, int> textureRegionIndexByName;
-    std::unordered_map<std::string, int> textureIndexByName;
 
     bool InitializeOpenGL();
-    bool InitializeFont();
 
     bool InitSDL(const std::string& windowName, bool startHidden);
     bool InitImGui(); // editor only; not defined in the standalone game
@@ -513,13 +237,8 @@ private:
     bool InitUI();
     bool InitText();
 
-    void BuildGpuSectors();
-    void BuildGpuSprites();
-    void BuildGpuColliders();
-    void BuildGpuEntityMarkers();
-    // Skips `cameraOwner`'s gizmos: the view is from its own eye. The view
-    // sizes them, so they keep a fixed width on screen.
-    void BuildGpuEditorGizmos(ID cameraOwner, const ComponentTransform& viewTransform, const ComponentCamera& viewCamera);
+    // glBufferData of `bytes` into `buffer`, bound at `binding`.
+    static void UploadSSBO(GLuint buffer, GLuint binding, const void* data, size_t bytes);
 
     // OpenGLModel.cpp
     void BuildGpuModels();
@@ -529,19 +248,9 @@ private:
     void ApplyModelTextureSampling(RendererTextureSettings setting);
     void DestroyAllModelAssets();
 
-    void BuildGpuWallsFromMap();
     void UploadGpuWallsFromMap();
-
-    void BuildFlatTrianglesFromSectors();
     void RefreshFlatTrianglesIfLayoutChanged();
 
-    // OpenGLUpdate.cpp: visibility culling.
-    void UpdateVisibleSectors(const Level& level, const ComponentCamera& camera, const ComponentTransform& renderCameraTransform);
-    // The same from a given sector (a gateway's exit room) and view.
-    void UpdateVisibleSectorsFrom(const Level& level, int startSector, const Matrix4& viewProjection);
-    [[nodiscard]] bool IsSectorCulled(int sectorIndex) const;
-    [[nodiscard]] bool IsWallCulled(const Level& level, const Wall& wall) const;
-    [[nodiscard]] bool IsEntityCulled(const ComponentTransform& transform) const;
     void DrawFlats() const;
 
     // OpenGLUpdate.cpp: one view of the world - the camera's own, or one
@@ -554,16 +263,6 @@ private:
     // OpenGLGateway.cpp: everything seen through the gateways visible in
     // the view (recursively, Rendering > Gateway Depth deep), into the
     // stencil buffer's `stencilRef` area of the screen.
-    struct GatewayView {
-        ComponentCamera camera;           // matrices already built
-        Vector3 eye;
-        const Wall* exitWall = nullptr;   // the wall this view looks out of
-        Vector4 clipPlane;                // world (x, y, z, 1) dot plane >= 0 is kept
-        bool clipped = false;
-        int depth = 0;                    // gateways gone through
-        int scissor[4] = {0, 0, 0, 0};    // x, y, width, height in pixels
-    };
-
     void DrawGatewayViews(const Level& level, const GatewayView& view, int stencilRef, int& passesLeft);
     // The opening as a box reaching a little behind its wall, so a camera
     // right at the wall still has its view through it. farDepth puts it at
@@ -578,63 +277,8 @@ private:
     // OpenGLBackground.cpp: the level's sky, drawn before the world.
     void DrawBackground(const ComponentCamera& camera, const SkySettings& sky);
     GLuint GetSkyTextureID(const std::string& fileName, GLint wrapS, GLint wrapT, Vector2* outSize);
-    int GetOrCreateTextureIndex(const std::string& fileName);
-    int GetTextureRegionIndex(const std::string& fileName) const;
 
-    // A surface's offset per second so far, wrapped by one repeat of the
-    // atlas region it shows, so the GPU only ever sees a small offset.
-    Vector2 SurfaceScroll(const SurfaceTexture& texture, int regionIndex) const;
-
-    void RefreshTexturesFromLevel() override;
-    void RefreshTexturesIfLevelNeedsNew() override;
-
-    // Level textures a refresh already failed to find (missing or broken
-    // files), so RefreshTexturesIfLevelNeedsNew doesn't rescan for them after
-    // every edit. Cleared by a full RefreshTexturesFromLevel.
-    std::unordered_set<std::string> unresolvedLevelTextures;
-    [[nodiscard]] const GPUTexture& GetTexture(int index) const;
-    [[nodiscard]] int GetTextureCount() const;
-    void DestroyAllTextures();
-
-    // OpenGLTexture.cpp. Loads `path` into a new GL texture. False (and
-    // `out` untouched) if it can't be read.
-    bool LoadTextureFile(const std::filesystem::path& path, GPUTexture& out);
-    // The GL texture for RGBA8 pixels, set up as LoadTextureFile's are.
-    void UploadTexturePixels(const std::filesystem::path& path, const void* pixels, int width, int height, GPUTexture& out);
-    // The atlas and its region buffer only, not the standalone textures.
-    void DestroyAtlas();
-    // Re-uploads, in place, every standalone texture whose file changed on
-    // disk since it was loaded. Indices (and with them textureIndexByName)
-    // stay valid.
-    void ReloadChangedTextures();
-
-    // `shown` is what the label says (Level::ShownUIText).
-    void RenderUIText(const ComponentUIText& text, const std::string& shown, const ComponentUITransform& transform);
-
-    // OpenGLText.cpp: fonts and the glyph atlas.
-    FT_Face GetFontFace(const std::string& fontReference);
-    static void SetFontPixelSize(FT_Face face, unsigned pixelSize);
-    const Glyph* GetGlyph(FT_Face face, unsigned pixelSize, unsigned glyphIndex, const std::function<void()>& beforeAtlasReset);
-    bool PackGlyph(int width, int height, int& page, int& x, int& y);
-    void AddGlyphPage();
-    void ResetGlyphAtlas();
-    void ReloadFonts();
-    void DestroyFonts();
-    // Draws UTF-8 text with its first line's baseline at baselineY. '\n'
-    // starts a new line; characters the face lacks come from the default font.
-    void RenderTextString(
-        const Shader& shader,
-        FT_Face face,
-        unsigned pixelSize,
-        const std::string& text,
-        float x,
-        float baselineY,
-        float xStretch,
-        Vector4 color // RGBA 0..1
-    );
-
-    static constexpr int SECTOR_FLOOR_COUNT = 3;
-    static constexpr int SECTOR_HEIGHT_COUNT = SECTOR_FLOOR_COUNT + 1;
+    bool InitializeFont();
 
     // 2D editor canvas (OpenGLEditor2D.cpp). Made on the first
     // DrawEditor2D, so the game never builds them. Present in every build
@@ -685,9 +329,7 @@ public:
     void DrawEditor2D(const Editor2D::Frame& frame) override;
     void BeginPanelTarget(PanelTarget target, int width, int height) override;
     void EndPanelTarget() override;
-    [[nodiscard]] unsigned GetPanelTexture(PanelTarget target) const override;
-    [[nodiscard]] bool FindLoadedTexture(const std::string& fileName, LoadedTexture* out) const override;
-    bool AddDecodedTexture(const std::string& fileName, const std::filesystem::path& path, const void* pixels, int width, int height) override;
+    [[nodiscard]] PanelImage GetPanelImage(PanelTarget target) const override;
 };
 
 #endif

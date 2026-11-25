@@ -4,6 +4,8 @@
 
 #ifndef TILKY_STANDALONE
 #include "imgui.h"
+#include "imgui_impl_opengl3.h"
+#include "imgui_impl_sdl3.h"
 #include "Headers/Editor/EditorStyle.hpp"
 #endif
 
@@ -110,11 +112,63 @@ void OpenGL::EndPanelTarget() {
     glViewport(0, 0, screenWidth, screenHeight);
 }
 
-unsigned OpenGL::GetPanelTexture(const PanelTarget panel) const {
+IRenderer::PanelImage OpenGL::GetPanelImage(const PanelTarget panel) const {
     const int index = static_cast<int>(panel);
-    if (index < 0 || index >= static_cast<int>(PanelTarget::Count)) return 0;
-    return panelTargets[index].colorTexture;
+    if (index < 0 || index >= static_cast<int>(PanelTarget::Count)) return {};
+
+    // GL keeps the bottom row first, so the image is flipped.
+    return {static_cast<ImTextureID>(panelTargets[index].colorTexture), ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f)};
 }
+
+void OpenGL::ClearWindow(const Vector4 color, const int width, const int height) {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, width, height);
+    glClearColor(color.x, color.y, color.z, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+#ifndef TILKY_STANDALONE
+bool OpenGL::InitImGuiBackend() {
+    if (!ImGui_ImplSDL3_InitForOpenGL(window, glContext)) return false;
+    return ImGui_ImplOpenGL3_Init("#version 430");
+}
+
+void OpenGL::ShutdownImGuiBackend() {
+    // The backend frees its GL objects, so this context must be current.
+    if (window != nullptr && glContext != nullptr && SDL_GL_GetCurrentContext() != glContext)
+        SDL_GL_MakeCurrent(window, glContext);
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+}
+
+void OpenGL::ImGuiBackendNewFrame() {
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+}
+
+void OpenGL::RenderImGuiDrawData(ImDrawData* drawData, const int width, const int height) {
+    glViewport(0, 0, width, height);
+    ImGui_ImplOpenGL3_RenderDrawData(drawData);
+}
+
+void OpenGL::RenderImGuiPlatformWindows() {
+    // Each pulled-out panel has a GL context of its own (sharing textures
+    // with this one); then this window's context is current again.
+    SDL_Window* currentWindow = SDL_GL_GetCurrentWindow();
+    SDL_GLContext currentContext = SDL_GL_GetCurrentContext();
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
+    SDL_GL_MakeCurrent(currentWindow, currentContext);
+}
+#else
+// The game draws no ImGui; these only fill IRenderer's vtable.
+bool OpenGL::InitImGuiBackend() { return false; }
+void OpenGL::ShutdownImGuiBackend() {}
+void OpenGL::ImGuiBackendNewFrame() {}
+void OpenGL::RenderImGuiDrawData(ImDrawData*, int, int) {}
+void OpenGL::RenderImGuiPlatformWindows() {}
+#endif
 
 void OpenGL::DestroyPanelTarget(PanelTargetBuffers& target) {
     if (target.framebuffer != 0) glDeleteFramebuffers(1, &target.framebuffer);

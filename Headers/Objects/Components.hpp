@@ -1000,17 +1000,27 @@ template<typename T>
 struct ComponentStorage {
     std::vector<T> components;
 
+    // Transforms are looked up by owner every frame by nearly every system,
+    // so they also keep a flat table: entity ID -> index in `components`.
+    // Entity IDs count up from 1, so the table stays about as long as the
+    // number of entities ever made in the level (4 bytes each).
+    static constexpr bool FLAT_OWNER_INDEX = std::is_same_v<T, ComponentTransform>;
+
     // The owner's first component, or nullptr.
     T* Get(const ID ownerID) {
-        const auto it = ownerToInstances.find(ownerID);
-        if (it == ownerToInstances.end() || it->second.empty()) return nullptr;
-        return GetInstance(it->second.front());
+        if constexpr (FLAT_OWNER_INDEX) {
+            if (ownerID >= ownerToIndex.size()) return nullptr;
+            const std::uint32_t index = ownerToIndex[ownerID];
+            return index == NO_INDEX ? nullptr : &components[index];
+        } else {
+            const auto it = ownerToInstances.find(ownerID);
+            if (it == ownerToInstances.end() || it->second.empty()) return nullptr;
+            return GetInstance(it->second.front());
+        }
     }
 
     const T* Get(const ID ownerID) const {
-        const auto it = ownerToInstances.find(ownerID);
-        if (it == ownerToInstances.end() || it->second.empty()) return nullptr;
-        return GetInstance(it->second.front());
+        return const_cast<ComponentStorage*>(this)->Get(ownerID);
     }
 
     T* GetInstance(const ComponentInstanceID instanceID) {
@@ -1056,6 +1066,7 @@ struct ComponentStorage {
     }
 
     [[nodiscard]] bool Has(const ID ownerID) const {
+        if constexpr (FLAT_OWNER_INDEX) return Get(ownerID) != nullptr;
         const auto it = ownerToInstances.find(ownerID);
         return it != ownerToInstances.end() && !it->second.empty();
     }
@@ -1087,11 +1098,13 @@ struct ComponentStorage {
         if (removeIndex != lastIndex) {
             components[removeIndex] = std::move(components[lastIndex]);
             instanceToIndex[components[removeIndex].instanceID] = removeIndex;
+            if constexpr (FLAT_OWNER_INDEX) RefreshOwnerIndex(components[removeIndex].ownerID);
         }
 
         components.pop_back();
         instanceToIndex.erase(instanceID);
         ForgetInstance(ownerID, instanceID);
+        if constexpr (FLAT_OWNER_INDEX) RefreshOwnerIndex(ownerID);
 
         return true;
     }
@@ -1112,6 +1125,7 @@ struct ComponentStorage {
         if (it == list.end() || newIndex >= list.size()) return false;
         list.erase(it);
         list.insert(list.begin() + static_cast<std::ptrdiff_t>(newIndex), instanceID);
+        if constexpr (FLAT_OWNER_INDEX) RefreshOwnerIndex(component->ownerID);
         return true;
     }
 
@@ -1119,6 +1133,7 @@ struct ComponentStorage {
         components.clear();
         instanceToIndex.clear();
         ownerToInstances.clear();
+        if constexpr (FLAT_OWNER_INDEX) ownerToIndex.clear();
         nextInstanceID = 1;
     }
 
@@ -1129,12 +1144,32 @@ struct ComponentStorage {
         std::stable_sort(components.begin(), components.end(), less);
         instanceToIndex.clear();
         for (size_t i = 0; i < components.size(); ++i) instanceToIndex[components[i].instanceID] = i;
+        if constexpr (FLAT_OWNER_INDEX) for (const T& component : components) RefreshOwnerIndex(component.ownerID);
     }
 
 protected:
     std::unordered_map<ComponentInstanceID, size_t> instanceToIndex;
     std::unordered_map<ID, std::vector<ComponentInstanceID>> ownerToInstances;
     ComponentInstanceID nextInstanceID = 1;
+
+    // FLAT_OWNER_INDEX only: entity ID -> index of its first component, or
+    // NO_INDEX. Kept in step with ownerToInstances by RefreshOwnerIndex.
+    static constexpr std::uint32_t NO_INDEX = std::numeric_limits<std::uint32_t>::max();
+    std::vector<std::uint32_t> ownerToIndex;
+
+    void RefreshOwnerIndex(const ID ownerID) {
+        if (ownerID == INVALID_ID) return;
+
+        std::uint32_t index = NO_INDEX;
+        if (const auto owner = ownerToInstances.find(ownerID); owner != ownerToInstances.end() && !owner->second.empty())
+            index = static_cast<std::uint32_t>(instanceToIndex.at(owner->second.front()));
+
+        if (ownerID >= ownerToIndex.size()) {
+            if (index == NO_INDEX) return;
+            ownerToIndex.resize(static_cast<size_t>(ownerID) + 1, NO_INDEX);
+        }
+        ownerToIndex[ownerID] = index;
+    }
 
     T& Insert(T component) {
         ComponentInstanceID instanceID = component.instanceID;
@@ -1150,6 +1185,7 @@ protected:
         components.push_back(std::move(component));
         instanceToIndex[instanceID] = components.size() - 1;
         ownerToInstances[ownerID].push_back(instanceID);
+        if constexpr (FLAT_OWNER_INDEX) RefreshOwnerIndex(ownerID);
 
         return components.back();
     }

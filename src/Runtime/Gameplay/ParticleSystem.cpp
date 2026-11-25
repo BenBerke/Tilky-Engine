@@ -318,9 +318,7 @@ namespace {
                   int count, float scale, ComponentInstanceID previewOwner);
 
     int EmitFromOwner(Level& level, const ComponentParticleEmitter& emitter, const int count, const ComponentInstanceID previewOwner) {
-        const ComponentTransform* transform = level.transforms.Get(emitter.ownerID);
-        if (transform == nullptr) return 0;
-        return EmitBurst(level, emitter, transform->LocalToWorld(emitter.offset), {0.0f, 0.0f, 0.0f}, count, 1.0f, previewOwner);
+        return EmitBurst(level, emitter, level.transforms.Get(emitter.ownerID)->LocalToWorld(emitter.offset), {0.0f, 0.0f, 0.0f}, count, 1.0f, previewOwner);
     }
 
     // One step of an emitter's cycle: the burst that starts it, the stream, and

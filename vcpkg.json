@@ -25,6 +25,10 @@
     "sol2",
     "spdlog",
     "stb",
-    "assimp"
+    "assimp",
+    "glslang",
+    "vk-bootstrap",
+    "volk",
+    "vulkan-memory-allocator"
   ]
 }

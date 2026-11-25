@@ -469,10 +469,10 @@ namespace LevelSystem {
                 ? level.cameras.GetInstance(activeCamera->instanceID)
                 : level.cameras.Get(ownerID);
 
-            if (playerTransform == nullptr || playerRigidbody == nullptr || (ownCamera == nullptr && activeCamera == nullptr)) [[unlikely]] {
+            if (playerRigidbody == nullptr || (ownCamera == nullptr && activeCamera == nullptr)) [[unlikely]] {
                 if (reportedControllerID != ownerID) {
                     spdlog::error(
-                        "Player controller entity {} skipped: it needs a transform, a rigidbody and a camera (its own or an active one)",
+                        "Player controller entity {} skipped: it needs a rigidbody and a camera (its own or an active one)",
                         ownerID
                     );
                     reportedControllerID = ownerID;
@@ -522,10 +522,8 @@ namespace LevelSystem {
             for (int i = 0; i < substeps; i++) {
                 if (!gatewayOpenings.empty()) {
                     stepStarts.resize(level.rigidbodies.components.size());
-                    for (size_t index = 0; index < level.rigidbodies.components.size(); ++index) {
-                        const ComponentTransform* transform = level.transforms.Get(level.rigidbodies.components[index].ownerID);
-                        stepStarts[index] = transform != nullptr ? transform->position : Vector3{};
-                    }
+                    for (size_t index = 0; index < level.rigidbodies.components.size(); ++index)
+                        stepStarts[index] = level.transforms.Get(level.rigidbodies.components[index].ownerID)->position;
                 }
 
                 for (ComponentRigidbody &r: level.rigidbodies.components) {
@@ -536,11 +534,6 @@ namespace LevelSystem {
                     if (level.rigidbodies.Get(r.ownerID) != &r) continue;
 
                     ComponentTransform *transform = level.transforms.Get(r.ownerID);
-
-                    if (!transform) [[unlikely]] {
-                        spdlog::error("Rigidbody entity {} has no transform", r.ownerID);
-                        continue;
-                    }
 
                     // Only a collider can ground a body, so one without
                     // a collider falls through everything.
@@ -561,8 +554,7 @@ namespace LevelSystem {
                         ComponentRigidbody& r = level.rigidbodies.components[index];
                         if (!r.ownerEnabled || level.rigidbodies.Get(r.ownerID) != &r) continue;
 
-                        if (ComponentTransform* transform = level.transforms.Get(r.ownerID))
-                            PassThroughGateways(level, gatewayOpenings, *transform, r, stepStarts[index]);
+                        PassThroughGateways(level, gatewayOpenings, *level.transforms.Get(r.ownerID), r, stepStarts[index]);
                     }
                 }
             }

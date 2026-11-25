@@ -379,9 +379,8 @@ namespace MapEditorInternal {
 
         float PlayerHeight(const Level& level) {
             for (const ComponentPlayerController& controller : level.playerControllers.components) {
-                const ComponentTransform* transform = level.transforms.Get(controller.ownerID);
                 const ComponentCollider* collider = level.colliders.Get(controller.ownerID);
-                if (transform != nullptr && collider != nullptr) return collider->Height(*transform);
+                if (collider != nullptr) return collider->Height(*level.transforms.Get(controller.ownerID));
             }
             return 0.0f;
         }

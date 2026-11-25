@@ -228,8 +228,6 @@ namespace {
             if (!sprite.isActive) continue;
 
             const ComponentTransform* transform = level.transforms.Get(sprite.ownerID);
-            if (transform == nullptr) continue;
-
             const Vector3 position = transform->LocalToWorld(sprite.offset);
             Vector3 right;
             Vector3 up;
@@ -258,8 +256,6 @@ namespace {
             if (model.fileName.empty()) continue;
 
             const ComponentTransform* transform = level.transforms.Get(model.ownerID);
-            if (transform == nullptr) continue;
-
             const Vector3 position = transform->LocalToWorld(model.offset);
             const Vector3 halfSize = transform->scale * 0.5f;
 
@@ -2742,11 +2738,11 @@ namespace RuntimeEditorUi {
         scenePixelSize = {std::round(size.x * framebufferScale.x), std::round(size.y * framebufferScale.y)};
         sceneDrawList = ImGui::GetWindowDrawList();
 
-        // GL keeps the bottom row first, so the image is flipped.
-        if (const unsigned sceneTexture = runtimeRenderer != nullptr ? runtimeRenderer->GetPanelTexture(IRenderer::PanelTarget::Scene) : 0;
-            sceneTexture != 0)
-            sceneDrawList->AddImage(static_cast<ImTextureID>(sceneTexture),
-                                    min, ImVec2(min.x + size.x, min.y + size.y), ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
+        // The renderer says which way up its image is (GL keeps the bottom row first).
+        if (const IRenderer::PanelImage image = runtimeRenderer != nullptr ? runtimeRenderer->GetPanelImage(IRenderer::PanelTarget::Scene)
+                                                                           : IRenderer::PanelImage{};
+            image.texture != ImTextureID{})
+            sceneDrawList->AddImage(image.texture, min, ImVec2(min.x + size.x, min.y + size.y), image.uv0, image.uv1);
 
         // Takes every button, so clicks reach the 3D view instead of
         // dragging the window around.

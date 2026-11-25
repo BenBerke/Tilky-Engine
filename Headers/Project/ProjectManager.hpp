@@ -287,6 +287,16 @@ namespace ProjectManager {
     // MIN_TEXELS_PER_UNIT.
     bool SetTexelsPerUnit(float texelsPerUnit);
 
+    // The graphics API the project's editor and game draw with ("renderer"
+    // in project.tilky: "opengl" or "vulkan"). Projects without the key use
+    // OpenGL, as every project did before there was a choice.
+    std::string GetRenderer();
+
+    // Patches "renderer" into the loaded project's project.tilky, the same
+    // one-field patch as SetTexelsPerUnit(). Takes effect the next time the
+    // editor starts.
+    bool SetRenderer(const std::string& renderer);
+
     std::string GetCurrentLanguageInLauncher();
 
     // Returns the name of the currently loaded project.

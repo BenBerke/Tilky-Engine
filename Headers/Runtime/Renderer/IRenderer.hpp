@@ -159,20 +159,42 @@ public:
 
     virtual void EndPanelTarget() {}
 
-    // The texture the panel's last BeginPanelTarget() drew into (0 before
-    // the first), bottom row first, as GL keeps it.
-    [[nodiscard]] virtual unsigned GetPanelTexture(PanelTarget target) const {
+    // How ImGui shows the panel's last BeginPanelTarget() picture: its
+    // texture id (0 before the first) and the UVs of its top-left and
+    // bottom-right corners - GL keeps the bottom row first, Vulkan the top.
+    struct PanelImage {
+        ImTextureID texture = ImTextureID{};
+        ImVec2 uv0 = {0.0f, 0.0f};
+        ImVec2 uv1 = {1.0f, 1.0f};
+    };
+
+    [[nodiscard]] virtual PanelImage GetPanelImage(PanelTarget target) const {
         (void)target;
-        return 0;
+        return {};
     }
+
+    // The editor's ImGui (its context current), drawing into this
+    // renderer's window. Declared in the standalone game too, so both
+    // executables share one IRenderer layout; there they do nothing.
+    virtual bool InitImGuiBackend() = 0;
+    virtual void ShutdownImGuiBackend() = 0;
+    // The backends' part of a new ImGui frame (before ImGui::NewFrame()).
+    virtual void ImGuiBackendNewFrame() = 0;
+    // Draws ImGui's draw data over the window, `width` x `height` pixels.
+    virtual void RenderImGuiDrawData(ImDrawData* drawData, int width, int height) = 0;
+    // The panels pulled out into OS windows of their own.
+    virtual void RenderImGuiPlatformWindows() = 0;
+    // Clears the whole window to `color` (RGB 0..1).
+    virtual void ClearWindow(Vector4 color, int width, int height) = 0;
 
     // The editors' texture loading (EditorTextureCache) decodes images on
     // worker threads and hands them over here, so the editors, the runtime
     // editor and the game share one set of textures.
     struct LoadedTexture {
-        unsigned id = 0; // the GL texture
+        unsigned id = 0; // the backend's texture
         int width = 0;
         int height = 0;
+        ImTextureID imguiID = ImTextureID{}; // to show it with ImGui::Image
     };
 
     // A texture already loaded under `fileName`, without loading it.

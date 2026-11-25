@@ -328,6 +328,7 @@ void Level::DestroyEntity(const ID entityID) {
     flipbooks.RemoveAll(entityID);
     pathfinders.RemoveAll(entityID);
     monsterAIs.RemoveAll(entityID);
+    particleEmitters.RemoveAll(entityID);
     audioSources.RemoveAll(entityID);
     scripts.RemoveAll(entityID);
     playerControllers.RemoveAll(entityID);

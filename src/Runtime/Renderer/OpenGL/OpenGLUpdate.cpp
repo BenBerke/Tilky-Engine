@@ -23,81 +23,10 @@
 #include "Headers/Engine/Local/Local.hpp"
 #include "tracy/Tracy.hpp"
 
-void OpenGL::UpdateVisibleSectors(
-    const Level& level,
-    const ComponentCamera& camera,
-    const ComponentTransform& renderCameraTransform
-) {
-    // The camera entity's own sector as the hint - it's almost always right.
-    const int cameraSector = MapQueries::FindSectorContainingPoint(
-        level.sectors,
-        {renderCameraTransform.position.x, renderCameraTransform.position.z},
-        renderCameraTransform.sectorIndex
-    );
-
-    UpdateVisibleSectorsFrom(level, cameraSector, camera.projection * camera.view);
-}
-
-void OpenGL::UpdateVisibleSectorsFrom(const Level& level, const int startSector, const Matrix4& viewProjection) {
-    const size_t sectorCount = level.sectors.size();
-
-    MapQueries::GetVisibleSectors(
-        level,
-        startSector,
-        viewProjection,
-        static_cast<float>(screenWidth),
-        static_cast<float>(screenHeight),
-        visibleSectors
-    );
-
-    sectorVisible.assign(sectorCount, 0);
-    sectorShowsEntities.assign(sectorCount, 0);
-
-    for (const Sector* sector : visibleSectors) {
-        const size_t index = static_cast<size_t>(sector - level.sectors.data());
-
-        sectorVisible[index] = 1;
-        sectorShowsEntities[index] = 1;
-
-        for (const Sector* neighbour : sector->neighbors)
-            if (neighbour != nullptr) sectorShowsEntities[static_cast<size_t>(neighbour - level.sectors.data())] = 1;
-    }
-
-    visibilityCulling = true;
-}
-
-// Indices the culling data doesn't cover (outside every sector, or a level
-// that changed size since the last frame) are drawn, never hidden.
-bool OpenGL::IsSectorCulled(const int sectorIndex) const {
-    return visibilityCulling &&
-           sectorIndex >= 0 &&
-           sectorIndex < static_cast<int>(sectorVisible.size()) &&
-           !sectorVisible[sectorIndex];
-}
-
-// A wall is seen from one of its sectors, so it is hidden only when every
-// sector it has is. A wall with no sector at all is always drawn.
-bool OpenGL::IsWallCulled(const Level& level, const Wall& wall) const {
-    if (!visibilityCulling) return false;
-
-    bool hasSector = false;
-
-    for (const ID sectorID : {wall.frontSector, wall.backSector}) {
-        const Sector* sector = MapQueries::GetSectorByID(level, sectorID);
-        if (sector == nullptr) continue;
-
-        hasSector = true;
-        if (!IsSectorCulled(static_cast<int>(sector - level.sectors.data()))) return false;
-    }
-
-    return hasSector;
-}
-
-bool OpenGL::IsEntityCulled(const ComponentTransform& transform) const {
-    return visibilityCulling &&
-           transform.sectorIndex >= 0 &&
-           transform.sectorIndex < static_cast<int>(sectorShowsEntities.size()) &&
-           !sectorShowsEntities[transform.sectorIndex];
+void OpenGL::UploadSSBO(const GLuint buffer, const GLuint binding, const void* data, const size_t bytes) {
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, static_cast<GLsizeiptr>(bytes), bytes == 0 ? nullptr : data, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, buffer);
 }
 
 // One instanced draw per run of visible sectors that sit next to each other
@@ -239,6 +168,7 @@ void OpenGL::DrawSceneGeometry() {
         ZoneScopedN("Build GPU Sprites");
 
         BuildGpuSprites();
+        UploadSSBO(spriteSSBO, 2, gpuSprites.data(), gpuSprites.size() * sizeof(GpuSprite));
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, spriteSSBO);
         glEnable(GL_BLEND);
@@ -282,32 +212,12 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     ComponentCamera* camera = nullptr;
     ComponentTransform* cameraTransform = nullptr;
 
-    if (useEditorCamera) {
-        camera = GetEditorCamera();
-        cameraTransform = GetEditorCameraTransform();
-
-        if (camera == nullptr || cameraTransform == nullptr) [[unlikely]] {
-            spdlog::error("OpenGL::Update failed: editor camera was not created");
-            return;
-        }
-    }
-    else {
-        camera = LevelSystem::GetActiveCamera(level);
-
-        if (camera == nullptr || !camera->ownerEnabled) [[unlikely]] {
+    switch (ResolveFrameCamera(level, camera, cameraTransform)) {
+        case FrameCamera::Failed: return;
+        case FrameCamera::NoCamera:
             DrawNoCameraScreen();
             return;
-        }
-
-        cameraTransform = level.transforms.Get(camera->ownerID);
-
-        if (cameraTransform == nullptr) [[unlikely]] {
-            spdlog::error(
-                "OpenGL::Update failed: active camera entity {} does not have a transform",
-                camera->ownerID
-            );
-            return;
-        }
+        case FrameCamera::Ready: break;
     }
 
     if (!UpdateScreenSize()) return;
@@ -316,109 +226,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
     if (screenHeight > 0) [[likely]] camera->aspectRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
 
-    ComponentTransform renderCameraTransform = *cameraTransform;
-
-    if (!useEditorCamera) {
-        float eyeHeight = 0.0f;
-
-        for (const ComponentPlayerController &controller:
-             level.playerControllers.components) {
-            if (!controller.isActive) continue;
-
-            if (controller.ownerID == camera->ownerID) {
-                eyeHeight = controller.eyeHeight;
-                break;
-            }
-        }
-
-        const float actualTransformY = cameraTransform->position.y;
-
-        if (!camera->hasPreviousTransformY) {
-            camera->previousTransformY = actualTransformY;
-            camera->hasPreviousTransformY = true;
-        }
-
-        const float transformDeltaY = actualTransformY - camera->previousTransformY;
-
-        const ComponentCollider *collider = level.colliders.Get(camera->ownerID);
-
-        const ComponentRigidbody *rigidbody = level.rigidbodies.Get(camera->ownerID);
-
-        // A floor rising under the body lifts it every frame: that's the
-        // lift's own motion, not a step, so it isn't smoothed.
-        bool onRisingFloor = false;
-        const int cameraSectorIndex = cameraTransform->sectorIndex;
-
-        if (cameraSectorIndex >= 0 && cameraSectorIndex < static_cast<int>(level.sectors.size())) {
-            const Sector &cameraSector = level.sectors[cameraSectorIndex];
-            const int floorIndex = MapQueries::FindFloorAtHeight(
-                cameraSector, {cameraTransform->position.x, cameraTransform->position.z}, actualTransformY);
-
-            onRisingFloor = floorIndex >= 0 && cameraSector.floors[floorIndex].floorDelta > 0.0f;
-        }
-
-        // Detect the upward teleport performed by PhysicsSystem.
-        const bool steppedUp =
-                camera->smoothStep &&
-                !onRisingFloor &&
-                collider != nullptr &&
-                rigidbody != nullptr &&
-                rigidbody->isGrounded &&
-                collider->stepSize > 0.0f &&
-                transformDeltaY > 0.01f &&
-                transformDeltaY <=
-                collider->stepSize + Constants::Epsilon;
-
-        if (steppedUp) {
-            float previousVisualY = camera->previousTransformY;
-
-            // Preserve an unfinished smoothing animation.
-            if (camera->isStepping)
-                previousVisualY = camera->smoothStepStartY + camera->stepOffsetY +
-                    (camera->previousTransformY - camera->smoothStepTargetY);
-
-
-            camera->smoothStepStartY = previousVisualY;
-            camera->smoothStepTargetY = actualTransformY;
-            camera->stepOffsetY = 0.0f;
-            camera->isStepping = true;
-        }
-
-        float currentCameraY = actualTransformY;
-
-        if (camera->smoothStep && camera->isStepping) {
-            const float targetOffset = camera->smoothStepTargetY - camera->smoothStepStartY;
-
-            const float interpolation = 1.0f - std::exp(-std::max(camera->smoothingStrength,0.01f) *GameTime::deltaTime);
-
-            camera->stepOffsetY += (targetOffset - camera->stepOffsetY) * interpolation;
-
-            // Apply later jumping/falling directly.
-            const float movementAfterStep = actualTransformY - camera->smoothStepTargetY;
-
-            currentCameraY = camera->smoothStepStartY + camera->stepOffsetY + movementAfterStep;
-
-            if (std::abs(targetOffset - camera->stepOffsetY) <= 0.001f) {
-                currentCameraY = actualTransformY;
-
-                camera->smoothStepStartY = actualTransformY;
-                camera->smoothStepTargetY = actualTransformY;
-                camera->stepOffsetY = 0.0f;
-                camera->isStepping = false;
-            }
-        }
-        else if (!camera->smoothStep) {
-            camera->smoothStepStartY = actualTransformY;
-            camera->smoothStepTargetY = actualTransformY;
-            camera->stepOffsetY = 0.0f;
-            camera->isStepping = false;
-        }
-
-        camera->previousTransformY = actualTransformY;
-
-        renderCameraTransform.position.y = currentCameraY + eyeHeight;
-    }
-
+    const ComponentTransform renderCameraTransform = ComputeRenderCameraTransform(level, *camera, *cameraTransform);
 
     CameraSystem::RebuildCameraMatrices(renderCameraTransform, *camera);
 
@@ -454,6 +262,8 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
         // Floor data is the same in every view, so it is uploaded once.
         BuildGpuSectors();
+        UploadSSBO(sectorSSBO, 4, gpuSectors.data(), gpuSectors.size() * sizeof(GpuSector));
+        UploadSSBO(sectorFloorSSBO, 7, gpuSectorFloors.data(), gpuSectorFloors.size() * sizeof(GpuSectorFloor));
         RefreshFlatTrianglesIfLayoutChanged();
     }
 
@@ -474,9 +284,6 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         view.scissor[2] = screenWidth;
         view.scissor[3] = screenHeight;
 
-        // However many gateways are in sight, a frame draws at most this
-        // many views through them.
-        constexpr int MAX_GATEWAY_VIEWS = 32;
         int passesLeft = MAX_GATEWAY_VIEWS;
         DrawGatewayViews(level, view, 0, passesLeft);
 
@@ -503,10 +310,9 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         // Turning entity markers off hides the collider outlines too.
         if (renderDebug && entityMarkers != EntityMarkers::Off) {
             BuildGpuColliders();
+            UploadSSBO(colliderSSBO, 6, gpuColliders.data(), gpuColliders.size() * sizeof(GpuCollider));
 
             if (colliderCount > 0) {
-                constexpr GLsizei COLLIDER_VERTICES_PER_COLLIDER = 24 * 6;
-
                 glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, colliderSSBO);
 
                 glDepthMask(GL_TRUE);
@@ -527,6 +333,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
         // Not for the camera being looked through: its gizmos sit at the eye.
         BuildGpuEditorGizmos(useEditorCamera ? INVALID_ENTITY_ID : camera->ownerID, renderCameraTransform, *camera);
+        UploadSSBO(editorGizmoSSBO, 9, gpuEditorGizmoTriangles.data(), gpuEditorGizmoTriangles.size() * sizeof(GpuEditorGizmoVertex));
 
         if (editorGizmoVertexCount > 0) {
             // They write depth so an arrow's own faces sort. Always mode
@@ -550,10 +357,9 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         ZoneScopedN("Entity Markers");
 
         BuildGpuEntityMarkers();
+        UploadSSBO(entityMarkerSSBO, 8, gpuEntityMarkers.data(), gpuEntityMarkers.size() * sizeof(Vector4));
 
         if (entityMarkerCount > 0) {
-            constexpr GLsizei VERTICES_PER_MARKER = 6;
-
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glDepthMask(GL_FALSE);
@@ -562,7 +368,7 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
             else glDepthFunc(GL_GEQUAL);
 
             glUniform1i(renderModeUniform, RENDER_ENTITY_MARKER);
-            glDrawArrays(GL_TRIANGLES, 0, entityMarkerCount * VERTICES_PER_MARKER);
+            glDrawArrays(GL_TRIANGLES, 0, entityMarkerCount * VERTICES_PER_ENTITY_MARKER);
 
             glEnable(GL_DEPTH_TEST);
             glDepthMask(GL_TRUE);

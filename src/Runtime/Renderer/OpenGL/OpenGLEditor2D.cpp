@@ -333,7 +333,7 @@ void OpenGL::DrawEditor2DLabels(const Editor2D::Frame& frame, const int layer) {
 
     for (const Placed& entry : placed) {
         SetEditor2DClip(frame, entry.label->clip);
-        RenderTextString(*textShader, entry.face, PixelSizeFor(entry.label->pixelSize), entry.label->text, entry.x, entry.baseline, 1.0f,
+        RenderTextString(entry.face, PixelSizeFor(entry.label->pixelSize), entry.label->text, entry.x, entry.baseline, 1.0f,
                          entry.label->color);
     }
     SetEditor2DClip(frame, false);

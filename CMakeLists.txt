@@ -204,6 +204,15 @@ find_package(sol2 CONFIG REQUIRED)
 find_package(Lua REQUIRED)
 find_package(assimp CONFIG REQUIRED)
 
+# Vulkan renderer: volk loads Vulkan at runtime (no link against vulkan-1),
+# vk-bootstrap picks the device, VMA allocates, glslang turns the GLSL
+# shaders into SPIR-V when they're loaded.
+find_package(VulkanHeaders CONFIG REQUIRED)
+find_package(volk CONFIG REQUIRED)
+find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+find_package(vk-bootstrap CONFIG REQUIRED)
+find_package(glslang CONFIG REQUIRED)
+
 # Added for EngineVersionManager (launcher-side engine version installer):
 # cpr for HTTP downloads, minizip-ng for ZIP extraction. Both are added to
 # Tilky_LauncherCore only (see target_link_libraries(Tilky_LauncherCore ...)
@@ -244,6 +253,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/imgui/imgui.h")
             External/imgui/backends/imgui_impl_sdl3.cpp
             External/imgui/backends/imgui_impl_sdlrenderer3.cpp
             External/imgui/backends/imgui_impl_opengl3.cpp
+            External/imgui/backends/imgui_impl_vulkan.cpp
     )
 
     target_include_directories(imgui PUBLIC
@@ -255,6 +265,14 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/External/imgui/imgui.h")
             SDL3::SDL3
             SDL3::Headers
             OpenGL::GL
+            volk::volk_headers
+            Vulkan::Headers
+    )
+
+    # The Vulkan backend gets its functions from volk, like the renderer.
+    target_compile_definitions(imgui PUBLIC
+            IMGUI_IMPL_VULKAN_USE_VOLK
+            VK_NO_PROTOTYPES
     )
 
     target_precompile_headers(imgui PRIVATE
@@ -380,6 +398,18 @@ tilky_configure_unity_build(Tilky_Local)
 
 set(TILKY_RUNTIME_SOURCES
         src/Runtime/Renderer/OpenGL/OpenGLTexture.cpp
+        src/Runtime/Renderer/Core/RendererCoreTextures.cpp
+        src/Runtime/Renderer/Core/RendererCoreText.cpp
+        src/Runtime/Renderer/Core/RendererCoreScene.cpp
+        Headers/Runtime/Renderer/RendererCore.hpp
+        src/Runtime/Renderer/Vulkan/VulkanContext.cpp
+        src/Runtime/Renderer/Vulkan/VulkanShaders.cpp
+        src/Runtime/Renderer/Vulkan/VulkanTextures.cpp
+        src/Runtime/Renderer/Vulkan/VulkanScene.cpp
+        src/Runtime/Renderer/Vulkan/VulkanModel.cpp
+        src/Runtime/Renderer/Vulkan/VulkanEditor2D.cpp
+        src/Runtime/Renderer/Vulkan/VulkanInit.cpp
+        Headers/Runtime/Renderer/Vulkan/Vulkan.hpp
 
         src/Engine/GameTime.cpp
         src/Engine/FolderWatcher.cpp
@@ -420,14 +450,11 @@ set(TILKY_RUNTIME_SOURCES
         src/Runtime/Renderer/OpenGL/OpenGlInit.cpp
         src/Runtime/Renderer/OpenGL/OpenGLText.cpp
         src/Runtime/Renderer/OpenGL/OpenGLMapBuild.cpp
-        src/Runtime/Renderer/OpenGL/OpenGLSprite.cpp
         src/Runtime/Renderer/OpenGL/OpenGLUpdate.cpp
         src/Runtime/Renderer/OpenGL/OpenGLDestroy.cpp
-        src/Runtime/Renderer/OpenGL/OpenGLSector.cpp
         src/Runtime/Renderer/OpenGL/OpenGLBackground.cpp
         src/Runtime/Renderer/OpenGL/OpenGLGateway.cpp
         src/Runtime/Renderer/OpenGL/OpenGLUI.cpp
-        src/Runtime/Renderer/OpenGL/OpenGLCollider.cpp
         src/Runtime/Renderer/OpenGL/OpenGLEditor2D.cpp
         src/Runtime/Renderer/OpenGL/OpenGL.cpp
 
@@ -749,6 +776,9 @@ set(TILKY_VARIANT_SOURCES
         src/Runtime/Renderer/OpenGL/OpenGLUpdate.cpp
         src/Runtime/Renderer/OpenGL/OpenGL.cpp
         src/Runtime/Renderer/OpenGL/OpenGLDestroy.cpp
+        src/Runtime/Renderer/Core/RendererCoreTextures.cpp
+        src/Runtime/Renderer/Vulkan/VulkanScene.cpp
+        src/Runtime/Renderer/Vulkan/VulkanInit.cpp
         src/Editor/EditorSaveLoad.cpp
 )
 
@@ -1051,6 +1081,18 @@ function(configure_tilky_engine_executable target_name)
             sol2::sol2
             assimp::assimp
             ${LUA_LIBRARIES}
+            Vulkan::Headers
+            volk::volk
+            GPUOpen::VulkanMemoryAllocator
+            vk-bootstrap::vk-bootstrap
+            glslang::glslang
+            glslang::glslang-default-resource-limits
+            glslang::SPIRV
+    )
+
+    target_compile_definitions(${target_name} PRIVATE
+            IMGUI_IMPL_VULKAN_USE_VOLK
+            VK_NO_PROTOTYPES
     )
 
     target_compile_options(${target_name} PRIVATE

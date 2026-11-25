@@ -715,9 +715,6 @@ namespace {
         std::vector<SectorChange> sectorChanges;
 
         for (const ComponentTransform& transform : level.transforms.components) {
-            // Only an entity's first transform places it.
-            if (level.transforms.Get(transform.ownerID) != &transform) continue;
-
             const ID entityID = transform.ownerID;
             const Vector2 position = {transform.position.x, transform.position.z};
             const ID sectorID = SectorIDAt(level, transform.sectorIndex);
@@ -1011,8 +1008,6 @@ namespace {
         // the edge in the next sector is never touched.
         for (const ComponentCollider& collider : level.colliders.ActiveColliders()) {
             const ComponentTransform* transform = level.transforms.Get(collider.ownerID);
-            if (!transform) continue;
-
             if (transform->sectorIndex < 0 || transform->sectorIndex >= static_cast<int>(level.sectors.size())) continue;
 
             for (const Linedef* linedef : level.sectors[transform->sectorIndex].linedefs) {
@@ -2996,8 +2991,6 @@ namespace EventSystem {
         for (const Entity& entity : level.entities) lastEnabled[entity.id] = entity.enabled;
 
         for (const ComponentTransform& transform : level.transforms.components) {
-            if (level.transforms.Get(transform.ownerID) != &transform) continue;
-
             lastPositions[transform.ownerID] = {transform.position.x, transform.position.z};
             lastSectors[transform.ownerID] = SectorIDAt(level, transform.sectorIndex);
         }
@@ -3266,7 +3259,6 @@ namespace EventSystem {
                 // Who's inside first: teleporting moves them out (or in).
                 std::vector<std::pair<ID, Vector2>> inside; // entity, offset from this sector's centre
                 for (const ComponentTransform& transform : level.transforms.components) {
-                    if (level.transforms.Get(transform.ownerID) != &transform) continue; // first transform only
                     if (SectorIDAt(level, transform.sectorIndex) != ownerID || !IsEnabledEntity(level, transform.ownerID)) continue;
 
                     // Just teleported in and hasn't left yet.

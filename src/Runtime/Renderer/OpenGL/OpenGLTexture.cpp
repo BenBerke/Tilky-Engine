@@ -1,39 +1,12 @@
+// The OpenGL side of textures: standalone GL_TEXTURE_2Ds and the atlas, a
+// GL_TEXTURE_2D_ARRAY with its region SSBO. Which images go where is
+// RendererCore's (Core/RendererCoreTextures.cpp).
+
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 
-#include <SDL3/SDL_error.h>
-#include <SDL3/SDL_surface.h>
-#include <SDL3_image/SDL_image.h>
 #include <spdlog/spdlog.h>
-#include <unordered_map>
 
-#include "Headers/Project/ProjectManager.hpp"
-#include "Headers/Map/LevelManager.hpp"
-
-bool OpenGL::LoadTextureFile(const std::filesystem::path& path, GPUTexture& out) {
-    SDL_Surface* loadedSurface = IMG_Load(path.string().c_str());
-
-    if (loadedSurface == nullptr) {
-        spdlog::error("IMG_Load failed for {}: {}", path.string(), SDL_GetError());
-        return false;
-    }
-
-    SDL_Surface* convertedSurface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
-
-    SDL_DestroySurface(loadedSurface);
-
-    if (convertedSurface == nullptr) {
-        spdlog::error("SDL_ConvertSurface failed for {}: {}", path.string(), SDL_GetError());
-        return false;
-    }
-
-    UploadTexturePixels(path, convertedSurface->pixels, convertedSurface->w, convertedSurface->h, out);
-
-    SDL_DestroySurface(convertedSurface);
-
-    return true;
-}
-
-void OpenGL::UploadTexturePixels(const std::filesystem::path& path, const void* pixels, const int width, const int height, GPUTexture& out) {
+unsigned OpenGL::UploadTextureGpu(const void* pixels, const int width, const int height) {
     GLuint textureID = 0;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
@@ -50,140 +23,62 @@ void OpenGL::UploadTexturePixels(const std::filesystem::path& path, const void* 
 
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, -0.25f);
 
-    std::error_code ec;
-
-    out.id = textureID;
-    out.width = width;
-    out.height = height;
-    out.path = path;
-    out.writeTime = std::filesystem::last_write_time(path, ec);
+    return textureID;
 }
 
-bool OpenGL::FindLoadedTexture(const std::string& fileName, LoadedTexture* out) const {
-    const auto found = textureIndexByName.find(fileName);
-    if (found == textureIndexByName.end() || found->second < 0 || found->second >= GetTextureCount()) return false;
-
-    const GPUTexture& texture = textures[found->second];
-    if (texture.id == 0) return false;
-
-    *out = {texture.id, texture.width, texture.height};
-    return true;
+void OpenGL::DestroyTextureGpu(const unsigned id) {
+    const GLuint texture = id;
+    glDeleteTextures(1, &texture);
 }
 
-bool OpenGL::AddDecodedTexture(const std::string& fileName, const std::filesystem::path& path, const void* pixels, const int width,
-                               const int height) {
-    if (fileName.empty() || textureIndexByName.contains(fileName)) return false;
-
-    // A failed decode is cached as a failed load is, so it isn't retried every frame.
-    if (pixels == nullptr || width <= 0 || height <= 0) {
-        textureIndexByName.emplace(fileName, -1);
-        return false;
-    }
-
-    GPUTexture texture;
-    UploadTexturePixels(path, pixels, width, height, texture);
-    textures.push_back(std::move(texture));
-    textureIndexByName.emplace(fileName, static_cast<int>(textures.size()) - 1);
-    return true;
+ImTextureID OpenGL::TextureImGuiID(const unsigned id) const {
+    return static_cast<ImTextureID>(id);
 }
 
-int OpenGL::CreateTexture(const std::string& fileName) {
-    std::filesystem::path path(fileName);
-
-    if (!path.is_absolute()) path = ProjectManager::GetAssetsPath() / std::filesystem::path(fileName).lexically_normal();
-
-    GPUTexture texture;
-    if (!LoadTextureFile(path, texture)) return -1;
-
-    textures.push_back(std::move(texture));
-
-    return static_cast<int>(textures.size()) - 1;
+bool OpenGL::AtlasExists() const {
+    return atlasTexture != 0;
 }
 
-void OpenGL::ReloadChangedTextures() {
-    for (GPUTexture& texture : textures) {
-        if (texture.id == 0 || texture.path.empty()) continue;
-
-        std::error_code ec;
-        const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(texture.path, ec);
-
-        // A deleted file keeps its last good texture rather than going blank.
-        if (ec || writeTime == texture.writeTime) continue;
-
-        GPUTexture reloaded;
-        if (!LoadTextureFile(texture.path, reloaded)) continue;
-
-        glDeleteTextures(1, &texture.id);
-        texture = std::move(reloaded);
-    }
+int OpenGL::MaxAtlasPages() const {
+    GLint maxLayers = 0;
+    glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &maxLayers);
+    return maxLayers;
 }
 
-// Lazy, filename-keyed resolution on top of the plain textures[] list
-// above (NOT the atlas - see GetTextureRegionIndex for that). Used by
-// anything that binds a single standalone GL texture directly, such as
-// the background. Loads and caches on first request; returns -1 (never
-// crashes) if the file is missing or fails to decode - a failed load is
-// cached too, so a broken reference isn't retried every frame.
-int OpenGL::GetOrCreateTextureIndex(const std::string& fileName) {
-    if (fileName.empty()) return -1;
+void OpenGL::CreateAtlasGpu(const int pageCount) {
+    using namespace RendererGpu;
 
-    const auto found = textureIndexByName.find(fileName);
-    if (found != textureIndexByName.end()) return found->second;
+    glGenTextures(1, &atlasTexture);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, atlasTexture);
 
-    const int index = CreateTexture(fileName);
-    textureIndexByName.emplace(fileName, index); // cache -1 too, on failure
-
-    return index;
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, ATLAS_SIZE, ATLAS_SIZE, pageCount, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 }
 
-void OpenGL::RefreshTexturesFromLevel() {
-    // A model that failed to load may have been imported or fixed since.
-    failedModelFiles.clear();
-    unresolvedLevelTextures.clear();
-    // Same for fonts; ones that loaded are reread in case the file changed.
-    ReloadFonts();
-
-    if (!BuildTextureAtlasFromLevel()) {
-        spdlog::error("Failed to build texture atlas from level");
-        return;
-    }
-
-    spdlog::info("Built texture atlas with {} texture region(s)",textureRegions.size());
+void OpenGL::UploadAtlasPage(const int page, const unsigned char* pixels) {
+    using namespace RendererGpu;
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, page, ATLAS_SIZE, ATLAS_SIZE, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 }
 
-const OpenGL::GPUTexture& OpenGL::GetTexture(const int index) const {
-    return textures[index];
+void OpenGL::FinishAtlasGpu(const RendererTextureSettings setting) {
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    OpenGLRendererInternal::ApplyTextureSampling(setting, GL_TEXTURE_2D_ARRAY);
+
+    glGenBuffers(1, &textureRegionSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, textureRegionSSBO);
+
+    glBufferData(
+        GL_SHADER_STORAGE_BUFFER,
+        textureRegions.size() * sizeof(RendererGpu::GPUTextureRegion),
+        textureRegions.empty() ? nullptr : textureRegions.data(),
+        GL_STATIC_DRAW
+    );
+
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
 }
 
-int OpenGL::GetTextureCount() const {
-    return static_cast<int>(textures.size());
-}
-
-// void OpenGL::BindAllTextures(const int firstTextureUnit) const {
-//     for (int i = 0; i < static_cast<int>(textures.size()); ++i) {
-//         glActiveTexture(GL_TEXTURE0 + firstTextureUnit + i);
-//         glBindTexture(GL_TEXTURE_2D, textures[i].id);
-//     }
-// }
-
-void OpenGL::DestroyAllTextures() {
-    for (GPUTexture& texture : textures) {
-        if (texture.id != 0) {
-            glDeleteTextures(1, &texture.id);
-            texture.id = 0;
-        }
-
-        texture.width = 0;
-        texture.height = 0;
-    }
-
-    textures.clear();
-    textureIndexByName.clear();
-
-    DestroyAtlas();
-}
-
-void OpenGL::DestroyAtlas() {
+void OpenGL::DestroyAtlasGpu() {
     if (atlasTexture != 0) {
         glDeleteTextures(1, &atlasTexture);
         atlasTexture = 0;
@@ -193,14 +88,4 @@ void OpenGL::DestroyAtlas() {
         glDeleteBuffers(1, &textureRegionSSBO);
         textureRegionSSBO = 0;
     }
-
-    textureRegions.clear();
-}
-
-ImTextureID OpenGL::GetImGuiTextureID(const std::string& fileName) {
-    const int textureIndex = GetOrCreateTextureIndex(fileName);
-
-    if (textureIndex < 0 || textureIndex >= GetTextureCount()) return ImTextureID{};
-
-    return static_cast<ImTextureID>(GetTexture(textureIndex).id);
 }

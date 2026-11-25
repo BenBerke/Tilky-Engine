@@ -36,6 +36,7 @@ namespace {
     std::string currentLastOpenLevelName;
     float currentUIReferenceHeight = ProjectManager::DEFAULT_UI_REFERENCE_HEIGHT;
     float currentTexelsPerUnit = ProjectManager::DEFAULT_TEXELS_PER_UNIT;
+    std::string currentRenderer = "opengl";
     std::vector<std::string> currentLevelOrder;
     bool currentHasLevelOrder = false;
 }
@@ -296,6 +297,9 @@ namespace ProjectManager {
         currentUIReferenceHeight = (std::max)(1.0f, projectData.value("uiReferenceHeight", DEFAULT_UI_REFERENCE_HEIGHT));
 
         currentTexelsPerUnit = (std::max)(MIN_TEXELS_PER_UNIT, projectData.value("texelsPerUnit", DEFAULT_TEXELS_PER_UNIT));
+
+        currentRenderer = projectData.value("renderer", std::string("opengl"));
+        if (currentRenderer != "vulkan") currentRenderer = "opengl";
 
         const std::string assetsFolder = projectData.value("assetsFolder", "Assets");
 
@@ -672,6 +676,48 @@ namespace ProjectManager {
         outFile.close();
 
         currentTexelsPerUnit = clamped;
+        return true;
+    }
+
+    std::string GetRenderer() {
+        return currentRenderer;
+    }
+
+    bool SetRenderer(const std::string& renderer) {
+        if (currentProjectFile.empty()) {
+            spdlog::error("Cannot set the renderer - no project is currently loaded.");
+            return false;
+        }
+
+        const std::string value = renderer == "vulkan" ? "vulkan" : "opengl";
+        json projectData;
+
+        {
+            std::ifstream inFile(currentProjectFile);
+            if (!inFile.is_open()) {
+                spdlog::error("Cannot set the renderer - failed to open project file: {}", currentProjectFile.string());
+                return false;
+            }
+
+            try { inFile >> projectData; }
+            catch (const std::exception& e) {
+                spdlog::error("Cannot set the renderer - failed to parse project file '{}': {}", currentProjectFile.string(), e.what());
+                return false;
+            }
+        }
+
+        projectData["renderer"] = value;
+
+        std::ofstream outFile(currentProjectFile);
+        if (!outFile.is_open()) {
+            spdlog::error("Cannot set the renderer - failed to open project file for writing: {}", currentProjectFile.string());
+            return false;
+        }
+
+        outFile << projectData.dump(4);
+        outFile.close();
+
+        currentRenderer = value;
         return true;
     }
 

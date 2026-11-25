@@ -70,8 +70,7 @@ namespace {
 
     float Radius(const Level& level, const ID entityID) {
         const ComponentCollider* collider = PhysicsSystem::FindBaseCollider(level, entityID);
-        const ComponentTransform* transform = level.transforms.Get(entityID);
-        return collider != nullptr && transform != nullptr ? collider->Radius(*transform) : 0.0f;
+        return collider != nullptr ? collider->Radius(*level.transforms.Get(entityID)) : 0.0f;
     }
 
     // A body with no collider is looked at and from this far above its
@@ -93,7 +92,7 @@ namespace {
     bool HasLineOfSight(Level& level, const ID selfID, const ID targetID) {
         const ComponentTransform* self = level.transforms.Get(selfID);
         const ComponentTransform* target = level.transforms.Get(targetID);
-        if (self == nullptr || target == nullptr) return false;
+        if (target == nullptr) return false; // gone, or a UI entity
 
         const Vector3 eye = EyeOf(level, selfID, *self);
 
@@ -141,7 +140,6 @@ namespace {
         }
 
         const ComponentTransform* self = level.transforms.Get(ai.ownerID);
-        if (self == nullptr) return INVALID_ID;
 
         std::vector<std::pair<float, ID>> candidates;
         for (const Entity& entity : level.entities) {
@@ -178,7 +176,7 @@ namespace {
     void FaceTarget(Level& level, const ComponentMonsterAI& ai, const ID targetID) {
         ComponentTransform* self = level.transforms.Get(ai.ownerID);
         const ComponentTransform* target = level.transforms.Get(targetID);
-        if (self == nullptr || target == nullptr) return;
+        if (target == nullptr) return; // gone, or a UI entity
 
         Quaternion facing;
         if (QuaternionMath::LookRotation({target->position.x - self->position.x, 0.0f, target->position.z - self->position.z}, true, facing))
@@ -276,7 +274,6 @@ namespace MonsterAISystem {
 
         const ComponentTransform* self = level.transforms.Get(ai.ownerID);
         const ComponentTransform* target = level.transforms.Get(targetID);
-        if (self == nullptr) return false;
 
         const float distance = std::hypot(target->position.x - self->position.x, target->position.z - self->position.z);
 
@@ -505,7 +502,6 @@ namespace MonsterAISystem {
             if (level.monsterAIs.Get(ai.ownerID) != &ai) continue; // only the first thinks
 
             const ComponentTransform* self = level.transforms.Get(ai.ownerID);
-            if (self == nullptr) continue;
 
             if (ai.state == MonsterAIState::DEAD) continue;
 

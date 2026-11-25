@@ -7,6 +7,9 @@
  *   1. Path to the current project's project.tilky file.
  *   2. Path to the desired export folder.
  *   3. Path to Standalone.exe.
+ *   4. Optional: --renderer=opengl or --renderer=vulkan, the graphics API
+ *      the exported game draws with (written into its project.tilky).
+ *      Without it the game keeps the project's own setting.
  *
  * Assets/ is copied as a whole. On top of that every model a level uses is
  * checked: textures and side files (.mtl, .bin, ...) that live outside
@@ -462,10 +465,21 @@ static bool HasStartLevel(const fs::path& metadataPath, const fs::path& assetsPa
 }
 
 int main(int argc, char** argv) {
-    if (argc != 4) {
+    if (argc != 4 && argc != 5) {
         std::cerr << "Usage: tilky_exporter <project_metadata_path> "
-                     "<destination_path> <standalone_exe_path>\n";
+                     "<destination_path> <standalone_exe_path> [--renderer=opengl|vulkan]\n";
         return 1;
+    }
+
+    std::string renderer;
+    if (argc == 5) {
+        const std::string option = argv[4];
+        const std::string prefix = "--renderer=";
+        if (option.rfind(prefix, 0) != 0 || (option.substr(prefix.size()) != "opengl" && option.substr(prefix.size()) != "vulkan")) {
+            std::cerr << "Unknown option " << option << " (expected --renderer=opengl or --renderer=vulkan)\n";
+            return 1;
+        }
+        renderer = option.substr(prefix.size());
     }
 
     const fs::path metadataPath     = argv[1];
@@ -505,6 +519,30 @@ int main(int argc, char** argv) {
     if (!CopyFileChecked(metadataPath, metadataDest)) return 1;
     std::cout << "Copied project metadata from " << metadataPath
               << " to " << metadataDest << "\n";
+
+    // The renderer picked in the export dialog.
+    if (!renderer.empty()) {
+        nlohmann::json metadata;
+        {
+            std::ifstream in(metadataDest);
+            metadata = nlohmann::json::parse(in, nullptr, false);
+        }
+        if (!metadata.is_object()) {
+            std::cerr << "Export failed: project.tilky could not be read to set the renderer\n";
+            return 1;
+        }
+
+        metadata["renderer"] = renderer;
+
+        std::ofstream out(metadataDest, std::ios::trunc);
+        out << metadata.dump(4);
+        out.close();
+        if (!out) {
+            std::cerr << "Export failed: could not write the renderer into " << metadataDest << "\n";
+            return 1;
+        }
+        std::cout << "The exported game draws with " << renderer << "\n";
+    }
 
     // Copy ProjectSettings.json (tag names), if the project has one
     const fs::path settingsSrc = projectDir / "ProjectSettings.json";

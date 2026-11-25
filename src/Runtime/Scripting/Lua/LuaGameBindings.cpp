@@ -719,7 +719,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
             if (std::ranges::find(found, collider.ownerID, &std::pair<float, ID>::second) != found.end()) continue;
 
             const ComponentTransform* transform = level.transforms.Get(collider.ownerID);
-            if (transform == nullptr || !PhysicsSystem::ColliderOverlapsSphere(*transform, collider, point, reach)) continue;
+            if (!PhysicsSystem::ColliderOverlapsSphere(*transform, collider, point, reach)) continue;
 
             if (tagId.has_value()) {
                 const Entity* owner = level.GetEntity(collider.ownerID);

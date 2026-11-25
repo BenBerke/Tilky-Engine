@@ -578,8 +578,6 @@ namespace {
                 if (collider.isTrigger || collider.ownerID == ignoredEntity) return;
 
                 const ComponentTransform* transform = level.transforms.Get(collider.ownerID);
-                if (transform == nullptr) [[unlikely]] return;
-
                 const Vector3 base = collider.Base(*transform);
                 std::optional<float> hitDistance;
 

@@ -29,10 +29,9 @@ namespace {
             last = value;
         };
 
-        if (const ComponentTransform* transform = level.transforms.Get(audio.ownerID)) {
-            send(transform->LocalToWorld(audio.offset), applied.position, &SoundManager::SetSourcePosition);
-            send(QuaternionMath::Rotate(transform->rotation, QuaternionMath::LocalForward()), applied.direction, &SoundManager::SetSourceDirection);
-        }
+        const ComponentTransform* transform = level.transforms.Get(audio.ownerID);
+        send(transform->LocalToWorld(audio.offset), applied.position, &SoundManager::SetSourcePosition);
+        send(QuaternionMath::Rotate(transform->rotation, QuaternionMath::LocalForward()), applied.direction, &SoundManager::SetSourceDirection);
 
         send(audio.pitch, applied.pitch, &SoundManager::SetSourcePitch);
         send(audio.gain, applied.gain, &SoundManager::SetSourceGain);
@@ -62,8 +61,6 @@ namespace {
         if (camera == nullptr) return;
 
         const ComponentTransform* transform = level.transforms.Get(camera->ownerID);
-        if (transform == nullptr) return;
-
         Vector3 position = transform->position;
 
         const ComponentPlayerController* controller = level.playerControllers.Get(camera->ownerID);

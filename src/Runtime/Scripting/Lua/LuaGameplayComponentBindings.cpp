@@ -95,8 +95,7 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
         "Emit", [](const ScriptParticleEmitter& self, const sol::optional<int> count, const sol::optional<Vector3> position, const sol::optional<Vector3> direction) -> int {
             const ComponentParticleEmitter* c = self.GetComponent();
             if (c == nullptr || !c->isActive) return 0;
-            const ComponentTransform* transform = self.level->transforms.Get(c->ownerID);
-            const Vector3 at = position.value_or(transform != nullptr ? transform->LocalToWorld(c->offset) : Vector3{0.0f, 0.0f, 0.0f});
+            const Vector3 at = position.value_or(self.level->transforms.Get(c->ownerID)->LocalToWorld(c->offset));
             return ParticleSystem::Emit(*self.level, *c, at, direction.value_or(Vector3{0.0f, 0.0f, 0.0f}), count.value_or(-1));
         }
     );

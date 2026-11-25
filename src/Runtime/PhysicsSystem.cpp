@@ -1256,13 +1256,16 @@ namespace {
 
 namespace PhysicsSystem {
     const ComponentCollider* FindBaseCollider(const Level& level, const ID ownerID) {
+        const std::vector<ComponentInstanceID>& instances = level.colliders.InstancesOf(ownerID);
+        if (instances.empty()) return nullptr;
+
+        // Colliders are world-only, so their owner has a Transform.
         const ComponentTransform* transform = level.transforms.Get(ownerID);
-        if (transform == nullptr) return nullptr;
 
         const ComponentCollider* base = nullptr;
         float baseBottom = std::numeric_limits<float>::max();
 
-        for (const ComponentInstanceID instanceID : level.colliders.InstancesOf(ownerID)) {
+        for (const ComponentInstanceID instanceID : instances) {
             const ComponentCollider* collider = level.colliders.GetInstance(instanceID);
 
             if (!collider->InPhysics() || collider->isTrigger) continue;
@@ -1311,14 +1314,13 @@ namespace PhysicsSystem {
             // Only an entity's first rigidbody simulates; the others are inert.
             if (rigidbody.isStatic || !rigidbody.ownerEnabled || level.rigidbodies.Get(rigidbody.ownerID) != &rigidbody) continue;
 
-            const ComponentTransform* transform = level.transforms.Get(rigidbody.ownerID);
-            if (transform == nullptr) [[unlikely]] continue;
-
             const float horizontalTravel =
                 std::sqrt(rigidbody.velocity.x * rigidbody.velocity.x + rigidbody.velocity.z * rigidbody.velocity.z) * deltaTime;
             const float verticalTravel = std::abs(rigidbody.velocity.y) * deltaTime;
 
             if (horizontalTravel <= Constants::Epsilon && verticalTravel <= Constants::Epsilon) continue;
+
+            const ComponentTransform* transform = level.transforms.Get(rigidbody.ownerID);
 
             // Its smallest solid collider decides.
             for (const ComponentInstanceID instanceID : level.colliders.InstancesOf(rigidbody.ownerID)) {
@@ -1429,8 +1431,6 @@ namespace PhysicsSystem {
             if (collider.isTrigger) return false;
 
             transform = level.transforms.Get(collider.ownerID);
-            if (transform == nullptr) [[unlikely]] return false;
-
             rigidbody = level.rigidbodies.Get(collider.ownerID);
             return rigidbody != nullptr && !rigidbody->isStatic;
         };
@@ -1453,8 +1453,6 @@ namespace PhysicsSystem {
                     if (otherID == selfCollider.ownerID) continue;
 
                     ComponentTransform* otherTransform = level.transforms.Get(otherID);
-                    if (otherTransform == nullptr) [[unlikely]] continue;
-
                     const ComponentRigidbody* otherRigidbody = level.rigidbodies.Get(otherID);
                     const bool otherIsStatic = otherRigidbody == nullptr || otherRigidbody->isStatic;
 
@@ -1965,8 +1963,6 @@ namespace PhysicsSystem {
                 if (!trigger.isTrigger) continue;
 
                 const ComponentTransform* triggerTransform = level.transforms.Get(trigger.ownerID);
-                if (triggerTransform == nullptr) [[unlikely]] continue;
-
                 const Body triggerBody = MakeBody(*triggerTransform, trigger);
                 if (!gatherNearby(*triggerTransform, triggerBody, false)) continue;
 
@@ -1974,7 +1970,6 @@ namespace PhysicsSystem {
                     if (otherID == trigger.ownerID) continue;
 
                     const ComponentTransform* otherTransform = level.transforms.Get(otherID);
-                    if (otherTransform == nullptr) [[unlikely]] continue;
 
                     // Any of the other entity's colliders counts; the pair is
                     // reported per entity, and the caller dedupes (two

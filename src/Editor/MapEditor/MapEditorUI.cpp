@@ -294,7 +294,10 @@ namespace {
 
     // Runs on the export thread.
     void RunExporterProcess(GameExportJob& job, const fs::path& exporterExe, const fs::path& standaloneExe,
-                            const fs::path& projectMetadata, const fs::path& exportFolder, const fs::path& engineBasePath) {
+                            const fs::path& projectMetadata, const fs::path& exportFolder, const fs::path& engineBasePath,
+                            const std::string& renderer) {
+        // The exported game's renderer, as Export Game asked.
+        const std::string rendererArgument = "--renderer=" + renderer;
         ExporterOutputReader output(job);
         char buffer[4096];
 
@@ -303,7 +306,8 @@ namespace {
                 L"\"" + exporterExe.wstring() + L"\" " +
                 L"\"" + projectMetadata.wstring() + L"\" " +
                 L"\"" + exportFolder.wstring() + L"\" " +
-                L"\"" + standaloneExe.wstring() + L"\"";
+                L"\"" + standaloneExe.wstring() + L"\" " +
+                fs::path(rendererArgument).wstring();
 
         SECURITY_ATTRIBUTES pipeAttributes{};
         pipeAttributes.nLength = sizeof(pipeAttributes);
@@ -389,7 +393,7 @@ namespace {
 
             execl(exporterExe.c_str(), exporterExe.c_str(),
                   projectMetadata.c_str(), exportFolder.c_str(),
-                  standaloneExe.c_str(), static_cast<char *>(nullptr));
+                  standaloneExe.c_str(), rendererArgument.c_str(), static_cast<char *>(nullptr));
             _exit(127);
         }
 
@@ -477,7 +481,7 @@ namespace {
 //  here if it can't start, and from PollGameExport once it ends.
 // =============================================================================
 
-static bool RunExporter(const fs::path& exportFolder) {
+static bool RunExporter(const fs::path& exportFolder, const std::string& renderer) {
     const fs::path engineBasePath = ProjectManager::GetEngineBasePath();
 
 #ifdef _WIN32
@@ -517,8 +521,8 @@ static bool RunExporter(const fs::path& exportFolder) {
     gameExportJob->folder = exportFolder;
 
     GameExportJob& job = *gameExportJob;
-    job.thread = std::thread([&job, exporterExe, standaloneExe, projectMetadata, exportFolder, engineBasePath] {
-        RunExporterProcess(job, exporterExe, standaloneExe, projectMetadata, exportFolder, engineBasePath);
+    job.thread = std::thread([&job, exporterExe, standaloneExe, projectMetadata, exportFolder, engineBasePath, renderer] {
+        RunExporterProcess(job, exporterExe, standaloneExe, projectMetadata, exportFolder, engineBasePath, renderer);
         job.finished = true;
     });
 
@@ -659,6 +663,12 @@ namespace {
 
     // Confirmation guards
     bool shutdownConfirmOpen = false;
+
+    // Project > Switch Renderer: asks to restart once the choice is saved.
+    bool rendererRestartPopupRequested = false;
+    // Export Game asks which renderer the game uses before the folder.
+    bool exportRendererPopupRequested = false;
+    std::string gameExportRenderer = "opengl";
 
     // Hierarchy search
     char hierarchySearchBuf[64] = "";
@@ -948,14 +958,15 @@ namespace {
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-        // GL keeps the bottom row first, so the image is flipped. Drawn at
-        // the size it was rendered at (last frame's panel size) so a resize
-        // never stretches it.
-        if (const unsigned texture = canvasRenderer != nullptr ? canvasRenderer->GetPanelTexture(IRenderer::PanelTarget::Map) : 0;
-            texture != 0)
-            drawList->AddImage(static_cast<ImTextureID>(texture), min,
+        // The renderer says which way up its image is (GL keeps the bottom
+        // row first). Drawn at the size it was rendered at (last frame's
+        // panel size) so a resize never stretches it.
+        if (const IRenderer::PanelImage image = canvasRenderer != nullptr ? canvasRenderer->GetPanelImage(IRenderer::PanelTarget::Map)
+                                                                          : IRenderer::PanelImage{};
+            image.texture != ImTextureID{})
+            drawList->AddImage(image.texture, min,
                                ImVec2(min.x + static_cast<float>(screenWidth), min.y + static_cast<float>(screenHeight)),
-                               ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
+                               image.uv0, image.uv1);
 
         // Takes every button, so clicks reach the canvas instead of
         // dragging the window around.
@@ -3296,6 +3307,17 @@ namespace {
         pendingGameExportFolder = fs::path(fileList[0]);
     }
 
+    // Export Game: which renderer the game draws with, then the folder.
+    void AskGameExportRenderer() {
+        if (LevelManager::OrderedLevelNames().empty()) {
+            ShowNotification(Get("editor.notification.export_failed_no_levels").c_str(), true);
+            return;
+        }
+
+        gameExportRenderer = ProjectManager::GetRenderer();
+        exportRendererPopupRequested = true;
+    }
+
     void ShowGameExportDialog() {
         if (LevelManager::OrderedLevelNames().empty()) {
             ShowNotification(Get("editor.notification.export_failed_no_levels").c_str(), true);
@@ -3350,7 +3372,7 @@ namespace {
             }
         }
 
-        RunExporter(destination);
+        RunExporter(destination, gameExportRenderer);
     }
 
     // ---- Export to OBJ: SDL's save dialog answers on its own thread, so
@@ -3394,6 +3416,133 @@ namespace {
         char message[256];
         std::snprintf(message, sizeof(message), Get("editor.obj_export.done").c_str(), result.faceCount, result.textureCount);
         ShowNotification(message);
+    }
+
+    // Export Game's first step: OpenGL or Vulkan for the exported game.
+    void DrawExportRendererModal() {
+        if (exportRendererPopupRequested) {
+            ImGui::OpenPopup("##ExportRenderer");
+            exportRendererPopupRequested = false;
+        }
+
+        if (ImGui::BeginPopupModal("##ExportRenderer", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("%s", Get("editor.export.renderer_question").c_str());
+            ImGui::Spacing();
+
+            if (ImGui::RadioButton(Get("editor.renderer.opengl").c_str(), gameExportRenderer == "opengl")) gameExportRenderer = "opengl";
+            HoverTooltip(Get("editor.tooltip.renderer.opengl").c_str());
+            if (ImGui::RadioButton(Get("editor.renderer.vulkan").c_str(), gameExportRenderer == "vulkan")) gameExportRenderer = "vulkan";
+            HoverTooltip(Get("editor.tooltip.renderer.vulkan").c_str());
+
+            ImGui::Spacing();
+
+            if (ImGui::Button(Get("editor.export.choose_folder").c_str())) {
+                ImGui::CloseCurrentPopup();
+                ShowGameExportDialog();
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button(Get("common.cancel").c_str(), ImVec2(80.0f, 0.0f))) ImGui::CloseCurrentPopup();
+
+            ImGui::EndPopup();
+        }
+    }
+
+    // Starts a new editor on this project; true if it started. The current
+    // one quits after.
+    bool LaunchEditorAgain() {
+        const fs::path projectFile = ProjectManager::GetProjectFiles();
+#ifdef _WIN32
+        return ProjectManager::LaunchEngine(projectFile);
+#else
+        const fs::path engineExe = ProjectManager::GetEngineBasePath() / "Tilky_Engine";
+        const pid_t pid = fork();
+        if (pid < 0) return false;
+        if (pid == 0) {
+            setsid();
+            execl(engineExe.c_str(), engineExe.c_str(), "--project", projectFile.c_str(), static_cast<char *>(nullptr));
+            _exit(127);
+        }
+        return true;
+#endif
+    }
+
+    // Project > Switch Renderer: the editor draws with the project's renderer
+    // from its next start, so it offers to restart now.
+    void DrawSwitchRendererMenu() {
+        if (!ImGui::BeginMenu(Get("editor.switch_renderer").c_str())) {
+            HoverTooltip(Get("editor.tooltip.switch_renderer").c_str());
+            return;
+        }
+
+        const std::string current = ProjectManager::GetRenderer();
+
+        const auto item = [&](const char* value, const char* labelKey, const char* tooltipKey) {
+            if (ImGui::MenuItem(Get(labelKey).c_str(), nullptr, current == value) && current != value) {
+                if (ProjectManager::SetRenderer(value)) rendererRestartPopupRequested = true;
+                else ShowNotification(Get("editor.notification.switch_renderer_failed").c_str(), /*isError=*/true);
+            }
+            HoverTooltip(Get(tooltipKey).c_str());
+        };
+
+        item("opengl", "editor.renderer.opengl", "editor.tooltip.renderer.opengl");
+        item("vulkan", "editor.renderer.vulkan", "editor.tooltip.renderer.vulkan");
+
+        // A Vulkan project the computer couldn't start Vulkan for.
+        if (const IRenderer* running = RuntimeSession::GetRenderer(); running != nullptr) {
+            ImGui::Separator();
+            ImGui::BeginDisabled();
+            ImGui::Text(Get("editor.switch_renderer.running").c_str(), running->GetName());
+            ImGui::EndDisabled();
+        }
+
+        ImGui::EndMenu();
+    }
+
+    void DrawRendererRestartModal() {
+        if (rendererRestartPopupRequested) {
+            ImGui::OpenPopup("##RendererRestart");
+            rendererRestartPopupRequested = false;
+        }
+
+        if (ImGui::BeginPopupModal("##RendererRestart", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            const std::string& renderer = Get(ProjectManager::GetRenderer() == "vulkan" ? "editor.renderer.vulkan" : "editor.renderer.opengl");
+            ImGui::Text(Get("editor.switch_renderer.restart_message").c_str(), renderer.c_str());
+
+            if (hasUnsavedChanges) {
+                ImGui::Spacing();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.00f, 0.65f, 0.30f, 1.00f));
+                ImGui::Text("%s", Get("editor.switch_renderer.saves_level").c_str());
+                ImGui::PopStyleColor();
+            }
+
+            ImGui::Spacing();
+
+            if (ImGui::Button(Get("editor.switch_renderer.restart").c_str())) {
+                ImGui::CloseCurrentPopup();
+
+                // Saved first, so the new editor opens what this one had.
+                if (Save(Editor::currentMap)) {
+                    hasUnsavedChanges = false;
+                    ClearUIUnsavedChanges();
+                    CancelActiveDrawing();
+
+                    if (LaunchEditorAgain()) {
+                        shutdown = true;
+                        quit = true;
+                    }
+                    else ShowNotification(Get("editor.notification.restart_failed").c_str(), /*isError=*/true);
+                }
+                else ShowNotification(Get("levels.notification.save_failed_check_logs").c_str(), /*isError=*/true);
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button(Get("editor.switch_renderer.later").c_str())) ImGui::CloseCurrentPopup();
+
+            ImGui::EndPopup();
+        }
     }
 
     // Shown when the editor is asked to close during a game export. It closes
@@ -3448,9 +3597,12 @@ namespace {
                 if (ImGui::MenuItem(Get("editor.save").c_str())) SaveLevelFromEditor();
                 if (ImGui::MenuItem(Get("editor.save_and_quit").c_str())) SaveAndQuitFromEditor();
                 if (gameExportJob) DrawGameExportBar(GameExportBarWidth());
-                else if (ImGui::MenuItem(Get("editor.export").c_str())) ShowGameExportDialog();
+                else if (ImGui::MenuItem(Get("editor.export").c_str())) AskGameExportRenderer();
                 if (ImGui::MenuItem(Get("editor.obj_export").c_str())) ShowObjExportDialog();
                 HoverTooltip(Get("editor.tooltip.obj_export").c_str());
+
+                ImGui::Separator();
+                DrawSwitchRendererMenu();
 
                 ImGui::Separator();
 
@@ -3516,6 +3668,8 @@ namespace {
 
         DrawShutdownConfirmModal();
         DrawExportQuitModal();
+        DrawExportRendererModal();
+        DrawRendererRestartModal();
     }
 
     // Bottom bar styled like the main menu bar, showing the current mode and
