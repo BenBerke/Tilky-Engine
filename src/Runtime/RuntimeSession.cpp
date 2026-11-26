@@ -93,7 +93,15 @@ namespace {
 
         // The project's choice (Project > Switch Renderer, or what Export
         // Game wrote into the game's project file).
+#ifdef __APPLE__
+        // The OpenGL renderer needs GL 4.5 and macOS stops at 4.1, so a Mac
+        // always draws with Vulkan (MoltenVK) and has nothing to fall back to.
+        const RendererBackend wanted = RendererBackend::VULKAN;
+        if (RendererBackendFromName(ProjectManager::GetRenderer()) != RendererBackend::VULKAN)
+            spdlog::info("macOS has no OpenGL 4.5; using the Vulkan renderer (MoltenVK) for this project");
+#else
         const RendererBackend wanted = RendererBackendFromName(ProjectManager::GetRenderer());
+#endif
         renderer = RendererFactory::CreateRenderer(wanted);
 
         if (renderer && !renderer->Initialize(windowName, startHidden)) {

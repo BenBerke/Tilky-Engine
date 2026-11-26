@@ -306,9 +306,10 @@ namespace {
     // Runs on the export thread.
     void RunExporterProcess(GameExportJob& job, const fs::path& exporterExe, const fs::path& standaloneExe,
                             const fs::path& projectMetadata, const fs::path& exportFolder, const fs::path& engineBasePath,
-                            const std::string& renderer) {
-        // The exported game's renderer, as Export Game asked.
+                            const std::string& renderer, const std::string& platforms) {
+        // The exported game's renderer and platforms, as Export Game asked.
         const std::string rendererArgument = "--renderer=" + renderer;
+        const std::string platformsArgument = "--platforms=" + platforms;
         ExporterOutputReader output(job);
         char buffer[4096];
 
@@ -318,7 +319,8 @@ namespace {
                 L"\"" + projectMetadata.wstring() + L"\" " +
                 L"\"" + exportFolder.wstring() + L"\" " +
                 L"\"" + standaloneExe.wstring() + L"\" " +
-                fs::path(rendererArgument).wstring();
+                fs::path(rendererArgument).wstring() + L" " +
+                fs::path(platformsArgument).wstring();
 
         SECURITY_ATTRIBUTES pipeAttributes{};
         pipeAttributes.nLength = sizeof(pipeAttributes);
@@ -404,7 +406,7 @@ namespace {
 
             execl(exporterExe.c_str(), exporterExe.c_str(),
                   projectMetadata.c_str(), exportFolder.c_str(),
-                  standaloneExe.c_str(), rendererArgument.c_str(), static_cast<char *>(nullptr));
+                  standaloneExe.c_str(), rendererArgument.c_str(), platformsArgument.c_str(), static_cast<char *>(nullptr));
             _exit(127);
         }
 
@@ -492,7 +494,7 @@ namespace {
 //  here if it can't start, and from PollGameExport once it ends.
 // =============================================================================
 
-static bool RunExporter(const fs::path& exportFolder, const std::string& renderer) {
+static bool RunExporter(const fs::path& exportFolder, const std::string& renderer, const std::string& platforms) {
     const fs::path engineBasePath = ProjectManager::GetEngineBasePath();
 
 #ifdef _WIN32
@@ -532,8 +534,8 @@ static bool RunExporter(const fs::path& exportFolder, const std::string& rendere
     gameExportJob->folder = exportFolder;
 
     GameExportJob& job = *gameExportJob;
-    job.thread = std::thread([&job, exporterExe, standaloneExe, projectMetadata, exportFolder, engineBasePath, renderer] {
-        RunExporterProcess(job, exporterExe, standaloneExe, projectMetadata, exportFolder, engineBasePath, renderer);
+    job.thread = std::thread([&job, exporterExe, standaloneExe, projectMetadata, exportFolder, engineBasePath, renderer, platforms] {
+        RunExporterProcess(job, exporterExe, standaloneExe, projectMetadata, exportFolder, engineBasePath, renderer, platforms);
         job.finished = true;
     });
 
@@ -680,6 +682,53 @@ namespace {
     // Export Game asks which renderer the game uses before the folder.
     bool exportRendererPopupRequested = false;
     std::string gameExportRenderer = "opengl";
+
+    // Export Game's platforms. Ids match the exporter's and versions.json.
+    struct GameExportPlatform {
+        const char* id;
+        const char* labelKey;
+        bool windows;
+    };
+    constexpr GameExportPlatform gameExportPlatformList[] = {
+        {"windows-x64", "editor.export.platform.windows", true},
+        {"linux-x64", "editor.export.platform.linux", false},
+        {"macos-arm64", "editor.export.platform.macos", false},
+    };
+    bool gameExportPlatformTicked[std::size(gameExportPlatformList)] = {};
+    bool gameExportPlatformsInitialized = false;
+
+    const char* HostExportPlatform() {
+#if defined(_WIN32)
+        return "windows-x64";
+#elif defined(__APPLE__)
+        return "macos-arm64";
+#else
+        return "linux-x64";
+#endif
+    }
+
+    // A platform can be exported if this engine has its runtime: in
+    // Runtimes/<id>/ (engine versions from the launcher have all three), or
+    // this machine's own Standalone beside the engine (any build).
+    bool GameExportPlatformAvailable(const GameExportPlatform& platform) {
+        if (std::string_view(platform.id) == HostExportPlatform()) return true;
+
+        std::error_code ec;
+        const fs::path runtime = ProjectManager::GetEngineBasePath() / "Runtimes" / platform.id /
+                                 (platform.windows ? "Standalone.exe" : "Standalone");
+        return fs::is_regular_file(runtime, ec);
+    }
+
+    // "windows-x64,linux-x64" for the exporter; empty if none is ticked.
+    std::string TickedGameExportPlatforms() {
+        std::string list;
+        for (size_t i = 0; i < std::size(gameExportPlatformList); ++i) {
+            if (!gameExportPlatformTicked[i] || !GameExportPlatformAvailable(gameExportPlatformList[i])) continue;
+            if (!list.empty()) list += ',';
+            list += gameExportPlatformList[i].id;
+        }
+        return list;
+    }
 
     // Hierarchy search
     char hierarchySearchBuf[64] = "";
@@ -3333,6 +3382,15 @@ namespace {
         }
 
         gameExportRenderer = ProjectManager::GetRenderer();
+
+        // This machine's platform until something else is picked; then the
+        // last choice, for the rest of the session.
+        if (!gameExportPlatformsInitialized) {
+            for (size_t i = 0; i < std::size(gameExportPlatformList); ++i)
+                gameExportPlatformTicked[i] = std::string_view(gameExportPlatformList[i].id) == HostExportPlatform();
+            gameExportPlatformsInitialized = true;
+        }
+
         exportRendererPopupRequested = true;
     }
 
@@ -3353,7 +3411,9 @@ namespace {
         if (!fs::exists(folder, ec)) return true;
         if (fs::is_empty(folder, ec)) return true;
 
-        return fs::exists(folder / "project.tilky", ec) && fs::is_directory(folder / "Assets", ec);
+        // A one-platform export, or one with a subfolder per platform.
+        return (fs::exists(folder / "project.tilky", ec) && fs::is_directory(folder / "Assets", ec)) ||
+               fs::exists(folder / ".tilky_export", ec);
     }
 
     // The exporter deletes whatever is in its folder, so a picked folder with
@@ -3390,7 +3450,7 @@ namespace {
             }
         }
 
-        RunExporter(destination, gameExportRenderer);
+        RunExporter(destination, gameExportRenderer, TickedGameExportPlatforms());
     }
 
     // ---- Export to OBJ: SDL's save dialog answers on its own thread, so
@@ -3453,11 +3513,33 @@ namespace {
             HoverTooltip(Get("editor.tooltip.renderer.vulkan").c_str());
 
             ImGui::Spacing();
+            ImGui::Text("%s", Get("editor.export.platforms_question").c_str());
+            ImGui::Spacing();
 
+            for (size_t i = 0; i < std::size(gameExportPlatformList); ++i) {
+                const GameExportPlatform& platform = gameExportPlatformList[i];
+                const bool available = GameExportPlatformAvailable(platform);
+
+                ImGui::BeginDisabled(!available);
+                bool ticked = available && gameExportPlatformTicked[i];
+                if (ImGui::Checkbox(Get(platform.labelKey).c_str(), &ticked)) gameExportPlatformTicked[i] = ticked;
+                ImGui::EndDisabled();
+
+                if (!available) HoverTooltip(Get("editor.tooltip.export.platform_missing").c_str());
+                else if (std::string_view(platform.id) == "macos-arm64") HoverTooltip(Get("editor.tooltip.export.platform_macos").c_str());
+                else if (!platform.windows) HoverTooltip(Get("editor.tooltip.export.platform_linux").c_str());
+            }
+
+            const bool anyPlatform = !TickedGameExportPlatforms().empty();
+
+            ImGui::Spacing();
+
+            ImGui::BeginDisabled(!anyPlatform);
             if (ImGui::Button(Get("editor.export.choose_folder").c_str())) {
                 ImGui::CloseCurrentPopup();
                 ShowGameExportDialog();
             }
+            ImGui::EndDisabled();
 
             ImGui::SameLine();
 

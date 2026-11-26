@@ -9,12 +9,28 @@ name: Release Engine
 # Development release example:
 #   git tag v0.1.0-beta1
 #   git push origin v0.1.0-beta1
+#
+# One tag builds every platform in parallel from the same commit:
+#   Windows x64 (MSVC), Linux x64 (GCC), macOS arm64 (Apple Clang + MoltenVK).
+# Each build uploads its ZIP as a workflow artifact; the publish job then
+# creates one GitHub Release with every ZIP and adds one versions.json entry
+# per platform (the launcher picks the entry for its own platform).
+#
+# Windows is required: without it nothing is published. A Linux or macOS
+# build that fails shows as a failed job and is left out of the release, so
+# it can't hold up a Windows release.
 
 on:
   push:
     tags:
       - "v*.*.*"
       - "v*.*.*-*"
+
+  # Actions > Release Engine > Run workflow (or `gh workflow run
+  # release-engine.yml --ref <branch>`): builds and uploads every platform's
+  # ZIP as workflow artifacts, but publishes nothing (no release, no
+  # versions.json change). For trying the build on a branch.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -28,26 +44,27 @@ env:
   MANIFEST_PATH: versions.json
 
 jobs:
-  build-windows-x64:
-    runs-on: windows-latest
+  prepare:
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      channel: ${{ steps.version.outputs.channel }}
 
     steps:
-      # ImGui and Tracy are Git submodules, so they must
-      # also be downloaded.
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
       - name: Derive version and channel
         id: version
         shell: bash
         run: |
           set -euo pipefail
 
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            # Build-only run: a throwaway version, nothing is published.
+            VERSION="0.0.0-test.${GITHUB_RUN_NUMBER}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            VERSION="${TAG#v}"
+          fi
 
           if [[ "$VERSION" == *-* ]]; then
             CHANNEL="development"
@@ -62,6 +79,7 @@ jobs:
           echo "Channel: $CHANNEL"
 
       - name: Check that release does not already exist
+        if: github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,6 +93,22 @@ jobs:
             echo "::error::Delete the existing release and tag, or publish a new version."
             exit 1
           fi
+
+  # ==========================================================================
+  # Windows x64
+  # ==========================================================================
+  build-windows-x64:
+    needs: prepare
+    runs-on: windows-latest
+
+    steps:
+      # ImGui and Tracy are Git submodules, so they must
+      # also be downloaded.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
 
       - name: Bootstrap vcpkg
         shell: bash
@@ -110,35 +144,27 @@ jobs:
             --parallel
 
       - name: Package versioned ZIP
-        id: package
         shell: bash
         run: |
           set -euo pipefail
 
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.prepare.outputs.version }}"
 
           BUILD_DIR="build"
           BIN_DIR="$BUILD_DIR/Release"
           STAGE_DIR="stage"
           ZIP_NAME="Tilky_Engine-Windows-x64-${VERSION}.zip"
 
-          rm -rf "$STAGE_DIR"
-          rm -f "$ZIP_NAME"
+          rm -rf "$STAGE_DIR" dist
+          mkdir -p "$STAGE_DIR" dist
 
-          mkdir -p "$STAGE_DIR"
-
-          if [ ! -f "$BIN_DIR/Tilky_Engine.exe" ]; then
-            echo "::error::Missing $BIN_DIR/Tilky_Engine.exe"
-            exit 1
-          fi
-
-          if [ ! -f "$BIN_DIR/Standalone.exe" ]; then
-            echo "::error::Missing $BIN_DIR/Standalone.exe"
-            exit 1
-          fi
-
-          cp "$BIN_DIR/Tilky_Engine.exe" "$STAGE_DIR/"
-          cp "$BIN_DIR/Standalone.exe" "$STAGE_DIR/"
+          for EXE in Tilky_Engine.exe Standalone.exe; do
+            if [ ! -f "$BIN_DIR/$EXE" ]; then
+              echo "::error::Missing $BIN_DIR/$EXE"
+              exit 1
+            fi
+            cp "$BIN_DIR/$EXE" "$STAGE_DIR/"
+          done
 
           # Runtime DLLs are copied beside the executables by CMake.
           shopt -s nullglob
@@ -163,36 +189,359 @@ jobs:
             fi
           done
 
-          if [ ! -f "$STAGE_DIR/Tilky_Engine.exe" ]; then
-            echo "::error::Tilky_Engine.exe was not staged."
-            exit 1
-          fi
-
-          if [ ! -f "$STAGE_DIR/Standalone.exe" ]; then
-            echo "::error::Standalone.exe was not staged."
-            exit 1
-          fi
-
           (
             cd "$STAGE_DIR"
-            7z a -tzip "../${ZIP_NAME}" . >/dev/null
+            7z a -tzip "../dist/${ZIP_NAME}" . >/dev/null
           )
 
-          if [ ! -f "$ZIP_NAME" ]; then
+          if [ ! -f "dist/$ZIP_NAME" ]; then
             echo "::error::Failed to create ${ZIP_NAME}."
             exit 1
           fi
 
-          SHA256="$(sha256sum "$ZIP_NAME" | cut -d ' ' -f1)"
-          SIZE="$(stat -c%s "$ZIP_NAME")"
+          echo "Created $ZIP_NAME"
 
-          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+      # The game runtime (Standalone + the libraries it loads), bundled into
+      # every platform's engine by the publish job so any editor can export
+      # for windows-x64.
+      - name: Stage game runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf runtime
+          mkdir -p runtime
+          cp build/Release/Standalone.exe runtime/
+          shopt -s nullglob
+          DLLS=(build/Release/*.dll)
+          if [ ${#DLLS[@]} -gt 0 ]; then
+            cp "${DLLS[@]}" runtime/
+          fi
+
+      - name: Upload game runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-windows-x64
+          path: runtime/
+          if-no-files-found: error
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-windows-x64
+          path: dist/*.zip
+          if-no-files-found: error
+
+  # ==========================================================================
+  # Linux x64
+  # ==========================================================================
+  build-linux-x64:
+    needs: prepare
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      # CMakeLists.txt needs CMake 4.1+, newer than Ubuntu's.
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      # GCC 14 for C++20, and the X11/Wayland/audio headers SDL3 and
+      # OpenAL Soft are built against.
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-14 g++-14 \
+            pkg-config autoconf autoconf-archive automake libtool bison flex nasm \
+            python3-venv python3-jinja2 \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxinerama-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \
+            libdbus-1-dev libudev-dev libibus-1.0-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libltdl-dev
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git clone --depth 1 \
+            https://github.com/microsoft/vcpkg.git \
+            "${{ github.workspace }}/vcpkg"
+
+          "${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh" \
+            -disableMetrics
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_C_COMPILER=gcc-14 \
+            -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTILKY_ENABLE_TRACY=OFF
+
+      - name: Build engine
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake --build build --target Tilky_All --parallel
+
+      - name: Package versioned ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ needs.prepare.outputs.version }}"
+          ZIP_NAME="Tilky_Engine-Linux-x64-${VERSION}.zip"
+
+          cmake --build build --target Tilky_EngineVersionPackage
+
+          # Tilky_EngineVersionPackage stages into build/EngineVersions/<version>,
+          # named after the CMake project version; take whichever it made.
+          STAGE_DIR="$(find build/EngineVersions -mindepth 1 -maxdepth 1 -type d | head -1)"
+
+          for EXE in Tilky_Engine Standalone; do
+            if [ ! -x "$STAGE_DIR/$EXE" ]; then
+              echo "::error::Missing $STAGE_DIR/$EXE"
+              exit 1
+            fi
+          done
+
+          mkdir -p dist
+          # zip keeps the executable bits; the launcher restores them.
+          (
+            cd "$STAGE_DIR"
+            zip -r -q "${GITHUB_WORKSPACE}/dist/${ZIP_NAME}" .
+          )
 
           echo "Created $ZIP_NAME"
-          echo "Size: $SIZE bytes"
-          echo "SHA-256: $SHA256"
+
+      # The game runtime (Standalone + the libraries it loads), bundled into
+      # every platform's engine by the publish job so any editor can export
+      # for linux-x64.
+      - name: Stage game runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf runtime
+          mkdir -p runtime
+          cp build/Standalone runtime/
+
+      - name: Upload game runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-linux-x64
+          path: runtime/
+          if-no-files-found: error
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-linux-x64
+          path: dist/*.zip
+          if-no-files-found: error
+
+  # ==========================================================================
+  # macOS arm64 (Apple Silicon)
+  # ==========================================================================
+  build-macos-arm64:
+    needs: prepare
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      # Tools some vcpkg ports build with.
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          brew install autoconf autoconf-archive automake libtool pkg-config nasm
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git clone --depth 1 \
+            https://github.com/microsoft/vcpkg.git \
+            "${{ github.workspace }}/vcpkg"
+
+          "${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh" \
+            -disableMetrics
+
+      # No -DTILKY_MOLTENVK_DYLIB: CMake downloads the pinned MoltenVK
+      # release (the runner has no Vulkan SDK).
+      - name: Configure CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-osx \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTILKY_ENABLE_TRACY=OFF
+
+      - name: Build engine
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake --build build --target Tilky_All --parallel
+
+      - name: Package versioned ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ needs.prepare.outputs.version }}"
+          ZIP_NAME="Tilky_Engine-macOS-arm64-${VERSION}.zip"
+
+          cmake --build build --target Tilky_EngineVersionPackage
+
+          STAGE_DIR="$(find build/EngineVersions -mindepth 1 -maxdepth 1 -type d | head -1)"
+
+          for FILE in Tilky_Engine Standalone libMoltenVK.dylib; do
+            if [ ! -f "$STAGE_DIR/$FILE" ]; then
+              echo "::error::Missing $STAGE_DIR/$FILE"
+              exit 1
+            fi
+          done
+
+          mkdir -p dist
+          (
+            cd "$STAGE_DIR"
+            zip -r -q "${GITHUB_WORKSPACE}/dist/${ZIP_NAME}" .
+          )
+
+          echo "Created $ZIP_NAME"
+
+      # The game runtime (Standalone + the libraries it loads), bundled into
+      # every platform's engine by the publish job so any editor can export
+      # for macos-arm64.
+      - name: Stage game runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf runtime
+          mkdir -p runtime
+          cp build/Standalone build/libMoltenVK.dylib runtime/
+
+      - name: Upload game runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-macos-arm64
+          path: runtime/
+          if-no-files-found: error
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-macos-arm64
+          path: dist/*.zip
+          if-no-files-found: error
+
+  # ==========================================================================
+  # Publish: one release with every ZIP that was built, and versions.json
+  # ==========================================================================
+  publish:
+    needs:
+      - prepare
+      - build-windows-x64
+      - build-linux-x64
+      - build-macos-arm64
+    if: >-
+      always()
+      && github.event_name == 'push'
+      && needs.prepare.result == 'success'
+      && needs.build-windows-x64.result == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+
+      - name: Download game runtimes
+        uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-*
+          path: runtimes
+
+      # Every engine gets the other platforms' runtimes under
+      # Runtimes/<platform>/ (its own Standalone is already beside it), so
+      # Export Game can target any platform that built. Artifacts don't keep
+      # Unix permissions; the exporter sets them on what it exports, and they
+      # are set here too for anyone using the folders directly.
+      - name: Bundle game runtimes into each engine
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ needs.prepare.outputs.version }}"
+
+          for DIR in runtimes/runtime-*; do
+            [ -f "$DIR/Standalone" ] && chmod +x "$DIR/Standalone"
+          done
+
+          for ZIP in dist/*.zip; do
+            case "$(basename "$ZIP")" in
+              Tilky_Engine-Windows-x64-*) OWN="windows-x64" ;;
+              Tilky_Engine-Linux-x64-*)   OWN="linux-x64" ;;
+              Tilky_Engine-macOS-arm64-*) OWN="macos-arm64" ;;
+              *) echo "::error::Unknown package $ZIP"; exit 1 ;;
+            esac
+
+            WORK="$(mktemp -d)"
+            unzip -q "$ZIP" -d "$WORK"
+
+            for DIR in runtimes/runtime-*; do
+              PLATFORM="${DIR#runtimes/runtime-}"
+              [ "$PLATFORM" = "$OWN" ] && continue
+              mkdir -p "$WORK/Runtimes/$PLATFORM"
+              cp -p "$DIR"/* "$WORK/Runtimes/$PLATFORM/"
+              echo "$(basename "$ZIP"): + Runtimes/$PLATFORM"
+            done
+
+            rm "$ZIP"
+            ( cd "$WORK" && zip -r -q -y "${GITHUB_WORKSPACE}/$ZIP" . )
+            rm -rf "$WORK"
+          done
 
       - name: Create GitHub Release
         shell: bash
@@ -201,21 +550,34 @@ jobs:
         run: |
           set -euo pipefail
 
+          VERSION="${{ needs.prepare.outputs.version }}"
+          CHANNEL="${{ needs.prepare.outputs.channel }}"
+
           PRERELEASE_ARGS=()
 
-          if [ "${{ steps.version.outputs.channel }}" = "development" ]; then
+          if [ "$CHANNEL" = "development" ]; then
             PRERELEASE_ARGS+=(--prerelease)
           fi
 
+          shopt -s nullglob
+          ZIPS=(dist/*.zip)
+
+          if [ ${#ZIPS[@]} -eq 0 ]; then
+            echo "::error::No packages were downloaded."
+            exit 1
+          fi
+
+          PLATFORMS="$(for ZIP in "${ZIPS[@]}"; do basename "$ZIP" "-${VERSION}.zip" | sed 's/^Tilky_Engine-//'; done | paste -sd ',' -)"
+
           gh release create "${GITHUB_REF_NAME}" \
-            "${{ steps.package.outputs.zip_name }}" \
+            "${ZIPS[@]}" \
             --repo "${{ github.repository }}" \
-            --title "Tilky Engine ${{ steps.version.outputs.version }}" \
+            --title "Tilky Engine ${VERSION}" \
             --notes "Automated Tilky Engine release.
 
-          Version: ${{ steps.version.outputs.version }}
-          Platform: windows-x64
-          Channel: ${{ steps.version.outputs.channel }}" \
+          Version: ${VERSION}
+          Platforms: ${PLATFORMS}
+          Channel: ${CHANNEL}" \
             "${PRERELEASE_ARGS[@]}"
 
       - name: Update versions.json
@@ -225,54 +587,73 @@ jobs:
         run: |
           set -euo pipefail
 
+          VERSION="${{ needs.prepare.outputs.version }}"
+          CHANNEL="${{ needs.prepare.outputs.channel }}"
+
+          # Absolute, so they survive the branch checkout below.
+          DIST_DIR="$(pwd)/dist"
+
           git fetch origin "${MANIFEST_BRANCH}"
           git checkout "${MANIFEST_BRANCH}"
           git pull --ff-only origin "${MANIFEST_BRANCH}"
-
-          VERSION="${{ steps.version.outputs.version }}"
-          CHANNEL="${{ steps.version.outputs.channel }}"
-          ZIP_NAME="${{ steps.package.outputs.zip_name }}"
-          SHA256="${{ steps.package.outputs.sha256 }}"
-          SIZE="${{ steps.package.outputs.size }}"
-
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}"
 
           if [ ! -f "${MANIFEST_PATH}" ]; then
             echo '{"manifestVersion":1,"versions":[]}' > "${MANIFEST_PATH}"
           fi
 
-          jq \
-            --arg version "$VERSION" \
-            --arg platform "windows-x64" \
-            --arg channel "$CHANNEL" \
-            --arg url "$DOWNLOAD_URL" \
-            --argjson size "$SIZE" \
-            --arg sha256 "$SHA256" \
-            '
-              .manifestVersion = 1
-              | .versions = (
-                  [
-                    .versions[]
-                    | select(
-                        .version != $version
-                        or .platform != $platform
-                      )
-                  ]
-                  + [
-                      {
-                        version: $version,
-                        platform: $platform,
-                        channel: $channel,
-                        downloadUrl: $url,
-                        size: $size,
-                        sha256: $sha256
-                      }
-                    ]
-                )
-            ' \
-            "${MANIFEST_PATH}" > "${MANIFEST_PATH}.tmp"
+          for ZIP in "${DIST_DIR}"/*.zip; do
+            ZIP_NAME="$(basename "$ZIP")"
 
-          mv "${MANIFEST_PATH}.tmp" "${MANIFEST_PATH}"
+            # Must match CURRENT_PLATFORM in src/Launcher/EngineVersionManager.cpp.
+            case "$ZIP_NAME" in
+              Tilky_Engine-Windows-x64-*) PLATFORM="windows-x64" ;;
+              Tilky_Engine-Linux-x64-*)   PLATFORM="linux-x64" ;;
+              Tilky_Engine-macOS-arm64-*) PLATFORM="macos-arm64" ;;
+              *)
+                echo "::error::Unknown package ${ZIP_NAME}"
+                exit 1
+                ;;
+            esac
+
+            SHA256="$(sha256sum "$ZIP" | cut -d ' ' -f1)"
+            SIZE="$(stat -c%s "$ZIP")"
+            DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${ZIP_NAME}"
+
+            echo "${PLATFORM}: ${ZIP_NAME}, ${SIZE} bytes, SHA-256 ${SHA256}"
+
+            jq \
+              --arg version "$VERSION" \
+              --arg platform "$PLATFORM" \
+              --arg channel "$CHANNEL" \
+              --arg url "$DOWNLOAD_URL" \
+              --argjson size "$SIZE" \
+              --arg sha256 "$SHA256" \
+              '
+                .manifestVersion = 1
+                | .versions = (
+                    [
+                      .versions[]
+                      | select(
+                          .version != $version
+                          or .platform != $platform
+                        )
+                    ]
+                    + [
+                        {
+                          version: $version,
+                          platform: $platform,
+                          channel: $channel,
+                          downloadUrl: $url,
+                          size: $size,
+                          sha256: $sha256
+                        }
+                      ]
+                  )
+              ' \
+              "${MANIFEST_PATH}" > "${MANIFEST_PATH}.tmp"
+
+            mv "${MANIFEST_PATH}.tmp" "${MANIFEST_PATH}"
+          done
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

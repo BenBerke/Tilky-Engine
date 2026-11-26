@@ -110,7 +110,15 @@ bool OpenGL::InitializeOpenGL() {
         return false;
     }
 
-    if (!SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 64)) {
+    // Windows (WGL) takes the closest pixel format to 64, so it gets the
+    // deepest buffer the driver has. GLX/EGL on Linux treat the size as a
+    // minimum, and no driver offers 64 bits, so ask for 24 there.
+#ifdef _WIN32
+    constexpr int depthBits = 64;
+#else
+    constexpr int depthBits = 24;
+#endif
+    if (!SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depthBits)) {
         spdlog::critical(
             "SDL_GL_SetAttribute failed while setting depth buffer size: {}",
             SDL_GetError()

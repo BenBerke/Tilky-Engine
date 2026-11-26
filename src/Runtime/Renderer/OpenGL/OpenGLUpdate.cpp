@@ -89,6 +89,12 @@ void OpenGL::SetupSceneShader(const Level& level, const ComponentCamera& camera,
 
     glUniform1i(glGetUniformLocation(projectionShader->ID, "uAtlas"), 0);
 
+    // uModelTexture (sampler2D) must never share uAtlas's unit (a
+    // sampler2DArray): Mesa, unlike the Windows drivers, then refuses every
+    // draw with GL_INVALID_OPERATION. DrawGpuModels sets it too, but only
+    // when the level has models. 1 = OpenGLModel.cpp's MODEL_TEXTURE_UNIT.
+    glUniform1i(modelTextureUniform, 1);
+
     glUniform1i(glGetUniformLocation(projectionShader->ID, "uTextureCount"), static_cast<int>(textureRegions.size()));
     glUniform1f(glGetUniformLocation(projectionShader->ID, "uTexelsPerUnit"), ProjectManager::GetTexelsPerUnit());
 

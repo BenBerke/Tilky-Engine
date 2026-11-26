@@ -5,7 +5,12 @@ cmake_minimum_required(VERSION 4.1)
 # the executables.
 set(VCPKG_APPLOCAL_DEPS OFF CACHE BOOL "Tilky handles runtime DLL deployment" FORCE)
 
-project(Tilky_Engine VERSION 0.1.0 LANGUAGES C CXX RC)
+project(Tilky_Engine VERSION 0.1.0 LANGUAGES C CXX)
+
+# The Windows icon resource (TilkyIcon.rc) needs the resource compiler.
+if(WIN32)
+    enable_language(RC)
+endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -212,6 +217,62 @@ find_package(volk CONFIG REQUIRED)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 find_package(vk-bootstrap CONFIG REQUIRED)
 find_package(glslang CONFIG REQUIRED)
+
+# macOS has no Vulkan driver of its own: MoltenVK runs Vulkan on Metal.
+# vcpkg has no MoltenVK port, so use TILKY_MOLTENVK_DYLIB when it's given,
+# else the Vulkan SDK's or Homebrew's copy, else download the official
+# universal (arm64 + x86_64) release. libMoltenVK.dylib is copied beside
+# Tilky_Engine and Standalone (see below); VulkanContext.cpp loads it from
+# there, and the exporter copies it into exported games.
+if(APPLE)
+    set(TILKY_MOLTENVK_VERSION "1.4.2")
+    set(TILKY_MOLTENVK_SHA256 "f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e")
+    set(TILKY_MOLTENVK_DYLIB "" CACHE FILEPATH "libMoltenVK.dylib to ship (empty = Vulkan SDK, Homebrew, or download)")
+
+    if(NOT TILKY_MOLTENVK_DYLIB)
+        find_library(TILKY_FOUND_MOLTENVK
+                NAMES MoltenVK
+                NAMES_PER_DIR
+                HINTS "$ENV{VULKAN_SDK}/lib" /opt/homebrew/lib /usr/local/lib
+                NO_CACHE
+        )
+
+        if(TILKY_FOUND_MOLTENVK)
+            set(TILKY_MOLTENVK_DYLIB "${TILKY_FOUND_MOLTENVK}")
+        else()
+            set(moltenvk_archive "${CMAKE_BINARY_DIR}/_deps/MoltenVK-macos-${TILKY_MOLTENVK_VERSION}.tar")
+            set(moltenvk_extract "${CMAKE_BINARY_DIR}/_deps/MoltenVK-${TILKY_MOLTENVK_VERSION}")
+            set(moltenvk_dylib "${moltenvk_extract}/MoltenVK/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib")
+
+            if(NOT EXISTS "${moltenvk_dylib}")
+                message(STATUS "Downloading MoltenVK ${TILKY_MOLTENVK_VERSION}")
+                file(DOWNLOAD
+                        "https://github.com/KhronosGroup/MoltenVK/releases/download/v${TILKY_MOLTENVK_VERSION}/MoltenVK-macos.tar"
+                        "${moltenvk_archive}"
+                        EXPECTED_HASH SHA256=${TILKY_MOLTENVK_SHA256}
+                        SHOW_PROGRESS
+                )
+                file(MAKE_DIRECTORY "${moltenvk_extract}")
+                file(ARCHIVE_EXTRACT
+                        INPUT "${moltenvk_archive}"
+                        DESTINATION "${moltenvk_extract}"
+                        PATTERNS "MoltenVK/MoltenVK/dynamic/dylib/macOS/*" "MoltenVK/LICENSE"
+                )
+            endif()
+
+            set(TILKY_MOLTENVK_DYLIB "${moltenvk_dylib}")
+        endif()
+    endif()
+
+    if(NOT EXISTS "${TILKY_MOLTENVK_DYLIB}")
+        message(FATAL_ERROR "MoltenVK not found: ${TILKY_MOLTENVK_DYLIB}")
+    endif()
+
+    # A Homebrew/SDK path is usually a symlink: ship the real file under the
+    # name VulkanContext.cpp looks for.
+    file(REAL_PATH "${TILKY_MOLTENVK_DYLIB}" TILKY_MOLTENVK_DYLIB)
+    message(STATUS "Shipping MoltenVK from ${TILKY_MOLTENVK_DYLIB}")
+endif()
 
 # Added for EngineVersionManager (launcher-side engine version installer):
 # cpr for HTTP downloads, minizip-ng for ZIP extraction. Both are added to
@@ -447,7 +508,7 @@ set(TILKY_RUNTIME_SOURCES
 
         src/Runtime/Renderer/RendererMath.cpp
         src/Runtime/Renderer/RendererFactory.cpp
-        src/Runtime/Renderer/OpenGL/OpenGlInit.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLInit.cpp
         src/Runtime/Renderer/OpenGL/OpenGLText.cpp
         src/Runtime/Renderer/OpenGL/OpenGLMapBuild.cpp
         src/Runtime/Renderer/OpenGL/OpenGLUpdate.cpp
@@ -772,7 +833,7 @@ set(TILKY_VARIANT_SOURCES
         Headers/Engine/BuildVariant.hpp
         src/Engine/InputManager.cpp
         src/Runtime/RuntimeSession.cpp
-        src/Runtime/Renderer/OpenGL/OpenGlInit.cpp
+        src/Runtime/Renderer/OpenGL/OpenGLInit.cpp
         src/Runtime/Renderer/OpenGL/OpenGLUpdate.cpp
         src/Runtime/Renderer/OpenGL/OpenGL.cpp
         src/Runtime/Renderer/OpenGL/OpenGLDestroy.cpp
@@ -1748,6 +1809,19 @@ file(RENAME "${manifest}.tmp" "${manifest}")
     tilky_deploy_runtime_dlls(Tilky_Standalone)
 endif()
 
+# macOS: MoltenVK (found above) beside each executable.
+if(APPLE)
+    foreach(target_name Tilky_Engine Tilky_Standalone)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${TILKY_MOLTENVK_DYLIB}"
+                "$<TARGET_FILE_DIR:${target_name}>/libMoltenVK.dylib"
+                COMMENT "Copying MoltenVK for ${target_name}"
+                VERBATIM
+        )
+    endforeach()
+endif()
+
 # ============================================================
 # Hide the console window of exported games on Windows
 # ============================================================
@@ -1798,6 +1872,28 @@ endforeach()
 
 tilky_append_template_copy_commands(TILKY_ENGINE_VERSION_ASSET_COMMANDS "${TILKY_ENGINE_VERSION_STAGE_DIR}")
 
+if(APPLE)
+    list(APPEND TILKY_ENGINE_VERSION_ASSET_COMMANDS
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${TILKY_MOLTENVK_DYLIB}"
+            "${TILKY_ENGINE_VERSION_STAGE_DIR}/libMoltenVK.dylib"
+    )
+endif()
+
+# Windows deploys vcpkg's DLLs into the package; elsewhere vcpkg links
+# statically, so there's nothing to deploy.
+set(TILKY_ENGINE_VERSION_DLL_COMMANDS "")
+if(WIN32)
+    list(APPEND TILKY_ENGINE_VERSION_DLL_COMMANDS
+            COMMAND "${CMAKE_COMMAND}"
+            "-DTILKY_DESTINATION_DIR=${TILKY_ENGINE_VERSION_STAGE_DIR}"
+            "-DTILKY_RELEASE_RUNTIME_DIR=${TILKY_VCPKG_RELEASE_BIN}"
+            "-DTILKY_DEBUG_RUNTIME_DIR=$<$<CONFIG:Debug>:${TILKY_VCPKG_DEBUG_BIN}>"
+            "-DTILKY_MINGW_RUNTIME_DIR=${TILKY_MINGW_BIN_DIR}"
+            -P "${TILKY_DEPLOY_RUNTIME_SCRIPT}"
+    )
+endif()
+
 add_custom_target(Tilky_EngineVersionPackage
         COMMAND "${CMAKE_COMMAND}" -E rm -rf
         "${TILKY_ENGINE_VERSION_STAGE_DIR}"
@@ -1807,20 +1903,15 @@ add_custom_target(Tilky_EngineVersionPackage
 
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "$<TARGET_FILE:Tilky_Engine>"
-        "${TILKY_ENGINE_VERSION_STAGE_DIR}/Tilky_Engine.exe"
+        "${TILKY_ENGINE_VERSION_STAGE_DIR}/Tilky_Engine${CMAKE_EXECUTABLE_SUFFIX}"
 
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "$<TARGET_FILE:Tilky_Standalone>"
-        "${TILKY_ENGINE_VERSION_STAGE_DIR}/Standalone.exe"
+        "${TILKY_ENGINE_VERSION_STAGE_DIR}/Standalone${CMAKE_EXECUTABLE_SUFFIX}"
 
         ${TILKY_ENGINE_VERSION_ASSET_COMMANDS}
 
-        COMMAND "${CMAKE_COMMAND}"
-        "-DTILKY_DESTINATION_DIR=${TILKY_ENGINE_VERSION_STAGE_DIR}"
-        "-DTILKY_RELEASE_RUNTIME_DIR=${TILKY_VCPKG_RELEASE_BIN}"
-        "-DTILKY_DEBUG_RUNTIME_DIR=$<$<CONFIG:Debug>:${TILKY_VCPKG_DEBUG_BIN}>"
-        "-DTILKY_MINGW_RUNTIME_DIR=${TILKY_MINGW_BIN_DIR}"
-        -P "${TILKY_DEPLOY_RUNTIME_SCRIPT}"
+        ${TILKY_ENGINE_VERSION_DLL_COMMANDS}
 
         DEPENDS
         Tilky_Engine

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -19,7 +20,13 @@
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
 #define VMA_IMPLEMENTATION
+// Older vcpkg puts VMA's header under vma/, newer vcpkg (and CI, which uses
+// the latest) at the include root.
+#if __has_include(<vma/vk_mem_alloc.h>)
 #include <vma/vk_mem_alloc.h>
+#else
+#include <vk_mem_alloc.h>
+#endif
 
 #include "Headers/Project/ProjectManager.hpp"
 
@@ -34,6 +41,41 @@ namespace {
         const char* value = std::getenv("TILKY_VULKAN_VALIDATION");
         return value != nullptr && value[0] != '\0' && value[0] != '0';
     }
+
+#ifdef __APPLE__
+    // macOS has no Vulkan driver: the build ships MoltenVK (Vulkan on Metal)
+    // as libMoltenVK.dylib beside the executable, and SDL loads that instead
+    // of searching for a system Vulkan loader. Validation runs need the
+    // Vulkan SDK's loader (the layers live there), so it's used first when
+    // TILKY_VULKAN_VALIDATION is set and one is installed. A user-set
+    // SDL_VULKAN_LIBRARY always wins. Call before creating the window.
+    void UseBundledMoltenVK() {
+        if (SDL_GetHint(SDL_HINT_VULKAN_LIBRARY) != nullptr) return;
+
+        if (ValidationWanted() && SDL_Vulkan_LoadLibrary(nullptr)) {
+            SDL_Vulkan_UnloadLibrary();
+            spdlog::info("Vulkan: validation wanted, using the system Vulkan loader instead of the bundled MoltenVK");
+            return;
+        }
+
+        const char* basePath = SDL_GetBasePath();
+        if (basePath == nullptr) return;
+
+        // Beside the executable, or in an app bundle's Frameworks folder
+        // (SDL_GetBasePath is Contents/Resources/ there).
+        const std::filesystem::path base(basePath);
+        for (const std::filesystem::path& candidate : {base / "libMoltenVK.dylib", base / ".." / "Frameworks" / "libMoltenVK.dylib"}) {
+            std::error_code ec;
+            if (!std::filesystem::exists(candidate, ec)) continue;
+
+            SDL_SetHint(SDL_HINT_VULKAN_LIBRARY, candidate.string().c_str());
+            spdlog::info("Vulkan: using MoltenVK at {}", candidate.string());
+            return;
+        }
+
+        spdlog::warn("Vulkan: libMoltenVK.dylib is not beside the executable; looking for a system Vulkan loader");
+    }
+#endif
 
     VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(const VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT,
                                                  const VkDebugUtilsMessengerCallbackDataEXT* data, void*) {
@@ -51,7 +93,15 @@ namespace {
         info.addressModeU = u;
         info.addressModeV = v;
         info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+#ifdef __APPLE__
+        // MoltenVK's portability subset has no samplerMipLodBias (Metal
+        // samplers have no LOD bias), so mips there are a touch softer than
+        // on Windows.
+        (void)bias;
+        info.mipLodBias = 0.0f;
+#else
         info.mipLodBias = bias;
+#endif
         info.minLod = 0.0f;
         info.maxLod = maxLod;
         info.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
@@ -123,6 +173,10 @@ bool Vulkan::InitWindow(const std::string& windowName, const bool startHidden) {
         spdlog::critical("SDL_Init failed while initializing video subsystem: {}", SDL_GetError());
         return false;
     }
+
+#ifdef __APPLE__
+    UseBundledMoltenVK();
+#endif
 
     const SDL_WindowFlags flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | (startHidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_MAXIMIZED);
     window = SDL_CreateWindow(windowName.c_str(), screenWidth, screenHeight, flags);
