@@ -1,4 +1,5 @@
 #include "Headers/Objects/UILayouts.hpp"
+#include "Headers/Engine/AssetFS.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -71,10 +72,18 @@ namespace UILayouts {
         std::vector<Info> found;
         std::error_code error;
 
-        for (auto it = fs::recursive_directory_iterator(assets, error); !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
-            if (!it->is_regular_file() || LowerExtension(it->path()) != kExtension) continue;
+        std::vector<fs::path> layoutFiles;
+        if (AssetFS::IsPacked()) {
+            for (fs::path& file : AssetFS::ListPackedFiles(assets, true))
+                if (LowerExtension(file) == kExtension) layoutFiles.push_back(std::move(file));
+        }
+        else {
+            for (auto it = fs::recursive_directory_iterator(assets, error); !error && it != fs::recursive_directory_iterator(); it.increment(error))
+                if (it->is_regular_file() && LowerExtension(it->path()) == kExtension) layoutFiles.push_back(it->path());
+        }
 
-            const fs::path path = it->path().lexically_normal();
+        for (const fs::path& layoutFile : layoutFiles) {
+            const fs::path path = layoutFile.lexically_normal();
             std::uint64_t id = 0;
             std::string message;
 

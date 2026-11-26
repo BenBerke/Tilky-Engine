@@ -31,7 +31,10 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Map/MapQueries.hpp"
+#include "Headers/Project/AssetSets.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/Sound/SoundManager.hpp"
+#include "Headers/Engine/BuildVariant.hpp"
 #include "Headers/GlobalEventVariables.hpp"
 #include "Headers/Runtime/EventSystem.hpp"
 
@@ -207,6 +210,70 @@ namespace {
     }
 #endif
 
+    // The level's key for its asset set: its file's path in Assets.
+    std::string LevelSetKey(const Level& level) {
+        const std::filesystem::path path = LevelSerialization::FindLevelPath(level.name);
+        return path.empty() ? std::string() : AssetSets::LevelKey(path);
+    }
+
+#ifdef TILKY_STANDALONE
+    // An exported game's level change: the next level's images and sounds
+    // decode on worker threads, while Project Settings' loading screen shows
+    // (or the last frame stays) and its progress variable counts to 100.
+    void PreloadLevelAssets(const std::string& levelKey) {
+        if (!AssetSets::HasPackedSets() || levelKey.empty()) return;
+
+        ZoneScopedN("PreloadLevelAssets");
+
+        std::vector<std::string> images;
+        std::vector<std::string> sounds;
+        for (const std::string& file : AssetSets::PackedNeeds(levelKey)) {
+            if (AssetSets::IsImageFile(file)) images.push_back(file);
+            else if (AssetSets::IsSoundFile(file)) sounds.push_back(file);
+        }
+
+        renderer->BeginTexturePreload(images);
+        SoundManager::BeginLevelPreload(sounds);
+
+        const AssetSets::Settings& settings = AssetSets::Current();
+
+        // The layout on its own: no camera, no scripts, only its UI.
+        std::unique_ptr<Level> screen;
+        if (settings.loadingScreenLayout != 0) {
+            screen = std::make_unique<Level>();
+            screen->worldSettings.uiLayouts = {settings.loadingScreenLayout};
+            LevelTransfer::AddLayouts(*screen);
+            screen->ApplyAllEntityEnabled();
+        }
+
+        while (true) {
+            const auto [texturesDone, textureCount] = renderer->TexturePreloadProgress();
+            const auto [soundsDone, soundCount] = SoundManager::LevelPreloadProgress();
+            const size_t total = textureCount + soundCount;
+            const bool finished = texturesDone >= textureCount && soundsDone >= soundCount;
+
+            if (settings.loadingProgressVariable != 0)
+                GlobalEventVariables::Values()[settings.loadingProgressVariable] =
+                    total == 0 ? 100.0f : 100.0f * static_cast<float>(texturesDone + soundsDone) / static_cast<float>(total);
+
+            // Kept in the queue for the frame after: the window stays responsive.
+            SDL_PumpEvents();
+
+            if (screen) {
+                renderer->BeginFrame();
+                renderer->DrawLoadingScreen(*screen);
+                renderer->EndFrame();
+            }
+
+            if (finished) break;
+            if (!screen) SDL_Delay(2);
+        }
+
+        renderer->FinishTexturePreload();
+        SoundManager::FinishLevelPreload();
+    }
+#endif
+
     void PrepareRuntimeLevel(Level& level) {
         MapQueries::RebuildSectorRuntimeLinks(level);
 
@@ -272,6 +339,12 @@ namespace {
 
         loadedLevel.name = levelName;
 
+        const std::string levelKey = AssetSets::LevelKey(levelPath);
+#ifdef TILKY_STANDALONE
+        // While the old level is still on screen.
+        PreloadLevelAssets(levelKey);
+#endif
+
         const std::vector<ID> carried = LevelTransfer::CarriedEntities(level, loadedLevel.worldSettings.uiLayouts);
         const std::unordered_set<ID> carriedSet(carried.begin(), carried.end());
 
@@ -301,7 +374,12 @@ namespace {
         level.geometryEpoch = LevelEpoch::current;
 
         PrepareRuntimeLevel(level);
+
+        // The new level's set: the atlas rebuild in ReloadMap keeps only it
+        // (and what the level itself names), and the sounds follow.
+        AssetSets::BeginLevel(levelKey, !BuildVariant::IsStandalone());
         renderer->ReloadMap();
+        SoundManager::PrepareForLevel(level);
 
         // Only the new ones: the carried keep theirs.
         AudioSystem::Start(level);
@@ -325,6 +403,7 @@ namespace {
         InputManager::ResetCursor();
         MusicPlayer::Shutdown();
         AudioSystem::Shutdown(level);
+        AssetSets::EndSession();
 #ifdef TILKY_STANDALONE
         SoundManager::DestroyOpenAL();
 #else
@@ -528,6 +607,9 @@ namespace {
         LevelTransfer::AddLayouts(level);
         PrepareRuntimeLevel(level);
 
+        // Before the atlas and the sounds: they keep only the level's set.
+        AssetSets::BeginLevel(LevelSetKey(level), false);
+
         if (!StartRenderer(windowName, false)) return false;
 
         if (!StartGameSystems(level)) {
@@ -667,6 +749,9 @@ namespace {
         // On the copy that runs: the snapshot keeps the editor's level as it was.
         LevelTransfer::AddLayouts(level);
         PrepareRuntimeLevel(level);
+
+        // Everything stays loaded; uses outside what an export would keep are reported.
+        AssetSets::BeginLevel(LevelSetKey(level), true);
 
         if (!StartRenderer(false)) {
             editorLevelSnapshot.reset();

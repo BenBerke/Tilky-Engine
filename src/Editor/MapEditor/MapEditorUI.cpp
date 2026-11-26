@@ -55,6 +55,7 @@
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/Entity.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Project/AssetSets.hpp"
 #include "Headers/TagRegistry.hpp"
 #include "Headers/GlobalEventVariables.hpp"
 #include "Headers/Objects/UILayouts.hpp"
@@ -224,6 +225,10 @@ namespace {
 
         fs::path folder;
 
+        // The exporter's "@summary" lines and "@report" path (see WriteExportReport).
+        std::vector<std::string> summary;
+        fs::path report;
+
         // Guards the process handle: the thread closes it, Cancel uses it.
         std::mutex processMutex;
         bool cancelled = false;
@@ -235,6 +240,11 @@ namespace {
     };
 
     std::unique_ptr<GameExportJob> gameExportJob;
+
+    // The finished export's summary, shown in a popup until closed.
+    bool exportReportPopupRequested = false;
+    std::vector<std::string> exportReportSummary;
+    fs::path exportReportPath;
 
     // Set when a quit was held back for the running export.
     bool exitAfterGameExport = false;
@@ -288,6 +298,18 @@ namespace {
             static constexpr std::string_view marker = "@progress ";
             if (line.starts_with(marker)) {
                 job.progress = static_cast<float>(std::atoi(line.c_str() + marker.size())) / 100.0f;
+                return;
+            }
+
+            static constexpr std::string_view summaryMarker = "@summary ";
+            if (line.starts_with(summaryMarker)) {
+                job.summary.push_back(line.substr(summaryMarker.size()));
+                return;
+            }
+
+            static constexpr std::string_view reportMarker = "@report ";
+            if (line.starts_with(reportMarker)) {
+                job.report = fs::u8path(line.substr(reportMarker.size()));
                 return;
             }
 
@@ -462,12 +484,54 @@ namespace {
         } else {
             spdlog::info("Export completed successfully to {}", job->folder.string());
             ShowNotification(Localisation::Get("editor.notification.export_complete").c_str());
+
+            // Not while closing: nobody would read it.
+            if (!exitNow && !job->summary.empty()) {
+                exportReportSummary = job->summary;
+                exportReportPath = job->report;
+                exportReportPopupRequested = true;
+            }
         }
 
         if (exitNow) {
             MapEditorInternal::shutdown = true;
             MapEditorInternal::quit = true;
         }
+    }
+
+    void DrawExportReportPopup() {
+        if (exportReportPopupRequested) {
+            ImGui::OpenPopup("##ExportReport");
+            exportReportPopupRequested = false;
+        }
+
+        ImGui::SetNextWindowSizeConstraints(ImVec2(360.0f, 0.0f), ImVec2(640.0f, FLT_MAX));
+        if (!ImGui::BeginPopupModal("##ExportReport", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+
+        ImGui::Text("%s", Localisation::Get("editor.export_report.title").c_str());
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::PushTextWrapPos(600.0f);
+        for (const std::string& line : exportReportSummary) ImGui::BulletText("%s", line.c_str());
+        ImGui::PopTextWrapPos();
+
+        ImGui::Spacing();
+
+        const bool hasReport = !exportReportPath.empty();
+        if (!hasReport) ImGui::BeginDisabled();
+        if (ImGui::Button(Localisation::Get("editor.export_report.show").c_str())) {
+            if (!SDL_OpenURL(("file:///" + exportReportPath.generic_string()).c_str()))
+                spdlog::error("Couldn't open the export report {}: {}", exportReportPath.string(), SDL_GetError());
+        }
+        if (!hasReport) ImGui::EndDisabled();
+        if (hasReport && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", exportReportPath.string().c_str());
+
+        ImGui::SameLine();
+        if (ImGui::Button(Localisation::Get("common.close").c_str(), ImVec2(80.0f, 0.0f))) ImGui::CloseCurrentPopup();
+
+        ImGui::EndPopup();
     }
 
     void DrawGameExportBar(const float width) {
@@ -3020,6 +3084,78 @@ namespace {
     //  Project Settings window
     // =========================================================================
 
+    // Project Settings > Asset Loading: Strip, and the loading screen.
+    void DrawAssetLoadingSettings() {
+        AssetSets::Settings& settings = AssetSets::Current();
+        bool changed = false;
+
+        changed |= ImGui::Checkbox(Get("editor.project.strip_unused").c_str(), &settings.stripUnusedOnExport);
+        HoverTooltip(Get("editor.tooltip.project.strip_unused").c_str());
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted(Get("editor.project.loading_screen").c_str());
+        HoverTooltip(Get("editor.tooltip.project.loading_screen").c_str());
+
+        const UILayouts::Info* layout = settings.loadingScreenLayout != 0 ? UILayouts::Find(settings.loadingScreenLayout) : nullptr;
+        const std::string layoutPreview = settings.loadingScreenLayout == 0 ? Get("editor.project.loading_screen_none")
+            : layout != nullptr ? layout->name : Get("settings.ui_layouts.missing");
+
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::BeginCombo("##LoadingScreen", layoutPreview.c_str())) {
+            if (ImGui::Selectable(Get("editor.project.loading_screen_none").c_str(), settings.loadingScreenLayout == 0)) {
+                settings.loadingScreenLayout = 0;
+                changed = true;
+            }
+            for (const UILayouts::Info& info : UILayouts::List()) {
+                ImGui::PushID(static_cast<int>(info.id ^ (info.id >> 32)));
+                if (ImGui::Selectable(info.name.c_str(), info.id == settings.loadingScreenLayout)) {
+                    settings.loadingScreenLayout = info.id;
+                    changed = true;
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::Spacing();
+        ImGui::TextUnformatted(Get("editor.project.loading_progress").c_str());
+        HoverTooltip(Get("editor.tooltip.project.loading_progress").c_str());
+
+        const std::optional<std::string> variableName = settings.loadingProgressVariable != 0
+            ? GlobalEventVariables::GetName(settings.loadingProgressVariable) : std::nullopt;
+        const std::string variablePreview = settings.loadingProgressVariable == 0 ? Get("editor.project.loading_screen_none")
+            : variableName ? *variableName : Get("editor.project.loading_progress_missing");
+
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::BeginCombo("##LoadingProgress", variablePreview.c_str())) {
+            if (ImGui::Selectable(Get("editor.project.loading_screen_none").c_str(), settings.loadingProgressVariable == 0)) {
+                settings.loadingProgressVariable = 0;
+                changed = true;
+            }
+
+            std::vector<std::pair<std::string, EventVariableID>> variables;
+            for (const auto& [id, definition] : GlobalEventVariables::GetAll()) variables.emplace_back(definition.name, id);
+            std::ranges::sort(variables);
+
+            for (const auto& [name, id] : variables) {
+                ImGui::PushID(static_cast<int>(id));
+                if (ImGui::Selectable(name.c_str(), id == settings.loadingProgressVariable)) {
+                    settings.loadingProgressVariable = id;
+                    changed = true;
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::Spacing();
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("%s", Get("editor.project.always_loaded_hint").c_str());
+        ImGui::PopTextWrapPos();
+
+        if (changed && !SaveProjectSettings()) ShowNotification(Get("editor.project.asset_loading_failed").c_str(), /*isError=*/true);
+    }
+
     void DrawProjectSettingsWindow() {
         ImGui::SetNextWindowSize(ImVec2(340.0f, 0.0f), ImGuiCond_FirstUseEver);
 
@@ -3145,6 +3281,17 @@ namespace {
             if (ImGui::IsItemDeactivatedAfterEdit() && !ProjectManager::SetTexelsPerUnit(texelsPerUnitEdit))
                 ShowNotification(Get("editor.project.texels_per_unit_failed").c_str(), /*isError=*/true);
             HoverTooltip(Get("editor.tooltip.project.texels_per_unit").c_str());
+
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            // ---- Asset loading (exported games) ------------------------------------
+            SectionHeader(Get("editor.project.asset_loading").c_str());
+            HoverTooltip(Get("editor.tooltip.project.asset_loading").c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+            DrawAssetLoadingSettings();
 
             ImGui::Spacing();
             ImGui::Separator();
@@ -3411,8 +3558,11 @@ namespace {
         if (!fs::exists(folder, ec)) return true;
         if (fs::is_empty(folder, ec)) return true;
 
-        // A one-platform export, or one with a subfolder per platform.
-        return (fs::exists(folder / "project.tilky", ec) && fs::is_directory(folder / "Assets", ec)) ||
+        // A one-platform export (Data.pak, or loose files before packs), or
+        // one with a subfolder per platform.
+        return (fs::exists(folder / "Data.pak", ec) && fs::exists(folder / "Standalone.exe", ec)) ||
+               (fs::exists(folder / "Data.pak", ec) && fs::exists(folder / "Standalone", ec)) ||
+               (fs::exists(folder / "project.tilky", ec) && fs::is_directory(folder / "Assets", ec)) ||
                fs::exists(folder / ".tilky_export", ec);
     }
 
@@ -4039,6 +4189,7 @@ namespace MapEditorInternal {
         DrawMainMenuBar();
         ProcessPendingGameExport();
         ProcessPendingObjExport();
+        DrawExportReportPopup();
     }
 
     bool HoldQuitForGameExport() {

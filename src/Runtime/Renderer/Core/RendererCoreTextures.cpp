@@ -2,6 +2,8 @@
 // backends only make, fill and destroy the GPU objects (RendererCore hooks).
 
 #include "Headers/Runtime/Renderer/RendererCore.hpp"
+#include "Headers/Engine/AssetFS.hpp"
+#include "Headers/Engine/AssetFSImage.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -20,6 +22,7 @@
 #include "Headers/Engine/FolderWatcher.hpp"
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Map/TextureTiling.hpp"
+#include "Headers/Project/AssetSets.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 
 namespace fs = std::filesystem;
@@ -66,6 +69,28 @@ namespace {
 
         std::vector<std::string> imageNames;
 
+        if (AssetFS::IsPacked()) {
+            for (const fs::path& file : AssetFS::ListPackedFiles(assetsPath, true)) {
+                const fs::path relative = file.lexically_relative(assetsPath);
+
+                // Hidden entries aren't shown in the Asset Browser either.
+                bool hidden = false;
+                for (const fs::path& part : relative) {
+                    const std::string partName = part.string();
+                    if (!partName.empty() && partName.front() == '.') hidden = true;
+                }
+                if (hidden) continue;
+
+                std::string extension = file.extension().string();
+                std::ranges::transform(extension, extension.begin(), [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+                if (kImageExtensions.contains(extension)) imageNames.push_back(relative.generic_string());
+            }
+
+            std::ranges::sort(imageNames);
+            return imageNames;
+        }
+
         std::error_code ec;
         for (fs::recursive_directory_iterator it(assetsPath, ec), end; !ec && it != end; it.increment(ec)) {
             const std::string name = it->path().filename().string();
@@ -105,9 +130,9 @@ namespace {
     }
 
     size_t WriteTimeHash(const fs::path& assetsPath, const std::string& fileName) {
-        std::error_code ec;
-        const fs::file_time_type writeTime = fs::last_write_time(assetsPath / fs::path(fileName).lexically_normal(), ec);
-        return ec ? 0 : std::hash<long long>{}(static_cast<long long>(writeTime.time_since_epoch().count()));
+        fs::file_time_type writeTime;
+        const bool found = AssetFS::WriteTime(assetsPath / fs::path(fileName).lexically_normal(), writeTime);
+        return !found ? 0 : std::hash<long long>{}(static_cast<long long>(writeTime.time_since_epoch().count()));
     }
 
     size_t WriteTimeHash(const std::string& fileName) {
@@ -118,15 +143,14 @@ namespace {
     // parallel decodes below are quiet: a file they can't read is tried
     // again by GetDecodedImage, which reports it once.
     bool DecodeImageFile(const fs::path& path, DecodedImage& out, const bool logErrors = true) {
-        std::error_code ec;
-        const fs::file_time_type writeTime = fs::last_write_time(path, ec);
-        if (ec) {
+        fs::file_time_type writeTime;
+        if (!AssetFS::WriteTime(path, writeTime)) {
             if (logErrors) spdlog::error("Texture file does not exist: {}", path.string());
             return false;
         }
 
         const std::string key = path.string();
-        SDL_Surface* loadedSurface = IMG_Load(key.c_str());
+        SDL_Surface* loadedSurface = AssetFS::IsPacked() ? AssetFS::LoadImage(path) : IMG_Load(key.c_str());
 
         if (loadedSurface == nullptr) {
             if (logErrors) spdlog::error("IMG_Load failed for {}: {}", key, SDL_GetError());
@@ -239,6 +263,53 @@ struct RendererCore::BackgroundAtlasLoad {
     }
 };
 
+// A level change's images, decoding on worker threads (BeginTexturePreload).
+struct RendererCore::TexturePreload {
+    std::vector<fs::path> paths;
+    std::vector<std::optional<DecodedImage>> images; // written by the worker before `finished`
+    std::atomic<size_t> done{0};
+    std::atomic<bool> cancelled{false};
+    std::atomic<bool> finished{false};
+    std::thread worker;
+
+    ~TexturePreload() {
+        cancelled = true;
+        if (worker.joinable()) worker.join();
+    }
+};
+
+void RendererCore::BeginTexturePreload(const std::vector<std::string>& imageNames) {
+    FinishTexturePreload();
+
+    auto job = std::make_shared<TexturePreload>();
+    for (const std::string& fileName : imageNames) {
+        fs::path path = ProjectManager::GetAssetsPath() / fs::path(fileName).lexically_normal();
+        if (!decodedImageCache.contains(path.string())) job->paths.push_back(std::move(path));
+    }
+    if (job->paths.empty()) return;
+
+    job->worker = std::thread([raw = job.get()] {
+        raw->images = DecodeImagesInParallel(raw->paths, &raw->cancelled, &raw->done);
+        raw->finished = true;
+    });
+    texturePreload = std::move(job);
+}
+
+std::pair<size_t, size_t> RendererCore::TexturePreloadProgress() const {
+    if (!texturePreload) return {0, 0};
+    return {texturePreload->done.load(), texturePreload->paths.size()};
+}
+
+void RendererCore::FinishTexturePreload() {
+    if (!texturePreload) return;
+
+    const std::shared_ptr<TexturePreload> job = std::move(texturePreload);
+    if (job->worker.joinable()) job->worker.join();
+
+    for (size_t i = 0; i < job->images.size() && i < job->paths.size(); ++i)
+        if (job->images[i]) decodedImageCache[job->paths[i].string()] = std::move(*job->images[i]);
+}
+
 bool RendererCore::BuildTextureAtlasFromLevel() {
 #ifndef TILKY_STANDALONE
     // Still decoding: UpdateBackgroundLoad builds it, with whatever the
@@ -286,7 +357,22 @@ bool RendererCore::BuildTextureAtlasFromLevel() {
     std::vector<std::string> referencedFileNames = cachedProjectImages;
     const size_t projectImageCount = cachedProjectImages.size();
 #else
-    std::vector<std::string> referencedFileNames = CollectProjectImageFileNames();
+    // An exported game with per-level sets: only the level's (and the
+    // Always Loaded ones), still in name order.
+    lateTexturesEnabled = AssetFS::IsPacked() && AssetSets::HasPackedSets();
+
+    std::vector<std::string> referencedFileNames;
+    if (lateTexturesEnabled) {
+        for (std::string& fileName : CollectProjectImageFileNames())
+            if (AssetSets::InCurrentSet(fileName)) referencedFileNames.push_back(std::move(fileName));
+    }
+    else referencedFileNames = CollectProjectImageFileNames();
+
+    // Late textures of an earlier level go with it.
+    if (lateTexturesGeneration != AssetSets::SessionGeneration()) {
+        lateTextures.clear();
+        lateTexturesGeneration = AssetSets::SessionGeneration();
+    }
 #endif
 
     {
@@ -302,6 +388,7 @@ bool RendererCore::BuildTextureAtlasFromLevel() {
             for (const std::string* texture : {&button.normalTexture, &button.hoverTexture, &button.pressedTexture, &button.disabledTexture})
                 addIfMissing(*texture);
         addIfMissing(level.worldSettings.messageStyle.backgroundTexture);
+        for (const std::string& fileName : lateTextures) addIfMissing(fileName);
     }
 
     // The engine keeps the atlas between Play sessions; it only has to be
@@ -379,10 +466,7 @@ bool RendererCore::BuildTextureAtlasFromLevel() {
         }
     }
 
-    int page = 0;
-    int cursorX = ATLAS_PADDING;
-    int cursorY = ATLAS_PADDING;
-    int shelfHeight = 0;
+    AtlasCursor cursor;
 
     const int maxLayers = MaxAtlasPages();
 
@@ -404,22 +488,12 @@ bool RendererCore::BuildTextureAtlasFromLevel() {
             continue;
         }
 
-        if (cursorX + textureWidth + ATLAS_PADDING > ATLAS_SIZE) {
-            cursorX = ATLAS_PADDING;
-            cursorY += shelfHeight + ATLAS_PADDING;
-            shelfHeight = 0;
-        }
-
-        if (cursorY + textureHeight + ATLAS_PADDING > ATLAS_SIZE) {
-            if (page + 1 >= maxLayers) {
-                spdlog::error("Texture atlas is full ({} pages). Could not add '{}'", maxLayers, fileName);
-                continue;
-            }
-
-            ++page;
-            cursorX = ATLAS_PADDING;
-            cursorY = ATLAS_PADDING;
-            shelfHeight = 0;
+        int page = 0;
+        int cursorX = 0;
+        int cursorY = 0;
+        if (!PlaceInAtlas(textureWidth, textureHeight, maxLayers, cursor, page, cursorX, cursorY)) {
+            spdlog::error("Texture atlas is full ({} pages). Could not add '{}'", maxLayers, fileName);
+            continue;
         }
 
         constexpr float halfTexel = .5f;
@@ -441,15 +515,15 @@ bool RendererCore::BuildTextureAtlasFromLevel() {
         textureRegionIndexByName[fileName] = i;
 
         placements.push_back({image, page, cursorX, cursorY});
-
-        cursorX += textureWidth + ATLAS_PADDING;
-        shelfHeight = std::max(shelfHeight, textureHeight);
     }
 
     // Images deleted from disk since the last build don't need to stay decoded.
     std::erase_if(decodedImageCache, [&](const auto& entry) { return !stillOnDisk.contains(entry.first); });
 
-    const int pageCount = page + 1;
+    // Room for textures used outside the set: the rest of the last page and a spare one.
+    const int pageCount = std::min(cursor.page + 1 + (lateTexturesEnabled ? 1 : 0), std::max(maxLayers, 1));
+    atlasPageCount = pageCount;
+    atlasCursor = cursor;
 
     // Pass 2: fill each page on the CPU and upload it as one layer.
     CreateAtlasGpu(pageCount);
@@ -520,13 +594,111 @@ bool RendererCore::BuildTextureAtlasFromLevel() {
     return true;
 }
 
+bool RendererCore::PlaceInAtlas(const int width, const int height, const int pageLimit, AtlasCursor& cursor, int& outPage, int& outX,
+                                int& outY) {
+    if (cursor.x + width + ATLAS_PADDING > ATLAS_SIZE) {
+        cursor.x = ATLAS_PADDING;
+        cursor.y += cursor.shelfHeight + ATLAS_PADDING;
+        cursor.shelfHeight = 0;
+    }
+
+    if (cursor.y + height + ATLAS_PADDING > ATLAS_SIZE) {
+        if (cursor.page + 1 >= pageLimit) return false;
+
+        ++cursor.page;
+        cursor.x = ATLAS_PADDING;
+        cursor.y = ATLAS_PADDING;
+        cursor.shelfHeight = 0;
+    }
+
+    outPage = cursor.page;
+    outX = cursor.x;
+    outY = cursor.y;
+
+    cursor.x += width + ATLAS_PADDING;
+    cursor.shelfHeight = std::max(cursor.shelfHeight, height);
+    return true;
+}
+
+// Textures first used last frame that the atlas lacks (exported games with
+// per-level sets only): into the spare room, or a rebuild once it's full.
+void RendererCore::ServiceLateTextures() {
+    if (missedTextures.empty()) return;
+
+    std::vector<std::string> names(missedTextures.begin(), missedTextures.end());
+    missedTextures.clear();
+    std::ranges::sort(names);
+
+    if (!lateTexturesEnabled || !AtlasExists()) return;
+
+    const Level& level = LevelManager::CurrentLevel();
+    bool added = false;
+    bool rebuild = false;
+
+    for (const std::string& fileName : names) {
+        if (textureRegionIndexByName.contains(fileName) || unresolvedLevelTextures.contains(fileName)) continue;
+
+        const fs::path path = ProjectManager::GetAssetsPath() / fs::path(fileName).lexically_normal();
+        const DecodedImage* image = AssetFS::IsFile(path) ? GetDecodedImage(path) : nullptr;
+
+        if (image == nullptr || image->width + ATLAS_PADDING * 2 > ATLAS_SIZE || image->height + ATLAS_PADDING * 2 > ATLAS_SIZE) {
+            unresolvedLevelTextures.insert(fileName);
+            continue;
+        }
+
+        AssetSets::NoteOnDemandUse(fileName, "Texture");
+        lateTextures.push_back(fileName);
+
+        int page = 0;
+        int x = 0;
+        int y = 0;
+        if (rebuild || !PlaceInAtlas(image->width, image->height, atlasPageCount, atlasCursor, page, x, y)) {
+            rebuild = true;
+            continue;
+        }
+
+        // The image with its edges repeated ATLAS_PADDING out, as the full build pads.
+        const int paddedWidth = image->width + ATLAS_PADDING * 2;
+        const int paddedHeight = image->height + ATLAS_PADDING * 2;
+        std::vector<unsigned char> padded(static_cast<size_t>(paddedWidth) * paddedHeight * 4);
+        for (int row = 0; row < paddedHeight; ++row) {
+            const int sourceRow = std::clamp(row - ATLAS_PADDING, 0, image->height - 1);
+            for (int column = 0; column < paddedWidth; ++column) {
+                const int sourceColumn = std::clamp(column - ATLAS_PADDING, 0, image->width - 1);
+                std::memcpy(padded.data() + (static_cast<size_t>(row) * paddedWidth + column) * 4,
+                            image->pixels.data() + (static_cast<size_t>(sourceRow) * image->width + sourceColumn) * 4, 4);
+            }
+        }
+        UploadAtlasRegionGpu(page, x - ATLAS_PADDING, y - ATLAS_PADDING, paddedWidth, paddedHeight, padded.data());
+
+        constexpr float halfTexel = .5f;
+        textureRegions.push_back({
+            {(x + halfTexel) / static_cast<float>(ATLAS_SIZE), (y + halfTexel) / static_cast<float>(ATLAS_SIZE),
+             (x + image->width - halfTexel) / static_cast<float>(ATLAS_SIZE), (y + image->height - halfTexel) / static_cast<float>(ATLAS_SIZE)},
+            {1.0f, static_cast<float>(page), static_cast<float>(image->width), static_cast<float>(image->height)}
+        });
+        textureRegionIndexByName[fileName] = static_cast<int>(textureRegions.size()) - 1;
+        added = true;
+
+        spdlog::info("Added texture '{}' to the atlas on demand", fileName);
+    }
+
+    if (rebuild) {
+        spdlog::info("The atlas's spare room is used up: rebuilding it with the late textures");
+        atlasSignature = 0;
+        if (!BuildTextureAtlasFromLevel()) spdlog::error("Failed to rebuild the texture atlas");
+        return;
+    }
+
+    if (added) RefreshAtlasGpu(level.rendererSettings.textureSetting);
+}
+
 // Decodes an image to RGBA8 once and keeps it until the file changes on disk,
 // so rebuilding the atlas doesn't re-read every image in the project.
 // Returns nullptr if the file can't be loaded.
 const DecodedImage* RendererCore::GetDecodedImage(const fs::path& path) {
-    std::error_code ec;
-    const fs::file_time_type writeTime = fs::last_write_time(path, ec);
-    if (ec) {
+    fs::file_time_type writeTime;
+    if (!AssetFS::WriteTime(path, writeTime)) {
         spdlog::error("Texture file does not exist: {}", path.string());
         return nullptr;
     }
@@ -625,7 +797,25 @@ int RendererCore::GetTextureRegionIndex(const std::string& fileName) const {
 
     const auto found = textureRegionIndexByName.find(fileName);
 
-    if (found == textureRegionIndexByName.end()) return -1;
+    if (found == textureRegionIndexByName.end()) {
+        // Loaded at the start of the next frame (exported games with per-level sets).
+        if (lateTexturesEnabled) missedTextures.insert(fileName);
+        return -1;
+    }
+
+    // Editor Play: a texture outside the level's set is reported once.
+    if (AssetSets::HasCurrentSet()) {
+        if (regionSetCheckedGeneration != AssetSets::SessionGeneration() || regionSetChecked.size() != textureRegions.size()) {
+            regionSetChecked.assign(textureRegions.size(), 0);
+            regionSetCheckedGeneration = AssetSets::SessionGeneration();
+        }
+
+        const auto index = static_cast<size_t>(found->second);
+        if (index < regionSetChecked.size() && regionSetChecked[index] == 0) {
+            regionSetChecked[index] = 1;
+            if (!AssetSets::InCurrentSet(fileName)) AssetSets::NoteOnDemandUse(fileName, "Texture");
+        }
+    }
 
     return found->second;
 }
@@ -650,7 +840,7 @@ Vector2 RendererCore::SurfaceScroll(const SurfaceTexture& texture, const int reg
 // ============================================================================
 
 bool RendererCore::LoadTextureFile(const fs::path& path, GPUTexture& out) {
-    SDL_Surface* loadedSurface = IMG_Load(path.string().c_str());
+    SDL_Surface* loadedSurface = AssetFS::IsPacked() ? AssetFS::LoadImage(path) : IMG_Load(path.string().c_str());
 
     if (loadedSurface == nullptr) {
         spdlog::error("IMG_Load failed for {}: {}", path.string(), SDL_GetError());
@@ -687,13 +877,12 @@ bool RendererCore::LoadTextureFile(const fs::path& path, GPUTexture& out) {
 }
 
 void RendererCore::UploadTexturePixels(const fs::path& path, const void* pixels, const int width, const int height, GPUTexture& out) {
-    std::error_code ec;
-
     out.id = UploadTextureGpu(pixels, width, height);
     out.width = width;
     out.height = height;
     out.path = path;
-    out.writeTime = fs::last_write_time(path, ec);
+    // As fs::last_write_time with an error code: min() for a missing file.
+    if (!AssetFS::WriteTime(path, out.writeTime)) out.writeTime = fs::file_time_type::min();
 }
 
 bool RendererCore::FindLoadedTexture(const std::string& fileName, LoadedTexture* out) const {
@@ -741,11 +930,10 @@ void RendererCore::ReloadChangedTextures() {
     for (GPUTexture& texture : textures) {
         if (texture.id == 0 || texture.path.empty()) continue;
 
-        std::error_code ec;
-        const fs::file_time_type writeTime = fs::last_write_time(texture.path, ec);
+        fs::file_time_type writeTime;
 
         // A deleted file keeps its last good texture rather than going blank.
-        if (ec || writeTime == texture.writeTime) continue;
+        if (!AssetFS::WriteTime(texture.path, writeTime) || writeTime == texture.writeTime) continue;
 
         GPUTexture reloaded;
         if (!LoadTextureFile(texture.path, reloaded)) continue;

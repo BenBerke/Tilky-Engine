@@ -1,4 +1,5 @@
 #include "Headers/Map/LevelSerialization.hpp"
+#include "Headers/Engine/AssetFS.hpp"
 #include "Headers/Engine/BuildVariant.hpp"
 
 #include <algorithm>
@@ -3471,22 +3472,16 @@ namespace {
 
     // `what` names the kind of file in error messages ("level", "prefab").
     bool ReadBsonFile(const fs::path& path, const std::string& what, json& outData, std::string* errorMessage) {
-        if (!fs::exists(path)) {
+        if (!AssetFS::Exists(path)) {
             SetError(errorMessage, what + " file does not exist: " + path.string());
             return false;
         }
 
-        std::ifstream file(path, std::ios::binary);
-
-        if (!file.is_open()) {
+        std::vector<std::uint8_t> bsonData;
+        if (!AssetFS::ReadFile(path, bsonData)) {
             SetError(errorMessage, "Could not open BSON " + what + " file: " + path.string());
             return false;
         }
-
-        const std::vector<std::uint8_t> bsonData{
-            std::istreambuf_iterator<char>(file),
-            std::istreambuf_iterator<char>()
-        };
 
         try {
             outData = json::from_bson(bsonData);
@@ -3741,9 +3736,15 @@ namespace LevelSerialization {
         std::vector<fs::path> levelFiles;
         const fs::path assetsPath = ProjectManager::GetAssetsPath();
 
-        std::error_code ec;
-        for (fs::recursive_directory_iterator it(assetsPath, ec), end; !ec && it != end; it.increment(ec)) {
-            if (it->is_regular_file() && it->path().extension() == ".bson") levelFiles.push_back(it->path());
+        if (AssetFS::IsPacked()) {
+            for (fs::path& file : AssetFS::ListPackedFiles(assetsPath, true))
+                if (file.extension() == ".bson") levelFiles.push_back(std::move(file));
+        }
+        else {
+            std::error_code ec;
+            for (fs::recursive_directory_iterator it(assetsPath, ec), end; !ec && it != end; it.increment(ec)) {
+                if (it->is_regular_file() && it->path().extension() == ".bson") levelFiles.push_back(it->path());
+            }
         }
 
         std::ranges::sort(levelFiles);

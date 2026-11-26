@@ -133,6 +133,44 @@ void Vulkan::FinishAtlasGpu(const RendererTextureSettings setting) {
         std::memcpy(textureRegionBuffer.mapped, textureRegions.data(), bytes);
 }
 
+void Vulkan::UploadAtlasRegionGpu(const int page, const int x, const int y, const int width, const int height, const unsigned char* pixels) {
+    if (atlas.image == VK_NULL_HANDLE || width <= 0 || height <= 0) return;
+
+    Buffer staging;
+    const VkDeviceSize bytes = static_cast<VkDeviceSize>(width) * height * 4;
+    if (!CreateBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, true, staging)) return;
+    std::memcpy(staging.mapped, pixels, static_cast<size_t>(bytes));
+
+    // Queue order puts it after every frame already submitted; the barrier
+    // waits for their reads.
+    VkCommandBuffer commands = BeginOneShot();
+    Transition(commands, atlas, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkBufferImageCopy copy{};
+    copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, static_cast<uint32_t>(page), 1};
+    copy.imageOffset = {x, y, 0};
+    copy.imageExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+    vkCmdCopyBufferToImage(commands, staging.buffer, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+    EndOneShot(commands);
+
+    DestroyBuffer(staging); // the copy was waited for
+}
+
+void Vulkan::RefreshAtlasGpu(const RendererTextureSettings setting) {
+    if (atlas.image == VK_NULL_HANDLE) return;
+
+    VkCommandBuffer commands = BeginOneShot();
+    Transition(commands, atlas, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    GenerateMips(commands, atlas);
+    EndOneShot(commands);
+    atlasSetting = setting;
+
+    // Frames in flight keep reading the old list until they finish.
+    DeferDestroyBuffer(textureRegionBuffer);
+    const size_t bytes = textureRegions.size() * sizeof(RendererGpu::GPUTextureRegion);
+    if (CreateBuffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, true, textureRegionBuffer) && bytes > 0)
+        std::memcpy(textureRegionBuffer.mapped, textureRegions.data(), bytes);
+}
+
 void Vulkan::DestroyAtlasGpu() {
     DestroyBuffer(atlasStaging);
     DeferDestroyImage(atlas);

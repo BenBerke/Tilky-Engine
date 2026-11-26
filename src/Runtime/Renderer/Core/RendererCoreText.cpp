@@ -3,6 +3,9 @@
 
 #include "Headers/Runtime/Renderer/RendererCore.hpp"
 
+#include <list>
+#include <vector>
+#include "Headers/Engine/AssetFS.hpp"
 #include <algorithm>
 #include <cmath>
 #include <ranges>
@@ -101,6 +104,22 @@ unsigned RendererCore::PixelSizeFor(const float size) {
 // Fonts
 // ============================================================================
 
+namespace {
+    // FT_New_Face, or FT_New_Memory_Face for a font in an exported game's
+    // Data.pak. FreeType reads a memory face's bytes for as long as the face
+    // lives, so they're kept until the program ends (a few fonts at most).
+    FT_Error NewFontFace(const FT_Library library, const std::filesystem::path& path, const std::string& diskPath, FT_Face* face) {
+        if (!AssetFS::CoversPath(path)) return FT_New_Face(library, diskPath.c_str(), 0, face);
+
+        static std::list<std::vector<unsigned char>> fontBytes;
+        std::vector<unsigned char> bytes;
+        if (!AssetFS::ReadFile(path, bytes) || bytes.empty()) return FT_Err_Cannot_Open_Resource;
+
+        std::vector<unsigned char>& kept = fontBytes.emplace_back(std::move(bytes));
+        return FT_New_Memory_Face(library, kept.data(), static_cast<FT_Long>(kept.size()), 0, face);
+    }
+}
+
 bool RendererCore::InitializeFontLibrary() {
     if (FT_Init_FreeType(&ft)) {
         spdlog::critical("FT_Init_FreeType failed. FreeType could not be initialized.");
@@ -110,7 +129,7 @@ bool RendererCore::InitializeFontLibrary() {
     const auto fontPath =
         ProjectManager::FindAssetPath("EngineAssets/Fonts/Notosans.ttf");
 
-    if (FT_New_Face(ft, fontPath.string().c_str(), 0, &defaultFontFace)) {
+    if (NewFontFace(ft, fontPath, fontPath.string(), &defaultFontFace)) {
         spdlog::critical(
             "FT_New_Face failed. Could not load font face. Tried path: {}",
             fontPath.string()
@@ -137,7 +156,7 @@ FT_Face RendererCore::GetFontFace(const std::string& fontReference) {
         return it->second != nullptr ? it->second : defaultFontFace;
 
     FT_Face face = nullptr;
-    if (FT_New_Face(ft, path.c_str(), 0, &face)) {
+    if (NewFontFace(ft, std::filesystem::path(path), path, &face)) {
         spdlog::error("Could not load font '{}' ({}). Using the default font.", fontReference, path);
         fontFaces.emplace(path, nullptr);
         return defaultFontFace;

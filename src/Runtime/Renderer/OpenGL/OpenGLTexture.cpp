@@ -78,6 +78,26 @@ void OpenGL::FinishAtlasGpu(const RendererTextureSettings setting) {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
 }
 
+void OpenGL::UploadAtlasRegionGpu(const int page, const int x, const int y, const int width, const int height, const unsigned char* pixels) {
+    if (atlasTexture == 0) return;
+    glBindTexture(GL_TEXTURE_2D_ARRAY, atlasTexture);
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, page, width, height, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+}
+
+void OpenGL::RefreshAtlasGpu(const RendererTextureSettings setting) {
+    if (atlasTexture == 0) return;
+
+    // Mips again (where the setting uses them), then the longer region list.
+    glBindTexture(GL_TEXTURE_2D_ARRAY, atlasTexture);
+    OpenGLRendererInternal::ApplyTextureSampling(setting, GL_TEXTURE_2D_ARRAY);
+
+    if (textureRegionSSBO == 0) glGenBuffers(1, &textureRegionSSBO);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, textureRegionSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, textureRegions.size() * sizeof(RendererGpu::GPUTextureRegion),
+                 textureRegions.empty() ? nullptr : textureRegions.data(), GL_STATIC_DRAW);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, textureRegionSSBO);
+}
+
 void OpenGL::DestroyAtlasGpu() {
     if (atlasTexture != 0) {
         glDeleteTextures(1, &atlasTexture);

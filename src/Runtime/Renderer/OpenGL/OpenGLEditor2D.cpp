@@ -3,7 +3,7 @@
 
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
 #include "Headers/Runtime/Renderer/Editor2DTypes.hpp"
-#include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/Renderer/EmbeddedShaders.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -21,15 +21,6 @@ namespace {
     constexpr GLuint BINDING_C = 12;
 
     const char* PASS_DEFINES[] = {"PASS_SECTOR", "PASS_WALL", "PASS_LINEDEF", "PASS_ENTITY", "PASS_COLLIDER", "PASS_OVERLAY"};
-
-    bool ReadFile(const fs::path& path, std::string& out) {
-        std::ifstream file(path, std::ios::binary);
-        if (!file) return false;
-        std::stringstream stream;
-        stream << file.rdbuf();
-        out = stream.str();
-        return true;
-    }
 
     // The source with `#define <define>` right after its #version line.
     std::string WithDefine(const std::string& source, const char* define) {
@@ -124,15 +115,14 @@ bool OpenGL::InitEditor2D() {
     if (editor2DInitTried) return editor2DReady;
     editor2DInitTried = true;
 
-    const fs::path vertexPath = ProjectManager::FindAssetPath(fs::path("Shaders") / "Editor2D" / "Editor2D.vs.glsl");
-    const fs::path fragmentPath = ProjectManager::FindAssetPath(fs::path("Shaders") / "Editor2D" / "Editor2D.fs.glsl");
-
-    std::string vertexSource;
-    std::string fragmentSource;
-    if (!ReadFile(vertexPath, vertexSource) || !ReadFile(fragmentPath, fragmentSource)) {
-        spdlog::error("Editor2D shaders not found ({}, {})", vertexPath.string(), fragmentPath.string());
+    const auto vertexEmbedded = EmbeddedShaders::Find("Editor2D/Editor2D.vs.glsl");
+    const auto fragmentEmbedded = EmbeddedShaders::Find("Editor2D/Editor2D.fs.glsl");
+    if (!vertexEmbedded || !fragmentEmbedded) {
+        spdlog::error("Editor2D shaders aren't embedded");
         return false;
     }
+    const std::string vertexSource(*vertexEmbedded);
+    const std::string fragmentSource(*fragmentEmbedded);
 
     for (int pass = 0; pass < EDITOR2D_PASS_COUNT; ++pass) {
         editor2DPrograms[pass] = LinkProgram(vertexSource, fragmentSource, PASS_DEFINES[pass]);

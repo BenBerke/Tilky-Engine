@@ -291,43 +291,17 @@ bool OpenGL::InitImGui() {
 bool OpenGL::InitProjection() {
     using namespace OpenGLRendererInternal;
 
-    const fs::path renderingVsPath =
-        ProjectManager::FindAssetPath(fs::path("Shaders") / "Rendering" / "Rendering.vs.glsl");
-
-    const fs::path renderingFsPath =
-        ProjectManager::FindAssetPath(fs::path("Shaders") / "Rendering" / "Rendering.fs.glsl");
-
-    projectionShader = std::make_unique<Shader>(
-        renderingVsPath.string().c_str(),
-        renderingFsPath.string().c_str()
-    );
+    projectionShader = std::make_unique<Shader>("Rendering/Rendering.vs.glsl", "Rendering/Rendering.fs.glsl");
 
     if (projectionShader->ID == 0) {
-        spdlog::critical(
-            "Projection shader creation failed. VS: {} FS: {}",
-            renderingVsPath.string(),
-            renderingFsPath.string()
-        );
+        spdlog::critical("Projection shader creation failed (Rendering/Rendering.vs.glsl, Rendering/Rendering.fs.glsl)");
         return false;
     }
 
-    const fs::path backgroundVsPath =
-        ProjectManager::FindAssetPath(fs::path("Shaders") / "Background" / "Background.vs.glsl");
-
-    const fs::path backgroundFsPath =
-        ProjectManager::FindAssetPath(fs::path("Shaders") / "Background" / "Background.fs.glsl");
-
-    backgroundShader = std::make_unique<Shader>(
-        backgroundVsPath.string().c_str(),
-        backgroundFsPath.string().c_str()
-    );
+    backgroundShader = std::make_unique<Shader>("Background/Background.vs.glsl", "Background/Background.fs.glsl");
 
     if (backgroundShader->ID == 0) {
-        spdlog::critical(
-            "Background shader creation failed. VS: {} FS: {}",
-            backgroundVsPath.string(),
-            backgroundFsPath.string()
-        );
+        spdlog::critical("Background shader creation failed (Background/Background.vs.glsl, Background/Background.fs.glsl)");
         return false;
     }
 
@@ -358,23 +332,10 @@ bool OpenGL::InitUI() {
         1, 2, 3
     };
 
-    const fs::path uiVsPath =
-        ProjectManager::FindAssetPath(fs::path("Shaders") / "UI" / "UI.vs.glsl");
-
-    const fs::path uiFsPath =
-        ProjectManager::FindAssetPath(fs::path("Shaders") / "UI" / "UI.fs.glsl");
-
-    uiShader = std::make_unique<Shader>(
-        uiVsPath.string().c_str(),
-        uiFsPath.string().c_str()
-    );
+    uiShader = std::make_unique<Shader>("UI/UI.vs.glsl", "UI/UI.fs.glsl");
 
     if (uiShader->ID == 0) {
-        spdlog::critical(
-            "UI shader creation failed. VS: {} FS: {}",
-            uiVsPath.string(),
-            uiFsPath.string()
-        );
+        spdlog::critical("UI shader creation failed (UI/UI.vs.glsl, UI/UI.fs.glsl)");
         return false;
     }
 
@@ -431,20 +392,10 @@ bool OpenGL::InitUI() {
 bool OpenGL::InitText() {
     using namespace OpenGLRendererInternal;
 
-    const fs::path glyphVsPath = ProjectManager::FindAssetPath(fs::path("Shaders") / "Glyph" / "glyph.vs.glsl");
-    const fs::path glyphFsPath = ProjectManager::FindAssetPath(fs::path("Shaders") / "Glyph" / "glyph.fs.glsl");
-
-    textShader = std::make_unique<Shader>(
-        glyphVsPath.string().c_str(),
-        glyphFsPath.string().c_str()
-    );
+    textShader = std::make_unique<Shader>("Glyph/glyph.vs.glsl", "Glyph/glyph.fs.glsl");
 
     if (textShader->ID == 0) {
-        spdlog::critical(
-            "Text shader creation failed. VS: {} FS: {}",
-            glyphVsPath.string(),
-            glyphFsPath.string()
-        );
+        spdlog::critical("Text shader creation failed (Glyph/glyph.vs.glsl, Glyph/glyph.fs.glsl)");
         return false;
     }
 

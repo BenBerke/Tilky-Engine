@@ -3,6 +3,7 @@
 //
 
 #include "Headers/Runtime/Sound/SoundManager.hpp"
+#include "Headers/Engine/AssetFS.hpp"
 
 #include <AL/al.h>
 #include <AL/alc.h>
@@ -15,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <thread>
@@ -30,6 +32,7 @@
 #include "Headers/Map/LevelManager.hpp"
 #include "Headers/Math/Vector/Vector3.hpp"
 #include "Headers/Objects/Loadables.hpp"
+#include "Headers/Project/AssetSets.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Sound/SoundDecoders.hpp"
 
@@ -148,7 +151,16 @@ namespace SoundManager {
         if (!SoundDecoders::IsCompressedExtension(path.extension().string())) {
             SDL_AudioSpec wavSpec{};
 
-            if (!SDL_LoadWAV(pathText.c_str(), &wavSpec, &out.wavData, &out.wavLength)) {
+            bool loaded = false;
+            if (AssetFS::IsPacked()) {
+                std::vector<unsigned char> bytes;
+                SDL_IOStream* stream = AssetFS::ReadFile(path, bytes) ? SDL_IOFromConstMem(bytes.data(), bytes.size()) : nullptr;
+                if (stream == nullptr) SDL_SetError("%s isn't in the game's data", pathText.c_str());
+                loaded = stream != nullptr && SDL_LoadWAV_IO(stream, true, &wavSpec, &out.wavData, &out.wavLength);
+            }
+            else loaded = SDL_LoadWAV(pathText.c_str(), &wavSpec, &out.wavData, &out.wavLength);
+
+            if (!loaded) {
                 spdlog::error("SDL_LoadWAV failed for {}: {}", pathText, SDL_GetError());
                 return false;
             }
@@ -226,12 +238,31 @@ namespace SoundManager {
 
         // Sounds can live anywhere under Assets, like textures and models.
 
-        if (!fs::is_directory(assetsPath)) {
+        if (!AssetFS::IsDirectory(assetsPath)) {
             spdlog::error("Assets path is not a directory: {}", assetsPath.string());
             return files;
         }
 
         std::unordered_set<std::string> seen;
+
+        if (AssetFS::IsPacked()) {
+            for (const fs::path& path : AssetFS::ListPackedFiles(assetsPath, true)) {
+                if (!IsSupportedSoundExtension(path.extension().string())) continue;
+
+                SoundFile file;
+                file.fileName = NormalizeSoundFileName(path.lexically_relative(assetsPath).generic_string());
+
+                if (!seen.insert(file.fileName).second) {
+                    spdlog::warn("Ignoring duplicate sound filename '{}'", file.fileName);
+                    continue;
+                }
+
+                file.path = path;
+                file.hasWriteTime = AssetFS::WriteTime(path, file.writeTime);
+                files.push_back(std::move(file));
+            }
+            return files;
+        }
         std::error_code iteratorError;
 
         for (fs::recursive_directory_iterator iterator(assetsPath, iteratorError);
@@ -466,7 +497,17 @@ namespace SoundManager {
 
         int reusedCount = 0;
 
+        // An exported game with per-level sets loads the level's own; the
+        // rest come in the moment they're used (see FindOrLoadBuffer).
+        const bool perLevel = AssetFS::IsPacked() && AssetSets::HasPackedSets();
+        int skippedCount = 0;
+
         for (const SoundFile& file : ListSoundFiles(ProjectManager::GetAssetsPath())) {
+            if (perLevel && !AssetSets::InCurrentSet(file.fileName)) {
+                ++skippedCount;
+                continue;
+            }
+
             if (const auto previous = previousBuffers.find(file.fileName);
                 file.hasWriteTime && previous != previousBuffers.end() && previous->second != 0 &&
                 previousWriteTimes[file.fileName] == file.writeTime) {
@@ -493,6 +534,153 @@ namespace SoundManager {
             if (buffer != 0) alDeleteBuffers(1, &buffer);
 
         spdlog::info("Generated {} sound buffer(s), {} reused unchanged", buffers.size(), reusedCount);
+        if (skippedCount > 0) spdlog::info("{} sound(s) aren't in this level's set and load when used", skippedCount);
+    }
+
+    // The buffer for a sound key; outside the level's set it is loaded now
+    // (exported) or just reported (editor Play). 0 if there's no such sound.
+    static ALuint FindOrLoadBuffer(const std::string& normalizedFileName) {
+        if (!AssetSets::InCurrentSet(normalizedFileName)) AssetSets::NoteOnDemandUse(normalizedFileName, "Sound");
+
+        if (const auto it = buffers.find(normalizedFileName); it != buffers.end()) return it->second;
+        if (!AssetFS::IsPacked() || normalizedFileName.empty()) return 0;
+
+        const fs::path path = ProjectManager::GetAssetsPath() / normalizedFileName;
+        if (!IsSupportedSoundExtension(path.extension().string()) || !AssetFS::IsFile(path)) return 0;
+
+        ALuint buffer = 0;
+        if (!LoadSoundToOpenALBuffer(path, buffer)) return 0;
+
+        buffers.emplace(normalizedFileName, buffer);
+        spdlog::info("Loaded sound '{}' on demand", normalizedFileName);
+        return buffer;
+    }
+
+    // BeginLevelPreload's decode; FinishLevelPreload moves it to preDecodedSounds.
+    struct LevelSoundPreload {
+        std::vector<SoundFile> files;
+        std::vector<std::optional<DecodedSound>> decoded;
+        std::atomic<size_t> next{0};
+        std::atomic<size_t> done{0};
+        std::atomic<bool> cancelled{false};
+        std::vector<std::thread> threads;
+
+        ~LevelSoundPreload() {
+            cancelled = true;
+            for (std::thread& thread : threads)
+                if (thread.joinable()) thread.join();
+        }
+    };
+
+    std::unique_ptr<LevelSoundPreload> levelPreload;
+    std::unordered_map<std::string, DecodedSound> preDecodedSounds; // key -> decoded, for PrepareForLevel
+
+    void BeginLevelPreload(const std::vector<std::string>& needs) {
+        FinishLevelPreload();
+
+        const std::unordered_set<std::string> wanted(needs.begin(), needs.end());
+        auto job = std::make_unique<LevelSoundPreload>();
+        for (SoundFile& file : ListSoundFiles(ProjectManager::GetAssetsPath()))
+            if (wanted.contains(file.fileName) && !buffers.contains(file.fileName)) job->files.push_back(std::move(file));
+        if (job->files.empty()) return;
+
+        job->decoded.resize(job->files.size());
+
+        const auto work = [raw = job.get()] {
+            while (!raw->cancelled) {
+                const size_t index = raw->next.fetch_add(1);
+                if (index >= raw->files.size()) return;
+
+                DecodedSound sound;
+                if (DecodeSoundFile(raw->files[index].path, sound)) raw->decoded[index] = std::move(sound);
+                raw->done.fetch_add(1);
+            }
+        };
+
+        const unsigned cores = std::max(2u, std::thread::hardware_concurrency());
+        const size_t threadCount = std::min<size_t>({cores - 1, 4, job->files.size()});
+        for (size_t i = 0; i < threadCount; ++i) job->threads.emplace_back(work);
+
+        levelPreload = std::move(job);
+    }
+
+    std::pair<size_t, size_t> LevelPreloadProgress() {
+        if (!levelPreload) return {0, 0};
+        return {levelPreload->done.load(), levelPreload->files.size()};
+    }
+
+    void FinishLevelPreload() {
+        if (!levelPreload) return;
+
+        const std::unique_ptr<LevelSoundPreload> job = std::move(levelPreload);
+        for (std::thread& thread : job->threads)
+            if (thread.joinable()) thread.join();
+
+        for (size_t i = 0; i < job->files.size(); ++i)
+            if (job->decoded[i]) preDecodedSounds.insert_or_assign(job->files[i].fileName, std::move(*job->decoded[i]));
+    }
+
+    void PrepareForLevel(const Level& level) {
+        if (!AssetFS::IsPacked() || !AssetSets::HasPackedSets() || context == nullptr) return;
+
+        // Kept: the level's set, what the level's sources (carried entities
+        // among them) name, and whatever is playing or paused (the music).
+        std::unordered_set<std::string> keep;
+        for (const auto& name : buffers | std::views::keys)
+            if (AssetSets::InCurrentSet(name)) keep.insert(name);
+        for (const ComponentAudioSource& audio : level.audioSources.components)
+            if (!audio.soundFileName.empty()) keep.insert(NormalizeSoundFileName(audio.soundFileName));
+
+        std::unordered_set<ALuint> inUse;
+        for (const ALuint source : sources | std::views::values) {
+            ALint state = AL_INITIAL;
+            ALint attached = 0;
+            alGetSourcei(source, AL_SOURCE_STATE, &state);
+            alGetSourcei(source, AL_BUFFER, &attached);
+            if (attached == 0) continue;
+            if (state == AL_PLAYING || state == AL_PAUSED) inUse.insert(static_cast<ALuint>(attached));
+        }
+
+        int freed = 0;
+        for (auto it = buffers.begin(); it != buffers.end();) {
+            if (keep.contains(it->first) || inUse.contains(it->second)) {
+                ++it;
+                continue;
+            }
+
+            // A stopped source may still hold it.
+            for (const ALuint source : sources | std::views::values) {
+                ALint attached = 0;
+                alGetSourcei(source, AL_BUFFER, &attached);
+                if (static_cast<ALuint>(attached) == it->second) alSourcei(source, AL_BUFFER, 0);
+            }
+
+            if (it->second != 0) alDeleteBuffers(1, &it->second);
+            bufferWriteTimes.erase(it->first);
+            it = buffers.erase(it);
+            ++freed;
+        }
+
+        // The new level's set, loaded now rather than on first use.
+        int loaded = 0;
+        for (const SoundFile& file : ListSoundFiles(ProjectManager::GetAssetsPath())) {
+            if (buffers.contains(file.fileName) || !AssetSets::InCurrentSet(file.fileName)) continue;
+
+            ALuint buffer = 0;
+            const auto preDecoded = preDecodedSounds.find(file.fileName);
+            const bool uploaded = preDecoded != preDecodedSounds.end() ? UploadDecodedSound(preDecoded->second, file.path, buffer)
+                                                                       : LoadSoundToOpenALBuffer(file.path, buffer);
+            if (!uploaded) {
+                spdlog::error("Failed to load sound '{}'", file.fileName);
+                continue;
+            }
+            buffers.emplace(file.fileName, buffer);
+            ++loaded;
+        }
+
+        preDecodedSounds.clear();
+        CheckALErrors("Failed to swap the level's sounds");
+        spdlog::info("Level sounds: {} loaded, {} freed, {} in memory", loaded, freed, buffers.size());
     }
 
     // Uploads the decoded sounds waiting for it, for at most `budget` of this
@@ -738,7 +926,13 @@ namespace SoundManager {
     }
 
     bool HasSound(const std::string& soundFileName) {
-        return buffers.contains(NormalizeSoundFileName(soundFileName));
+        const std::string name = NormalizeSoundFileName(soundFileName);
+        if (buffers.contains(name)) return true;
+
+        // Exported: a sound outside the level's set isn't loaded, but is there.
+        if (!AssetFS::IsPacked() || name.empty()) return false;
+        const fs::path path = ProjectManager::GetAssetsPath() / name;
+        return IsSupportedSoundExtension(path.extension().string()) && AssetFS::IsFile(path);
     }
 
     void PlaySoundOnSource(const std::string& sourceName, const std::string& soundFileName) {
@@ -750,14 +944,13 @@ namespace SoundManager {
         }
 
         const std::string normalizedFileName = NormalizeSoundFileName(soundFileName);
-        const auto bufferIterator = buffers.find(normalizedFileName);
 
-        if (bufferIterator == buffers.end()) {
+        if (!HasSound(normalizedFileName)) {
             spdlog::error("Sound not found: '{}'", soundFileName);
             return;
         }
 
-        const ALuint buffer = bufferIterator->second;
+        const ALuint buffer = FindOrLoadBuffer(normalizedFileName);
 
         if (buffer == 0) {
             spdlog::error("Sound '{}' has no valid OpenAL buffer", soundFileName);

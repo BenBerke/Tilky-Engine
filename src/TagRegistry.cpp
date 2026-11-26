@@ -3,6 +3,7 @@
 //
 
 #include "Headers/TagRegistry.hpp"
+#include "Headers/Engine/AssetFS.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -150,20 +151,18 @@ void TagRegistry::Load(TagMap tags, const uint32_t nextId, const std::vector<Tag
 
 bool TagRegistry::LoadFromProjectSettings(const std::filesystem::path& settingsPath) {
     try {
-        if (!std::filesystem::exists(settingsPath)) {
+        if (!AssetFS::Exists(settingsPath)) {
             Clear();
             return true;
         }
 
-        std::ifstream file(settingsPath);
-
-        if (!file.is_open()) {
+        std::string text;
+        if (!AssetFS::ReadFile(settingsPath, text)) {
             spdlog::error("Failed to open project settings: {}", settingsPath.string());
             return false;
         }
 
-        nlohmann::json settings;
-        file >> settings;
+        nlohmann::json settings = nlohmann::json::parse(text);
 
         const int formatVersion = settings.at("formatVersion").get<int>();
 

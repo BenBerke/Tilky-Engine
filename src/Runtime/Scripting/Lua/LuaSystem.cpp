@@ -4,6 +4,7 @@
 
 #include "../../../../Headers/Runtime/Scripting/Lua/LuaScripting.hpp"
 
+#include "Headers/Engine/AssetFS.hpp"
 #include "Headers/Objects/Prefab.hpp"
 #include "Headers/Engine/BuildVariant.hpp"
 #include "Headers/Engine/GameTime.hpp"
@@ -305,18 +306,28 @@ namespace {
         if (name.ends_with(".lua")) name.resize(name.size() - 4);
 
         if (name.empty()) throw sol::error("AddComponent: the script name is empty");
-        if (fs::exists(GetScriptPathFromId(name))) return name;
+        if (AssetFS::Exists(GetScriptPathFromId(name))) return name;
 
         const fs::path extension = BuildVariant::IsStandalone() ? ".luac" : ".lua";
         const fs::path assets = ProjectManager::GetAssetsPath();
         std::vector<std::string> matches;
         std::error_code error;
 
-        for (auto it = fs::recursive_directory_iterator(assets, error); !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
-            if (!it->is_regular_file() || it->path().extension() != extension) continue;
+        if (AssetFS::IsPacked()) {
+            for (const fs::path& file : AssetFS::ListPackedFiles(assets, true)) {
+                if (file.extension() != extension) continue;
 
-            const std::string id = NormalizeScriptId(it->path().lexically_relative(assets).generic_string());
-            if (id.ends_with("/" + name)) matches.push_back(id);
+                const std::string id = NormalizeScriptId(file.lexically_relative(assets).generic_string());
+                if (id.ends_with("/" + name)) matches.push_back(id);
+            }
+        }
+        else {
+            for (auto it = fs::recursive_directory_iterator(assets, error); !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
+                if (!it->is_regular_file() || it->path().extension() != extension) continue;
+
+                const std::string id = NormalizeScriptId(it->path().lexically_relative(assets).generic_string());
+                if (id.ends_with("/" + name)) matches.push_back(id);
+            }
         }
 
         if (matches.empty()) throw sol::error(fmt::format("AddComponent: there is no script \"{}\" under Assets", rawName));
@@ -688,10 +699,7 @@ namespace {
     // ------------------------------------------------------------------
 
     bool ReadWholeFile(const fs::path& path, std::string& out) {
-        std::ifstream file(path, std::ios::binary);
-        if (!file) return false;
-        out.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
-        return true;
+        return AssetFS::ReadFile(path, out);
     }
 
     // The editor compiles the source script.
@@ -728,7 +736,10 @@ namespace {
     }
 
     ScriptAsset& LoadOrRefreshScriptAsset(const std::string& assetId, const fs::path& path) {
-        const fs::file_time_type lastWriteTime = fs::last_write_time(path);
+        // Throws for a missing file, as fs::last_write_time(path) did.
+        fs::file_time_type lastWriteTime;
+        if (!AssetFS::WriteTime(path, lastWriteTime))
+            throw fs::filesystem_error("last_write_time", path, std::make_error_code(std::errc::no_such_file_or_directory));
 
         const auto it = scriptAssets.find(assetId);
 
@@ -1233,7 +1244,7 @@ namespace {
 
         const fs::path path = GetScriptPathFromId(assetId);
 
-        if (!fs::exists(path)) {
+        if (!AssetFS::Exists(path)) {
             spdlog::error("Lua script does not exist: {}", path.string());
             return std::nullopt;
         }
@@ -2246,7 +2257,7 @@ const std::vector<ScriptPublicField>* LuaScriptSystem::GetPublicFieldsForScript(
     if (assetId.empty()) return nullptr;
 
     const fs::path path = GetScriptPathFromId(assetId);
-    if (!fs::exists(path)) return nullptr;
+    if (!AssetFS::Exists(path)) return nullptr;
 
     ScriptAsset& asset = LoadOrRefreshScriptAsset(assetId, path);
     return &asset.publicFields;
@@ -2261,7 +2272,7 @@ bool LuaScriptSystem::ReconcileScriptPublicValues(ScriptAttachmentData& script, 
     if (assetId.empty()) return false;
 
     const fs::path path = GetScriptPathFromId(assetId);
-    if (!fs::exists(path)) return false;
+    if (!AssetFS::Exists(path)) return false;
 
     ScriptAsset& asset = LoadOrRefreshScriptAsset(assetId, path);
     ReconcilePublicValues(script, asset, ownerLabel);
@@ -2284,7 +2295,7 @@ const std::string* LuaScriptSystem::GetScriptLoadError(const std::string& fileNa
     if (assetId.empty()) return nullptr;
 
     const fs::path path = GetScriptPathFromId(assetId);
-    if (!fs::exists(path)) return nullptr;
+    if (!AssetFS::Exists(path)) return nullptr;
 
     ScriptAsset& asset = LoadOrRefreshScriptAsset(assetId, path);
 

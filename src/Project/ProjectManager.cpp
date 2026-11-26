@@ -2,6 +2,7 @@
 // Created by berke on 5/3/2026.
 //
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Engine/AssetFS.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -253,22 +254,20 @@ namespace ProjectManager {
     }
 
     bool LoadProjectMetaData(const fs::path& tilkyEnginePath) {
-        std::error_code tilkyExistsEc;
-        if (!fs::exists(tilkyEnginePath, tilkyExistsEc)) {
+        if (!AssetFS::IsFile(tilkyEnginePath)) {
             spdlog::error("Project file does not exist: {}", tilkyEnginePath.string());
             return false;
         }
 
-        std::ifstream file(tilkyEnginePath);
-
-        if (!file.is_open()) {
+        std::string fileText;
+        if (!AssetFS::ReadFile(tilkyEnginePath, fileText)) {
             spdlog::error("Failed to open project file: {}", tilkyEnginePath.string());
             return false;
         }
 
         json projectData;
 
-        try { file >> projectData; }
+        try { projectData = json::parse(fileText); }
         catch (const std::exception& e) {
             spdlog::error("Failed to parse project file '{}': {}", tilkyEnginePath.string(), e.what());
             return false;
@@ -307,8 +306,7 @@ namespace ProjectManager {
 
         // Only Assets itself is required - every asset, levels and scripts
         // included, may live in any folder under it.
-        std::error_code assetsExistsEc;
-        if (!fs::exists(currentAssetsPath, assetsExistsEc)) {
+        if (!AssetFS::IsDirectory(currentAssetsPath)) {
             spdlog::critical("Project is missing Assets folder: {}", currentAssetsPath.string());
             return false;
         }
@@ -366,6 +364,9 @@ namespace ProjectManager {
         const fs::path sourcePath = GetContentRootPath() / relativePath;
 
         const fs::path packagedPath = GetEngineBasePath() / relativePath;
+
+        // An exported game: its own data only, never the source tree.
+        if (AssetFS::IsPacked() && AssetFS::CoversPath(packagedPath)) return packagedPath;
 
         std::error_code sourceExistsEc;
         std::error_code packagedExistsEc;

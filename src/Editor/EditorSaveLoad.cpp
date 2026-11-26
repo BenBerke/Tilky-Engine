@@ -29,6 +29,7 @@
 #include "Headers/Map/MapQueries.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Project/AssetSets.hpp"
 #include "Headers/Engine/FolderWatcher.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
 
@@ -72,6 +73,7 @@ namespace {
         };
 
         GlobalEventVariables::WriteToProjectSettings(settings);
+        AssetSets::WriteToProjectSettings(settings);
 
         return settings;
     }
@@ -126,6 +128,8 @@ namespace MapEditorInternal {
 
         const bool tagsLoaded = TagRegistry::LoadFromProjectSettings(settingsPath);
         const bool variablesLoaded = GlobalEventVariables::LoadFromProjectSettings(settingsPath);
+        // A broken "assetLoading" only costs its defaults; it doesn't stop saving.
+        AssetSets::LoadFromProjectSettings(settingsPath);
 
         // Only onto settings that loaded: saving after a failed load would
         // overwrite the file with an almost empty one.

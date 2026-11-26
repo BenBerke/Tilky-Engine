@@ -8,40 +8,27 @@
 #include <glad/glad.h>
 
 #include <string>
-#include <fstream>
+#include <fstream> // kept: files including OpenGL.hpp may rely on these
 #include <sstream>
 #include <SDL3/SDL_log.h>
 
+#include "Headers/Runtime/Renderer/EmbeddedShaders.hpp"
 
-// This was taken from learnopengl.com
+
+// This was taken from learnopengl.com. The sources come from the shaders
+// compiled into the executable (EmbeddedShaders), named relative to Shaders/.
 class Shader {
     public:
     unsigned int ID{};
-    Shader(const char *vertexShaderPath, const char *fragmentShaderPath) {
-        std::string vertexShaderSourceCode;
-        std::string fragmentShaderSourceCode;
-        std::ifstream vShaderFile;
-        std::ifstream fShaderFile;
-
-        vShaderFile.exceptions(std::ifstream::badbit | std::ifstream::failbit);
-        fShaderFile.exceptions(std::ifstream::badbit | std::ifstream::failbit);
-        try {
-            vShaderFile.open(vertexShaderPath);
-            fShaderFile.open(fragmentShaderPath);
-            std::stringstream vShaderStream, fShaderStream;
-
-            vShaderStream << vShaderFile.rdbuf();
-            fShaderStream << fShaderFile.rdbuf();
-            vShaderFile.close();
-            fShaderFile.close();
-
-            vertexShaderSourceCode = vShaderStream.str();
-            fragmentShaderSourceCode = fShaderStream.str();
-        }
-        catch (std::ifstream::failure& e) {
-            SDL_Log("FILE ERROR: %s", e.what());
+    Shader(const char *vertexShaderName, const char *fragmentShaderName) {
+        const std::optional<std::string_view> vertexSource = EmbeddedShaders::Find(vertexShaderName);
+        const std::optional<std::string_view> fragmentSource = EmbeddedShaders::Find(fragmentShaderName);
+        if (!vertexSource || !fragmentSource) {
+            SDL_Log("SHADER ERROR: %s or %s isn't embedded", vertexShaderName, fragmentShaderName);
             return;
         }
+        const std::string vertexShaderSourceCode(*vertexSource);
+        const std::string fragmentShaderSourceCode(*fragmentSource);
         const char* vShaderCode = vertexShaderSourceCode.c_str();
         const char* fShaderCode = fragmentShaderSourceCode.c_str();
 

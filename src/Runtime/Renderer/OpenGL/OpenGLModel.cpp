@@ -6,6 +6,7 @@
 /// the per-entity model SSBO, rebuilt from ComponentModel + ComponentTransform.
 
 #include "Headers/Runtime/Renderer/OpenGL/OpenGL.hpp"
+#include "Headers/Engine/AssetFSImage.hpp"
 
 #include <cmath>
 #include <cstddef>
@@ -79,7 +80,7 @@ namespace {
             SDL_IOStream* stream = SDL_IOFromConstMem(source.encodedData.data(), source.encodedData.size());
             loadedSurface = stream != nullptr ? IMG_Load_IO(stream, true) : nullptr;
         }
-        else loadedSurface = IMG_Load(ModelLoader::PathToUtf8(source.filePath).c_str());
+        else loadedSurface = AssetFS::IsPacked() ? AssetFS::LoadImage(source.filePath) : IMG_Load(ModelLoader::PathToUtf8(source.filePath).c_str());
 
         if (loadedSurface == nullptr) {
             spdlog::error(

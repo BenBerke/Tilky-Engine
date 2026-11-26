@@ -291,6 +291,10 @@ public:
 
     void UpdateBackgroundLoad() override;
     void FinishBackgroundLoad() override;
+
+    void BeginTexturePreload(const std::vector<std::string>& imageNames) override;
+    [[nodiscard]] std::pair<size_t, size_t> TexturePreloadProgress() const override;
+    void FinishTexturePreload() override;
     [[nodiscard]] bool IsBackgroundLoading() const override;
     [[nodiscard]] BackgroundLoadProgress GetBackgroundLoadProgress() const override;
 
@@ -317,6 +321,10 @@ protected:
     // region list (textureRegions) for the shaders.
     virtual void FinishAtlasGpu(RendererTextureSettings setting) = 0;
     virtual void DestroyAtlasGpu() = 0;
+    // A late texture, already padded, into a built atlas: then
+    // RefreshAtlasGpu redoes the mips and the region list.
+    virtual void UploadAtlasRegionGpu(int page, int x, int y, int width, int height, const unsigned char* pixels) = 0;
+    virtual void RefreshAtlasGpu(RendererTextureSettings setting) = 0;
 
     // A standalone RGBA8 texture, mipmapped and repeating. Returns its id (not 0).
     virtual unsigned UploadTextureGpu(const void* pixels, int width, int height) = 0;
@@ -347,6 +355,10 @@ protected:
     struct BackgroundAtlasLoad;
     std::shared_ptr<BackgroundAtlasLoad> backgroundAtlas;
     bool backgroundAtlasStarted = false; // only the first build goes to the background
+
+    // BeginTexturePreload's decode (RendererCoreTextures.cpp).
+    struct TexturePreload;
+    std::shared_ptr<TexturePreload> texturePreload;
     void CancelBackgroundAtlas();
 
     std::vector<RendererGpu::GPUTextureRegion> textureRegions;
@@ -357,6 +369,31 @@ protected:
     // files), so RefreshTexturesIfLevelNeedsNew doesn't rescan for them after
     // every edit. Cleared by a full RefreshTexturesFromLevel.
     std::unordered_set<std::string> unresolvedLevelTextures;
+
+    // An exported game with per-level sets builds the atlas from the level's
+    // set plus one spare page. A texture outside it is noted on first use
+    // (missedTextures) and added at the start of the next frame
+    // (ServiceLateTextures) where there's room; once there's none the atlas
+    // is rebuilt with it. Late ones are dropped when the level changes.
+    struct AtlasCursor {
+        int page = 0;
+        int x = RendererGpu::ATLAS_PADDING;
+        int y = RendererGpu::ATLAS_PADDING;
+        int shelfHeight = 0;
+    };
+    bool lateTexturesEnabled = false;
+    int atlasPageCount = 0;
+    AtlasCursor atlasCursor;
+    std::vector<std::string> lateTextures;
+    std::uint64_t lateTexturesGeneration = 0; // AssetSets::SessionGeneration() they belong to
+    mutable std::unordered_set<std::string> missedTextures;
+    // Editor Play: each region checked against the level's set once (see GetTextureRegionIndex).
+    mutable std::vector<char> regionSetChecked;
+    mutable std::uint64_t regionSetCheckedGeneration = 0;
+
+    // Places a w x h image at the cursor; false when it doesn't fit in `pageLimit` pages.
+    static bool PlaceInAtlas(int width, int height, int pageLimit, AtlasCursor& cursor, int& outPage, int& outX, int& outY);
+    void ServiceLateTextures();
 
     // A model that failed to load may have been imported or fixed since; a
     // full refresh clears this (the backends' model code fills it).

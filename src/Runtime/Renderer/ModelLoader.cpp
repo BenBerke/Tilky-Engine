@@ -5,12 +5,14 @@
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <cctype>
 #include <limits>
 #include <unordered_map>
 #include <unordered_set>
 
 #include <assimp/DefaultIOSystem.h>
+#include <assimp/IOStream.hpp>
 #include <assimp/Importer.hpp>
 #include <assimp/material.h>
 #include <assimp/postprocess.h>
@@ -19,6 +21,7 @@
 #include <spdlog/spdlog.h>
 
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Engine/AssetFS.hpp"
 
 namespace fs = std::filesystem;
 
@@ -79,6 +82,61 @@ namespace {
 
             return path == modelPath;
         }
+    };
+
+    // An exported game's model and the files it opens (.mtl, .bin...), read
+    // from Data.pak.
+    class PackIOStream final : public Assimp::IOStream {
+    public:
+        explicit PackIOStream(std::vector<unsigned char> bytes) : bytes(std::move(bytes)) {}
+
+        size_t Read(void* buffer, const size_t size, const size_t count) override {
+            if (size == 0) return 0;
+            const size_t whole = (std::min)(count, (bytes.size() - position) / size);
+            std::memcpy(buffer, bytes.data() + position, whole * size);
+            position += whole * size;
+            return whole;
+        }
+
+        size_t Write(const void*, size_t, size_t) override { return 0; }
+
+        aiReturn Seek(const size_t offset, const aiOrigin origin) override {
+            size_t target = 0;
+            if (origin == aiOrigin_SET) target = offset;
+            else if (origin == aiOrigin_CUR) target = position + offset;
+            else {
+                if (offset > bytes.size()) return aiReturn_FAILURE;
+                target = bytes.size() - offset;
+            }
+            if (target > bytes.size()) return aiReturn_FAILURE;
+            position = target;
+            return aiReturn_SUCCESS;
+        }
+
+        size_t Tell() const override { return position; }
+        size_t FileSize() const override { return bytes.size(); }
+        void Flush() override {}
+
+    private:
+        std::vector<unsigned char> bytes;
+        size_t position = 0;
+    };
+
+    class PackIOSystem final : public Assimp::IOSystem {
+    public:
+        bool Exists(const char* file) const override { return AssetFS::IsFile(Utf8ToPath(file)); }
+
+        char getOsSeparator() const override { return '/'; }
+
+        Assimp::IOStream* Open(const char* file, const char* mode) override {
+            if (mode != nullptr && std::strpbrk(mode, "wa+") != nullptr) return nullptr;
+
+            std::vector<unsigned char> bytes;
+            if (!AssetFS::ReadFile(Utf8ToPath(file), bytes)) return nullptr;
+            return new PackIOStream(std::move(bytes));
+        }
+
+        void Close(Assimp::IOStream* stream) override { delete stream; }
     };
 
     // The one texture slot the renderer samples. glTF puts it in BASE_COLOR,
@@ -284,10 +342,8 @@ namespace ModelLoader {
 
         candidates.push_back(modelDirectory / raw.filename());
 
-        for (const fs::path& candidate : candidates) {
-            std::error_code ec;
-            if (fs::is_regular_file(candidate, ec)) return candidate.lexically_normal();
-        }
+        for (const fs::path& candidate : candidates)
+            if (AssetFS::IsFile(candidate)) return candidate.lexically_normal();
 
         return {};
     }
@@ -295,13 +351,15 @@ namespace ModelLoader {
     std::optional<ModelData> Load(const std::string& fileName, std::string& errorMessage) {
         const fs::path modelPath = ResolveModelPath(fileName);
 
-        std::error_code ec;
-        if (!fs::is_regular_file(modelPath, ec)) {
+        if (!AssetFS::IsFile(modelPath)) {
             errorMessage = "Model file does not exist: " + PathToUtf8(modelPath);
             return std::nullopt;
         }
 
         Assimp::Importer importer;
+
+        // The importer owns the IO system.
+        if (AssetFS::IsPacked()) importer.SetIOHandler(new PackIOSystem);
 
         // Points and lines can not be drawn as triangles; drop them.
         importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_POINT | aiPrimitiveType_LINE);

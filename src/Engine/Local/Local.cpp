@@ -12,6 +12,7 @@
 #include <SDL3/SDL_log.h>
 
 #include "../../../Headers/Engine/Local/Local.hpp"
+#include "Headers/Engine/AssetFS.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -45,9 +46,9 @@ namespace {
 
     bool LoadLanguageFile(const std::string& languageCode, std::unordered_map<std::string, std::string>& destination) {
         const fs::path path = BuildLanguagePath(languageCode);
-        std::ifstream file(path);
+        std::string text;
 
-        if (!file.is_open()) {
+        if (!AssetFS::ReadFile(path, text)) {
             spdlog::critical("Failed to open localisation file: %s", path.string().c_str());
             return false;
         }
@@ -55,7 +56,7 @@ namespace {
         json data;
 
         try {
-            file >> data;
+            data = json::parse(text);
         }
         catch (const std::exception& e) {
             spdlog::critical("Failed to parse localisation file %s: %s",path.string().c_str(), e.what());

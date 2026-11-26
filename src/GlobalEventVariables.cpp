@@ -3,6 +3,7 @@
 //
 
 #include "Headers/GlobalEventVariables.hpp"
+#include "Headers/Engine/AssetFS.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -122,17 +123,15 @@ bool GlobalEventVariables::LoadFromProjectSettings(const std::filesystem::path& 
     Clear();
 
     try {
-        if (!std::filesystem::exists(settingsPath)) return true;
+        if (!AssetFS::Exists(settingsPath)) return true;
 
-        std::ifstream file(settingsPath);
-
-        if (!file.is_open()) {
+        std::string text;
+        if (!AssetFS::ReadFile(settingsPath, text)) {
             spdlog::error("Failed to open project settings: {}", settingsPath.string());
             return false;
         }
 
-        nlohmann::json settings;
-        file >> settings;
+        nlohmann::json settings = nlohmann::json::parse(text);
 
         if (!settings.contains("eventVariables")) return true;
 

@@ -7,11 +7,15 @@
 
 #include <cstddef>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <AL/al.h>
 
 
 #include "Headers/Math/Vector/Vector3.hpp"
+
+struct Level;
 
 namespace SoundManager {
     bool InitializeOpenAL();
@@ -23,6 +27,18 @@ namespace SoundManager {
     void EndSession();
 
     void GenerateSounds();
+
+    // An exported game's level change: frees the sounds the new level
+    // doesn't need (not the playing or paused ones: the music, a carried
+    // entity's) and loads its set. Does nothing without per-level sets.
+    void PrepareForLevel(const Level& level);
+
+    // Before PrepareForLevel, while a loading screen shows: decodes the
+    // sounds `needs` names (paths in Assets) that aren't loaded, on worker
+    // threads. Progress is done / total.
+    void BeginLevelPreload(const std::vector<std::string>& needs);
+    [[nodiscard]] std::pair<size_t, size_t> LevelPreloadProgress();
+    void FinishLevelPreload();
 
     // The engine loads every sound in the background after OpenAL starts,
     // so the editor opens at once. The exported game doesn't: it loads them

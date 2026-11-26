@@ -26,6 +26,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -254,6 +255,14 @@ protected:
     void CreateAtlasGpu(int pageCount) override;
     void UploadAtlasPage(int page, const unsigned char* pixels) override;
     void FinishAtlasGpu(RendererTextureSettings setting) override;
+    void UploadAtlasRegionGpu(int page, int x, int y, int width, int height, const unsigned char* pixels) override;
+    void RefreshAtlasGpu(RendererTextureSettings setting) override;
+
+    // The level's UI Sprites and Texts over what's drawn (the end of Update).
+    void DrawLevelUI(Level& level);
+public:
+    void DrawLoadingScreen(Level& uiLevel) override;
+protected:
     void DestroyAtlasGpu() override;
 
     unsigned UploadTextureGpu(const void* pixels, int width, int height) override;
@@ -466,8 +475,9 @@ private:
     void SetViewport(int width, int height);
 
     // ---- VulkanShaders.cpp ----
-    std::unique_ptr<Program> LoadProgram(const std::string& name, const std::filesystem::path& vertexPath,
-                                         const std::filesystem::path& fragmentPath, const char* define,
+    // The shaders are named relative to Shaders/ (EmbeddedShaders).
+    std::unique_ptr<Program> LoadProgram(const std::string& name, std::string_view vertexShader,
+                                         std::string_view fragmentShader, const char* define,
                                          std::vector<VulkanInternal::VertexAttribute> attributes);
     VkPipeline GetPipeline(const VulkanInternal::PipelineKey& key);
     void DestroyPrograms();

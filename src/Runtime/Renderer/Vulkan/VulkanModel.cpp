@@ -3,6 +3,7 @@
 // ComponentTransform every frame.
 
 #include "Headers/Runtime/Renderer/Vulkan/Vulkan.hpp"
+#include "Headers/Engine/AssetFSImage.hpp"
 
 #include <bit>
 #include <cstring>
@@ -67,7 +68,7 @@ VulkanInternal::ModelAsset* Vulkan::AcquireModelAsset(const std::string& fileNam
                 SDL_IOStream* stream = SDL_IOFromConstMem(source.encodedData.data(), source.encodedData.size());
                 loadedSurface = stream != nullptr ? IMG_Load_IO(stream, true) : nullptr;
             }
-            else loadedSurface = IMG_Load(ModelLoader::PathToUtf8(source.filePath).c_str());
+            else loadedSurface = AssetFS::IsPacked() ? AssetFS::LoadImage(source.filePath) : IMG_Load(ModelLoader::PathToUtf8(source.filePath).c_str());
 
             SDL_Surface* surface = loadedSurface != nullptr ? SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32) : nullptr;
             if (loadedSurface != nullptr) SDL_DestroySurface(loadedSurface);

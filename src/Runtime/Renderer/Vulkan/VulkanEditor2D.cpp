@@ -28,12 +28,8 @@ bool Vulkan::InitEditor2D() {
     if (editor2DInitTried) return editor2DReady;
     editor2DInitTried = true;
 
-    namespace fs = std::filesystem;
-    const fs::path vertexPath = ProjectManager::FindAssetPath(fs::path("Shaders") / "Editor2D" / "Editor2D.vs.glsl");
-    const fs::path fragmentPath = ProjectManager::FindAssetPath(fs::path("Shaders") / "Editor2D" / "Editor2D.fs.glsl");
-
     for (int pass = 0; pass < PASS_COUNT; ++pass) {
-        editor2DPrograms[pass] = LoadProgram(std::string("Editor2D ") + PASS_DEFINES[pass], vertexPath, fragmentPath, PASS_DEFINES[pass], {});
+        editor2DPrograms[pass] = LoadProgram(std::string("Editor2D ") + PASS_DEFINES[pass], "Editor2D/Editor2D.vs.glsl", "Editor2D/Editor2D.fs.glsl", PASS_DEFINES[pass], {});
         if (editor2DPrograms[pass] == nullptr) return false;
     }
 

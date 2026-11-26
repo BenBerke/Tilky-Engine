@@ -3,6 +3,7 @@
 //
 
 #include "Headers/Objects/FlipbookAsset.hpp"
+#include "Headers/Engine/AssetFS.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -149,17 +150,11 @@ std::string FlipbookAsset::MakeUniqueFrameName() const {
 
 namespace FlipbookIO {
     bool Load(const fs::path& file, FlipbookAsset& outAsset, std::string* errorMessage) {
-        std::ifstream stream(file, std::ios::binary);
-
-        if (!stream.is_open()) {
+        std::vector<std::uint8_t> bsonData;
+        if (!AssetFS::ReadFile(file, bsonData)) {
             SetFlipbookError(errorMessage, "Could not open flipbook file: " + file.string());
             return false;
         }
-
-        const std::vector<std::uint8_t> bsonData{
-            std::istreambuf_iterator<char>(stream),
-            std::istreambuf_iterator<char>()
-        };
 
         try {
             outAsset = FlipbookFromJson(json::from_bson(bsonData));

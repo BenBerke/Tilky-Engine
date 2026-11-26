@@ -213,6 +213,9 @@ void OpenGL::DrawNoCameraScreen() {
 void OpenGL::Update(const bool renderDebug, const bool renderUI) {
     using namespace OpenGLRendererInternal;
 
+    // Textures last frame found missing from the atlas (exported games).
+    ServiceLateTextures();
+
     Level& level = LevelManager::CurrentLevel();
 
     ComponentCamera* camera = nullptr;
@@ -384,6 +387,10 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
 
     if (!renderUI) return;
 #endif
+    DrawLevelUI(level);
+}
+
+void OpenGL::DrawLevelUI(Level& level) {
     {
         ZoneScopedN("Rendering UI Sprites");
 
@@ -471,6 +478,17 @@ void OpenGL::Update(const bool renderDebug, const bool renderUI) {
         glDisable(GL_BLEND);
     }
 }
+
+void OpenGL::DrawLoadingScreen(Level& uiLevel) {
+    if (!UpdateScreenSize()) return;
+
+    glViewport(0, 0, screenWidth, screenHeight);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    DrawLevelUI(uiLevel);
+}
+
 
 #ifndef TILKY_STANDALONE
 void OpenGL::BeginImGuiFrame() const {

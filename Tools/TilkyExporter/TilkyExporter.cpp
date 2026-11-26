@@ -35,8 +35,11 @@
  */
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cstring>
 #include <cstdint>
+#include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -58,9 +61,14 @@
 #include <nlohmann/json.hpp>
 #include <sol/sol.hpp>
 
+#include "Headers/Engine/AssetFS.hpp"
+#include "Headers/Launcher/Sha256.hpp"
 #include "Headers/Map/LevelSerialization.hpp"
 #include "Headers/Objects/Level.hpp"
 #include "Headers/Objects/Prefab.hpp"
+#include "Headers/Objects/UILayouts.hpp"
+#include "Headers/Project/AssetSets.hpp"
+#include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaScriptCompiler.hpp"
 
@@ -77,6 +85,7 @@ static constexpr std::uint64_t kParsedFileWork = 8 * 1024 * 1024;
 
 static std::uint64_t progressTotal = 1;
 static std::uint64_t progressDone = 0;
+static std::uint64_t packWork = 0; // writing Data.pak, about the data's size
 static int progressReported = -1;
 
 static void ReportProgress() {
@@ -773,6 +782,115 @@ static bool WriteZip(const fs::path& source, const std::string& topName, const f
 }
 
 // ---------------------------------------------------------------------------
+// macOS code signature after the key patch
+// ---------------------------------------------------------------------------
+
+// Apple Silicon only runs signed code, and the macOS runtime carries the
+// linker's ad-hoc signature: a CodeDirectory of SHA-256 hashes, one per
+// page, with nothing signing the directory itself. Patching the key changes
+// one or two pages, so their hashes are redone here; without this macOS
+// kills the game at launch. A file that isn't a 64-bit Mach-O, or has no
+// signature, is left alone.
+static std::uint32_t ReadBigEndian32(const std::string& bytes, const size_t at) {
+    return (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[at])) << 24) |
+           (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[at + 1])) << 16) |
+           (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[at + 2])) << 8) |
+           static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[at + 3]));
+}
+
+static std::uint32_t ReadLittleEndian32(const std::string& bytes, const size_t at) {
+    std::uint32_t value = 0;
+    std::memcpy(&value, bytes.data() + at, 4);
+    return value;
+}
+
+static bool RehashMachOPages(const fs::path& executable, const size_t patchBegin, const size_t patchSize, std::string& error) {
+    std::string bytes;
+    {
+        std::ifstream in(executable, std::ios::binary);
+        bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+
+    constexpr std::uint32_t MH_MAGIC_64 = 0xFEEDFACF;
+    constexpr std::uint32_t LC_CODE_SIGNATURE = 0x1D;
+    constexpr std::uint32_t CSMAGIC_EMBEDDED_SIGNATURE = 0xFADE0CC0;
+    constexpr std::uint32_t CSMAGIC_CODEDIRECTORY = 0xFADE0C02;
+    constexpr std::uint8_t CS_HASHTYPE_SHA256 = 2;
+
+    if (bytes.size() < 32 || ReadLittleEndian32(bytes, 0) != MH_MAGIC_64) return true;
+
+    const std::uint32_t commandCount = ReadLittleEndian32(bytes, 16);
+    size_t command = 32;
+    size_t signatureOffset = 0;
+    for (std::uint32_t i = 0; i < commandCount && command + 16 <= bytes.size(); ++i) {
+        const std::uint32_t type = ReadLittleEndian32(bytes, command);
+        const std::uint32_t size = ReadLittleEndian32(bytes, command + 4);
+        if (type == LC_CODE_SIGNATURE) signatureOffset = ReadLittleEndian32(bytes, command + 8);
+        if (size == 0) break;
+        command += size;
+    }
+    if (signatureOffset == 0) return true;
+
+    if (signatureOffset + 12 > bytes.size() || ReadBigEndian32(bytes, signatureOffset) != CSMAGIC_EMBEDDED_SIGNATURE) {
+        error = "the macOS runtime's code signature couldn't be read";
+        return false;
+    }
+
+    bool rehashed = false;
+    const std::uint32_t blobCount = ReadBigEndian32(bytes, signatureOffset + 8);
+    for (std::uint32_t i = 0; i < blobCount; ++i) {
+        const size_t indexEntry = signatureOffset + 12 + static_cast<size_t>(i) * 8;
+        if (indexEntry + 8 > bytes.size()) break;
+
+        const size_t directory = signatureOffset + ReadBigEndian32(bytes, indexEntry + 4);
+        if (directory + 40 > bytes.size() || ReadBigEndian32(bytes, directory) != CSMAGIC_CODEDIRECTORY) continue;
+
+        const std::uint32_t hashOffset = ReadBigEndian32(bytes, directory + 16);
+        const std::uint32_t codeSlots = ReadBigEndian32(bytes, directory + 28);
+        const std::uint32_t codeLimit = ReadBigEndian32(bytes, directory + 32);
+        const std::uint8_t hashSize = static_cast<std::uint8_t>(bytes[directory + 36]);
+        const std::uint8_t hashType = static_cast<std::uint8_t>(bytes[directory + 37]);
+        const std::uint8_t pageShift = static_cast<std::uint8_t>(bytes[directory + 39]);
+
+        if (hashType != CS_HASHTYPE_SHA256 || hashSize != 32 || pageShift == 0 || pageShift > 24) {
+            error = "the macOS runtime's code signature uses a hash this exporter can't redo";
+            return false;
+        }
+
+        const size_t pageSize = static_cast<size_t>(1) << pageShift;
+        const size_t firstPage = patchBegin / pageSize;
+        const size_t lastPage = (patchBegin + patchSize - 1) / pageSize;
+
+        for (size_t page = firstPage; page <= lastPage && page < codeSlots; ++page) {
+            const size_t begin = page * pageSize;
+            const size_t end = (std::min)(begin + pageSize, static_cast<size_t>(codeLimit));
+            const size_t slot = directory + hashOffset + page * hashSize;
+            if (end <= begin || slot + hashSize > bytes.size()) continue;
+
+            TilkySha256::Hasher hasher;
+            hasher.Update(reinterpret_cast<const std::uint8_t*>(bytes.data() + begin), end - begin);
+            const std::array<std::uint8_t, 32> digest = hasher.Finalize();
+            std::memcpy(bytes.data() + slot, digest.data(), 32);
+            rehashed = true;
+        }
+    }
+
+    if (!rehashed) {
+        error = "the macOS runtime's code signature has no page hashes for the key";
+        return false;
+    }
+
+    std::ofstream out(executable, std::ios::binary | std::ios::trunc);
+    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    out.close();
+    if (!out) {
+        error = "couldn't write " + executable.string();
+        return false;
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // The game's data (the same on every platform)
 // ---------------------------------------------------------------------------
 
@@ -845,12 +963,7 @@ static bool ExportGameData(const fs::path& metadataPath, const fs::path& project
     std::cout << "Copied engine assets from "
               << engineAssetsSrc << " to " << engineAssetsDest << "\n";
 
-    // Copy Shaders/
-    const fs::path shadersSrc  = standaloneDir / "Shaders";
-    const fs::path shadersDest = dataDir / "Shaders";
-    if (!CopyDirRecursive(shadersSrc, shadersDest)) return false;
-    std::cout << "Copied shaders from " << shadersSrc
-              << " to " << shadersDest << "\n";
+    // No Shaders/: they're compiled into the runtime (EmbeddedShaders).
 
     return true;
 }
@@ -859,12 +972,170 @@ static bool ExportGameData(const fs::path& metadataPath, const fs::path& project
 // Main
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Per-level asset sets, Strip and the export report
+// ---------------------------------------------------------------------------
+
+struct AssetSetResult {
+    std::vector<AssetFS::FileSet> sets;
+    std::set<std::string> unresolved;                                    // "script: literal"
+    std::vector<std::pair<std::string, std::set<std::string>>> onDemand; // from editor Play
+    std::vector<std::string> stripped;
+    std::uint64_t strippedBytes = 0;
+    size_t levelCount = 0;
+    size_t smallestSet = 0;
+    size_t largestSet = 0;
+    size_t alwaysCount = 0;
+};
+
+static size_t CountKept(const std::set<std::string>& files) {
+    return static_cast<size_t>(std::count_if(files.begin(), files.end(), [](const std::string& file) {
+        return AssetSets::IsImageFile(file) || AssetSets::IsSoundFile(file);
+    }));
+}
+
+// Each level's set and the Always set from the project's sources, then
+// (if the project asks for it) Strip on the staged copy: images, sounds and
+// models in no set leave it.
+static void BuildAssetSets(const fs::path& projectDir, const fs::path& stagedAssets, AssetSetResult& out) {
+    const fs::path assetsSrc = projectDir / "Assets";
+    AssetSets::Collector collector(assetsSrc);
+
+    out.onDemand = AssetSets::ReadOnDemandLog(projectDir);
+    std::map<std::string, std::set<std::string>> onDemandByLevel(out.onDemand.begin(), out.onDemand.end());
+
+    std::set<std::string> used;
+
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(assetsSrc, ec), end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file() || it->path().extension() != ".bson") continue;
+
+        const std::string key = it->path().lexically_relative(assetsSrc).generic_string();
+        std::set<std::string> files = collector.ForLevel(it->path());
+
+        // What Play loaded on demand there goes in from now on.
+        if (const auto logged = onDemandByLevel.find(key); logged != onDemandByLevel.end())
+            for (const std::string& file : logged->second)
+                if (fs::exists(assetsSrc / fs::path(file))) files.insert(file);
+
+        const size_t kept = CountKept(files);
+        out.smallestSet = out.levelCount == 0 ? kept : std::min(out.smallestSet, kept);
+        out.largestSet = std::max(out.largestSet, kept);
+        ++out.levelCount;
+
+        used.insert(files.begin(), files.end());
+        out.sets.push_back({AssetSets::LEVEL_SET_PREFIX + key, {files.begin(), files.end()}});
+    }
+
+    const std::set<std::string> always = collector.Always(projectDir / "ProjectSettings.json");
+    out.alwaysCount = CountKept(always);
+    used.insert(always.begin(), always.end());
+    out.sets.push_back({AssetSets::ALWAYS_SET, {always.begin(), always.end()}});
+
+    out.unresolved = collector.Unresolved();
+
+    if (!AssetSets::Current().stripUnusedOnExport) return;
+
+    for (const std::string& file : collector.AllFiles()) {
+        const bool strippable = AssetSets::IsImageFile(file) || AssetSets::IsSoundFile(file) || ModelLoader::IsModelFile(file);
+        if (!strippable || used.contains(file) || AssetSets::IsAlwaysLoaded(file)) continue;
+
+        const fs::path staged = stagedAssets / fs::path(file);
+        std::error_code sizeError;
+        const std::uintmax_t bytes = fs::file_size(staged, sizeError);
+        std::error_code removeError;
+        if (fs::remove(staged, removeError)) {
+            out.stripped.push_back(file);
+            if (!sizeError) out.strippedBytes += bytes;
+        }
+    }
+}
+
+static std::string Megabytes(const std::uint64_t bytes) {
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
+    return text;
+}
+
+// <Project>/ExportReport.txt (never inside the export), and "@summary" lines
+// for the editor's export-finished popup.
+static void WriteExportReport(const fs::path& projectDir, const fs::path& destination, const AssetSetResult& result,
+                              const std::vector<std::string>& modelProblems) {
+    size_t onDemandCount = 0;
+    for (const auto& level : result.onDemand) onDemandCount += level.second.size();
+
+    std::vector<std::string> summary;
+    summary.push_back(std::to_string(result.levelCount) + " level(s), each loading " +
+                      (result.smallestSet == result.largestSet ? std::to_string(result.largestSet)
+                                                               : std::to_string(result.smallestSet) + " to " + std::to_string(result.largestSet)) +
+                      " texture(s) and sound(s) of its own; " + std::to_string(result.alwaysCount) + " Always Loaded.");
+    if (onDemandCount > 0)
+        summary.push_back(std::to_string(onDemandCount) + " asset(s) Play loaded on demand, now in their levels' sets.");
+    if (!result.unresolved.empty())
+        summary.push_back(std::to_string(result.unresolved.size()) + " script name(s) look like asset paths but match no asset.");
+    if (AssetSets::Current().stripUnusedOnExport)
+        summary.push_back("Strip unused assets: removed " + std::to_string(result.stripped.size()) + " file(s), " + Megabytes(result.strippedBytes) + ".");
+    else summary.push_back("Strip unused assets is off: every asset was exported.");
+    if (!modelProblems.empty()) summary.push_back(std::to_string(modelProblems.size()) + " model dependency problem(s).");
+
+    const fs::path reportPath = projectDir / "ExportReport.txt";
+    std::ofstream report(reportPath, std::ios::trunc);
+
+    const std::time_t now = std::time(nullptr);
+    char when[64] = "";
+    std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M", std::localtime(&now));
+
+    report << "Tilky Engine export report\n" << when << "\nExported to " << destination.string() << "\n\n";
+    for (const std::string& line : summary) report << line << "\n";
+
+    report << "\n== Per-level asset sets ==\n"
+              "An exported game keeps in memory only the textures and sounds of the level it is in, plus Always Loaded ones.\n"
+              "Anything else loads the moment it's used, which can stall a frame. A name a script builds at runtime\n"
+              "(\"Textures/\" .. name) can't be seen at export: mark those assets (or their folder) Always Loaded in the Asset Browser.\n";
+    for (const AssetFS::FileSet& set : result.sets) {
+        std::set<std::string> kept;
+        for (const std::string& file : set.files)
+            if (AssetSets::IsImageFile(file) || AssetSets::IsSoundFile(file)) kept.insert(file);
+        report << "\n" << set.name << " (" << kept.size() << ")\n";
+        for (const std::string& file : kept) report << "    " << file << "\n";
+    }
+
+    report << "\n== Script names that match no asset ==\n";
+    if (result.unresolved.empty()) report << "None.\n";
+    for (const std::string& name : result.unresolved) report << "    " << name << "\n";
+
+    report << "\n== Loaded on demand during Play ==\n"
+              "Added to their levels' sets in this export. Delete " << AssetSets::OnDemandLogPath(projectDir).string() << " to forget them.\n";
+    if (onDemandCount == 0) report << "None.\n";
+    for (const auto& [level, assets] : result.onDemand) {
+        report << "    " << level << "\n";
+        for (const std::string& asset : assets) report << "        " << asset << "\n";
+    }
+
+    report << "\n== Strip unused assets ==\n";
+    if (!AssetSets::Current().stripUnusedOnExport) report << "Off (Project Settings).\n";
+    else if (result.stripped.empty()) report << "Nothing was unused.\n";
+    for (const std::string& file : result.stripped) report << "    " << file << "\n";
+
+    if (!modelProblems.empty()) {
+        report << "\n== Model dependency problems ==\n";
+        for (const std::string& problem : modelProblems) report << "    " << problem << "\n";
+    }
+
+    report.close();
+    if (report) std::cout << "Wrote the export report to " << reportPath << "\n";
+    else std::cout << "Couldn't write the export report to " << reportPath << "\n";
+
+    for (const std::string& line : summary) std::cout << "@summary " << line << "\n";
+    std::cout << "@report " << reportPath.string() << std::endl;
+}
+
 // Where one platform's export goes.
 struct ExportTarget {
     const ExportPlatform* platform = nullptr; // null: an old-style export for this machine
     Runtime runtime;
     fs::path root;    // its folder, or the .app
-    fs::path dataDir; // project.tilky, Assets, Shaders...
+    fs::path dataDir; // project.tilky, Assets, EngineAssets...
     fs::path exeDir;
     fs::path libDir;
     std::string executableName;
@@ -992,10 +1263,10 @@ int main(int argc, char** argv) {
     // each runtime, and each zip's contents.
     MeasureFolderWork(projectDir / "Assets", true);
     MeasureFolderWork(standaloneDir / "EngineAssets", false);
-    MeasureFolderWork(standaloneDir / "Shaders", false);
     {
-        const std::uint64_t dataBytes = FolderBytes(projectDir / "Assets") + FolderBytes(standaloneDir / "EngineAssets") + FolderBytes(standaloneDir / "Shaders");
-        progressTotal += dataBytes * (targets.size() - 1);
+        const std::uint64_t dataBytes = FolderBytes(projectDir / "Assets") + FolderBytes(standaloneDir / "EngineAssets");
+        packWork = dataBytes;
+        progressTotal += dataBytes * targets.size(); // the pack written, then copied per extra platform
 
         for (const ExportTarget& target : targets) {
             const std::uint64_t runtimeBytes = RuntimeBytes(target.runtime);
@@ -1014,12 +1285,56 @@ int main(int argc, char** argv) {
 
     std::vector<std::string> modelProblems;
 
-    // The data is built once, then copied for every other platform.
-    if (!ExportGameData(metadataPath, projectDir, standaloneDir, targets.front().dataDir, renderer, modelProblems)) return 1;
+    // The data is built once in a staging folder, packed into one encrypted
+    // Data.pak, then copied for every other platform. No loose file is left
+    // in the export (the staging folder goes, also when the export fails).
+    const fs::path stagingDir = destinationPath / ".tilky_pack_staging";
+    struct StagingCleanup {
+        fs::path folder;
+        ~StagingCleanup() {
+            std::error_code ec;
+            fs::remove_all(folder, ec);
+        }
+    } stagingCleanup{stagingDir};
 
-    for (size_t i = 1; i < targets.size(); ++i) {
-        if (!CopyDirRecursive(targets.front().dataDir, targets[i].dataDir)) return 1;
-        std::cout << "Copied the game data for " << targets[i].platform->folder << "\n";
+    if (!ExportGameData(metadataPath, projectDir, standaloneDir, stagingDir, renderer, modelProblems)) return 1;
+
+    // UI layouts are found through the project; the sets need their IDs.
+    AssetSetResult assetSets;
+    if (ProjectManager::LoadProjectMetaData(metadataPath)) {
+        UILayouts::Rescan();
+        if (!AssetSets::LoadFromProjectSettings(projectDir / "ProjectSettings.json"))
+            std::cout << "Couldn't read the asset loading settings; using the defaults\n";
+        BuildAssetSets(projectDir, stagingDir / "Assets", assetSets);
+        std::cout << "Worked out the asset sets of " << assetSets.levelCount << " level(s)\n";
+    }
+    else std::cout << "Couldn't read " << metadataPath << " for the asset sets: the game will load every asset at start\n";
+
+    // One key per export, patched into each runtime below.
+    const AssetFS::Key packKey = AssetFS::NewKey();
+    {
+        std::error_code ec;
+        fs::create_directories(targets.front().dataDir, ec);
+
+        const fs::path pakPath = targets.front().dataDir / AssetFS::PACK_FILE_NAME;
+        std::string packError;
+        if (!AssetFS::WritePack(stagingDir, pakPath, packKey, assetSets.sets, packError)) {
+            std::cerr << "Export failed: " << packError << "\n";
+            return 1;
+        }
+        AddProgress(packWork);
+        std::cout << "Packed the game data into " << pakPath << "\n";
+
+        for (size_t i = 1; i < targets.size(); ++i) {
+            fs::create_directories(targets[i].dataDir, ec);
+            if (!CopyFileChecked(pakPath, targets[i].dataDir / AssetFS::PACK_FILE_NAME)) return 1;
+            std::cout << "Copied the game data for " << targets[i].platform->folder << "\n";
+        }
+    }
+
+    {
+        std::error_code ec;
+        fs::remove_all(stagingDir, ec);
     }
 
     for (const ExportTarget& target : targets) {
@@ -1035,6 +1350,22 @@ int main(int argc, char** argv) {
         MarkExecutable(executable);
         std::cout << "Copied standalone executable from " << target.runtime.executable
                   << " to " << executable << "\n";
+
+        // The key Data.pak opens with.
+        {
+            std::string keyError;
+            size_t slotOffset = 0;
+            size_t slotSize = 0;
+            if (!AssetFS::PatchKeyIntoExecutable(executable, packKey, keyError, &slotOffset, &slotSize)) {
+                std::cerr << "Export failed: " << keyError << "\n";
+                return 1;
+            }
+            if (target.platform != nullptr && target.platform->macos && !RehashMachOPages(executable, slotOffset, slotSize, keyError)) {
+                std::cerr << "Export failed: " << keyError << "\n";
+                return 1;
+            }
+            MarkExecutable(executable);
+        }
 
         if (target.platform != nullptr && target.platform->macos) {
             const fs::path iconSource = standaloneDir / "LauncherAssets" / "Fox.png";
@@ -1064,6 +1395,8 @@ int main(int argc, char** argv) {
 
     progressDone = progressTotal;
     ReportProgress();
+
+    WriteExportReport(projectDir, destinationPath, assetSets, modelProblems);
 
     if (!modelProblems.empty()) {
         std::cerr << "\nExport completed, but " << modelProblems.size()

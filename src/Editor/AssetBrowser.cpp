@@ -24,6 +24,7 @@
 #include "Headers/Objects/FlipbookAsset.hpp"
 #include "Headers/Objects/Prefab.hpp"
 #include "Headers/Objects/UILayouts.hpp"
+#include "Headers/Project/AssetSets.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
@@ -2647,8 +2648,33 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
     // BeginDragDropTarget() already excludes the payload's own source item.
     const bool isDropHighlighted = isDirectory && DrawMoveDropTarget(entry.GetPath());
 
+    // The entry's path in Assets, for Always Loaded (empty outside Assets).
+    std::string assetPath;
+    {
+        const fs::path relative = entry.GetPath().lexically_normal().lexically_relative(ProjectManager::GetAssetsPath().lexically_normal());
+        if (!relative.empty() && *relative.begin() != ".." && relative != ".") assetPath = relative.generic_string();
+    }
+
     if (ImGui::BeginPopupContextItem()) {
         entry.DrawContextMenu(*this);
+
+        if (!assetPath.empty()) {
+            ImGui::Separator();
+            const bool listed = AssetSets::IsListedAlwaysLoaded(assetPath);
+            const bool covered = !listed && AssetSets::IsAlwaysLoaded(assetPath);
+
+            if (covered) ImGui::BeginDisabled();
+            if (ImGui::MenuItem(Localisation::Get("asset_browser.always_loaded").c_str(), nullptr, listed || covered)) {
+                AssetSets::SetAlwaysLoaded(assetPath, !listed);
+                if (!MapEditorInternal::SaveProjectSettings()) spdlog::error("Couldn't save Always Loaded to the project settings");
+            }
+            if (covered) ImGui::EndDisabled();
+
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s", Localisation::Get(covered ? "asset_browser.tooltip.always_loaded_by_folder"
+                                                                  : "asset_browser.tooltip.always_loaded").c_str());
+        }
+
         ImGui::EndPopup();
     }
 
@@ -2764,6 +2790,24 @@ void AssetBrowser::DrawEntryTile(AssetEntry& entry, const float tileSize, const 
 
     if (isDropHighlighted)
         drawList->AddRect(topLeft, boxMax, IM_COL32(120, 220, 120, 255), 4.0f, 0, 3.0f);
+
+    // Always Loaded: a pin in the top-left corner (dimmer when a folder above sets it).
+    if (!assetPath.empty() && AssetSets::IsAlwaysLoaded(assetPath)) {
+        const bool listed = AssetSets::IsListedAlwaysLoaded(assetPath);
+        const float badgeSize = std::max(12.0f, tileSize * 0.22f);
+        const ImVec2 badgeMax = {topLeft.x + badgeSize, topLeft.y + badgeSize};
+        drawList->AddRectFilled(topLeft, badgeMax, listed ? IM_COL32(230, 160, 40, 235) : IM_COL32(150, 110, 50, 190), 4.0f,
+                                ImDrawFlags_RoundCornersTopLeft | ImDrawFlags_RoundCornersBottomRight);
+
+        const char* glyph = iconFont != nullptr ? ICON_FA_THUMBTACK : "A";
+        ImFont* font = iconFont != nullptr ? iconFont : ImGui::GetFont();
+        const float fontSize = badgeSize * 0.62f;
+        ImGui::PushFont(font, fontSize);
+        const ImVec2 glyphSize = ImGui::CalcTextSize(glyph);
+        ImGui::PopFont();
+        drawList->AddText(font, fontSize, {topLeft.x + (badgeSize - glyphSize.x) * 0.5f, topLeft.y + (badgeSize - glyphSize.y) * 0.5f},
+                          IM_COL32(255, 255, 255, 255), glyph);
+    }
 
     const std::string name = TruncateToWidth(entry.GetDisplayName(), tileSize);
     const ImVec2 nameSize = ImGui::CalcTextSize(name.c_str());

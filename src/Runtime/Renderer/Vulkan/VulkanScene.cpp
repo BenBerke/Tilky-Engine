@@ -52,21 +52,16 @@ namespace {
 // ============================================================================
 
 bool Vulkan::InitScenePrograms() {
-    namespace fs = std::filesystem;
-    const auto shader = [](const char* folder, const char* file) {
-        return ProjectManager::FindAssetPath(fs::path("Shaders") / folder / file);
-    };
-
     using ModelLoader::ModelVertex;
-    projectionProgram = LoadProgram("Rendering", shader("Rendering", "Rendering.vs.glsl"), shader("Rendering", "Rendering.fs.glsl"), nullptr,
+    projectionProgram = LoadProgram("Rendering", "Rendering/Rendering.vs.glsl", "Rendering/Rendering.fs.glsl", nullptr,
                                     {{0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(ModelVertex, position))},
                                      {1, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(ModelVertex, normal))},
                                      {2, VK_FORMAT_R32G32_SFLOAT, static_cast<uint32_t>(offsetof(ModelVertex, uv))}});
-    backgroundProgram = LoadProgram("Background", shader("Background", "Background.vs.glsl"), shader("Background", "Background.fs.glsl"),
+    backgroundProgram = LoadProgram("Background", "Background/Background.vs.glsl", "Background/Background.fs.glsl",
                                     nullptr, {});
-    uiProgram = LoadProgram("UI", shader("UI", "UI.vs.glsl"), shader("UI", "UI.fs.glsl"), nullptr,
+    uiProgram = LoadProgram("UI", "UI/UI.vs.glsl", "UI/UI.fs.glsl", nullptr,
                             {{0, VK_FORMAT_R32G32_SFLOAT, 0}, {1, VK_FORMAT_R32G32_SFLOAT, 8}});
-    textProgram = LoadProgram("Glyph", shader("Glyph", "glyph.vs.glsl"), shader("Glyph", "glyph.fs.glsl"), nullptr,
+    textProgram = LoadProgram("Glyph", "Glyph/glyph.vs.glsl", "Glyph/glyph.fs.glsl", nullptr,
                               {{0, VK_FORMAT_R32G32B32A32_SFLOAT, 0}});
 
     if (projectionProgram == nullptr || backgroundProgram == nullptr || uiProgram == nullptr || textProgram == nullptr) {
@@ -301,6 +296,9 @@ void Vulkan::DrawNoCameraScreen() {
 }
 
 void Vulkan::Update(const bool renderDebug, const bool renderUI) {
+    // Textures last frame found missing from the atlas (exported games).
+    ServiceLateTextures();
+
     Level& level = LevelManager::CurrentLevel();
 
     ComponentCamera* camera = nullptr;
@@ -472,6 +470,10 @@ void Vulkan::Update(const bool renderDebug, const bool renderUI) {
     (void)renderDebug;
     (void)renderUI;
 #endif
+    DrawLevelUI(level);
+}
+
+void Vulkan::DrawLevelUI(Level& level) {
     {
         ZoneScopedN("Rendering UI Sprites");
 
@@ -543,6 +545,16 @@ void Vulkan::Update(const bool renderDebug, const bool renderUI) {
         state.blend = false;
     }
 }
+
+void Vulkan::DrawLoadingScreen(Level& uiLevel) {
+    if (!UpdateScreenSize()) return;
+
+    SetViewport(screenWidth, screenHeight);
+    ClearColor({0.0f, 0.0f, 0.0f, 1.0f});
+
+    DrawLevelUI(uiLevel);
+}
+
 
 // ============================================================================
 // Gateways (see OpenGLGateway.cpp)

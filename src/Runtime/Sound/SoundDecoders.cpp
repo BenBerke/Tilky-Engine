@@ -5,6 +5,7 @@
 // this translation unit only.
 
 #include "Headers/Runtime/Sound/SoundDecoders.hpp"
+#include "Headers/Engine/AssetFS.hpp"
 
 #define DR_MP3_IMPLEMENTATION
 #include <dr_mp3.h>
@@ -29,13 +30,11 @@ namespace {
     // Read through std::filesystem so paths with any characters work; the
     // libraries' own file opening uses the narrow C runtime.
     bool ReadFile(const std::filesystem::path& path, std::vector<unsigned char>& bytes, std::string& error) {
-        std::ifstream file(path, std::ios::binary);
-        if (!file) {
+        if (!AssetFS::ReadFile(path, bytes)) {
             error = "couldn't open the file";
             return false;
         }
 
-        bytes.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
         if (bytes.empty()) {
             error = "the file is empty";
             return false;

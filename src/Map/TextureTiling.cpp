@@ -1,4 +1,6 @@
 #include "Headers/Map/TextureTiling.hpp"
+#include "Headers/Engine/AssetFS.hpp"
+#include "Headers/Engine/AssetFSImage.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -22,9 +24,8 @@ namespace TextureTiling {
 
         // Pixel size of the image at `path`, 0x0 when it can't be read.
         ImageSize ReadImageSize(const fs::path& path) {
-            std::error_code ec;
-            const fs::file_time_type writeTime = fs::last_write_time(path, ec);
-            if (ec) return {};
+            fs::file_time_type writeTime;
+            if (!AssetFS::WriteTime(path, writeTime)) return {};
 
             const std::string key = path.string();
             const auto it = imageSizeCache.find(key);
@@ -33,7 +34,7 @@ namespace TextureTiling {
             ImageSize size;
             size.writeTime = writeTime;
 
-            if (SDL_Surface* surface = IMG_Load(key.c_str())) {
+            if (SDL_Surface* surface = AssetFS::IsPacked() ? AssetFS::LoadImage(path) : IMG_Load(key.c_str())) {
                 size.width = surface->w;
                 size.height = surface->h;
                 SDL_DestroySurface(surface);

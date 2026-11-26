@@ -405,6 +405,21 @@ endif()
 # Shared project system
 # ============================================================
 
+# Where the game's files come from: disk, or an exported game's encrypted
+# Data.pak (Headers/Engine/AssetFS.hpp). PackKeySlot.cpp holds the key slot
+# the exporter patches in a copied runtime.
+add_library(Tilky_AssetFS STATIC
+        src/Engine/AssetFS.cpp
+        src/Engine/PackKeySlot.cpp
+        Headers/Engine/AssetFS.hpp
+)
+
+target_include_directories(Tilky_AssetFS PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+set_target_properties(Tilky_AssetFS PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+
 add_library(Tilky_Project STATIC
         src/Project/ProjectManager.cpp
         Headers/Project/ProjectManager.hpp
@@ -415,6 +430,7 @@ target_include_directories(Tilky_Project PUBLIC
 )
 
 target_link_libraries(Tilky_Project PUBLIC
+        Tilky_AssetFS
         SDL3::SDL3
         SDL3::Headers
         spdlog::spdlog
@@ -441,6 +457,7 @@ target_include_directories(Tilky_Local PUBLIC
 )
 
 target_link_libraries(Tilky_Local PUBLIC
+        Tilky_AssetFS
         SDL3::SDL3
         SDL3::Headers
         spdlog::spdlog
@@ -540,6 +557,7 @@ set(TILKY_RUNTIME_SOURCES
 
         src/Map/LevelManager.cpp
         src/Map/LevelSerialization.cpp
+        src/Project/AssetSets.cpp
         src/Map/MapQueries.cpp
         src/Map/WallPieces.cpp
         src/Map/Gateways.cpp
@@ -612,6 +630,36 @@ set(TILKY_RUNTIME_SOURCES
 
 set(TILKY_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/Generated")
 file(MAKE_DIRECTORY "${TILKY_GENERATED_DIR}")
+
+# ============================================================
+# Shaders compiled into the executables
+# (Headers/Runtime/Renderer/EmbeddedShaders.hpp). Editing a .glsl
+# regenerates the file; adding one re-runs the configure.
+# Its own library, so one target owns the generating command.
+# ============================================================
+
+file(GLOB_RECURSE TILKY_SHADER_FILES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/*.glsl"
+)
+set(TILKY_GENERATED_EMBEDDED_SHADERS "${TILKY_GENERATED_DIR}/EmbeddedShaders.generated.cpp")
+
+add_custom_command(
+        OUTPUT "${TILKY_GENERATED_EMBEDDED_SHADERS}"
+        COMMAND ${CMAKE_COMMAND}
+        "-DSHADER_DIR=${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
+        "-DOUTPUT=${TILKY_GENERATED_EMBEDDED_SHADERS}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedShaders.cmake"
+        DEPENDS ${TILKY_SHADER_FILES} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedShaders.cmake"
+        COMMENT "Embedding shaders"
+        VERBATIM
+)
+
+add_library(Tilky_EmbeddedShaders STATIC
+        "${TILKY_GENERATED_EMBEDDED_SHADERS}"
+        Headers/Runtime/Renderer/EmbeddedShaders.hpp
+)
+target_include_directories(Tilky_EmbeddedShaders PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(Tilky_EmbeddedShaders PROPERTIES CXX_SCAN_FOR_MODULES OFF)
 
 # Untouched LauncherMain copy for the separate launcher executable.
 # The original source is renamed to TilkyLauncherMain for Tilky_Engine.
@@ -1149,6 +1197,7 @@ function(configure_tilky_engine_executable target_name)
             glslang::glslang
             glslang::glslang-default-resource-limits
             glslang::SPIRV
+            Tilky_EmbeddedShaders
     )
 
     target_compile_definitions(${target_name} PRIVATE
@@ -1551,7 +1600,6 @@ add_dependencies(Tilky_All
 set(TILKY_RUNTIME_ASSET_DIRS
         EngineAssets
         LauncherAssets
-        Shaders
         Fonts
         Textures
 )

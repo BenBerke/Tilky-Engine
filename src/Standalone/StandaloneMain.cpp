@@ -2,9 +2,11 @@
 // StandaloneMain.cpp
 //
 
+#include "Headers/Engine/AssetFS.hpp"
 #include "Headers/Engine/InputManager.hpp"
 #include "Headers/Engine/Local/Local.hpp"
 #include "Headers/Map/LevelManager.hpp"
+#include "Headers/Project/AssetSets.hpp"
 #include "Headers/Project/ProjectManager.hpp"
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "Headers/Runtime/RuntimeSession.hpp"
@@ -17,12 +19,22 @@
 
 namespace fs = std::filesystem;
 
+#include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
 int main(int argc, char* argv[]) {
+    // An exported game reads everything from its encrypted Data.pak; a
+    // runtime that was never exported (no key patched in) reads from disk.
+    std::string packError;
+    if (AssetFS::MountExportedPack(ProjectManager::GetEngineBasePath(), &packError) == AssetFS::MountResult::Failed) {
+        std::cerr << packError << "\n";
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Can't start the game", packError.c_str(), nullptr);
+        return 1;
+    }
+
     const fs::path projectFile = ProjectManager::GetEngineBasePath() / "project.tilky";
 
-    if (!fs::exists(projectFile)) {
+    if (!AssetFS::IsFile(projectFile)) {
         std::cerr << "Missing project.tilky beside executable:\n" << projectFile.string() << "\n";
         return 1;
     }
@@ -43,6 +55,10 @@ int main(int argc, char* argv[]) {
     // Project-wide event variables, read by event conditions.
     if (!GlobalEventVariables::LoadFromProjectSettings(ProjectManager::GetProjectFolder() / "ProjectSettings.json"))
         std::cerr << "Failed to load global event variables from ProjectSettings.json\n";
+
+    // The loading screen and its progress variable.
+    if (!AssetSets::LoadFromProjectSettings(ProjectManager::GetProjectFolder() / "ProjectSettings.json"))
+        std::cerr << "Failed to load the asset loading settings from ProjectSettings.json\n";
 
     LevelSerialization::LevelExtraData extraData;
 

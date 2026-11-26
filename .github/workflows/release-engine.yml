@@ -180,7 +180,6 @@ jobs:
           for DIR in \
             EngineAssets \
             LauncherAssets \
-            Shaders \
             Fonts \
             Textures
           do

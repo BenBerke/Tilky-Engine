@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <SDL3/SDL.h>
@@ -11,6 +12,8 @@
 #include "Headers/Objects/Components.hpp"
 #include "Headers/Objects/Sector.hpp"
 #include "Headers/Runtime/Renderer/SurfaceMetaData.hpp"
+
+struct Level;
 
 namespace Editor2D {
     struct Frame;
@@ -91,6 +94,16 @@ public:
     virtual void UpdateBackgroundLoad() {}
     // Waits for the atlas and builds it. Play does, so it never starts untextured.
     virtual void FinishBackgroundLoad() {}
+
+    // An exported game's level change: the next level's images decode on
+    // worker threads while the loading screen shows (DrawLoadingScreen,
+    // between BeginFrame and EndFrame); the atlas build after
+    // FinishTexturePreload finds them decoded. Progress is done / total.
+    virtual void BeginTexturePreload(const std::vector<std::string>& /*imageNames*/) {}
+    [[nodiscard]] virtual std::pair<size_t, size_t> TexturePreloadProgress() const { return {0, 0}; }
+    virtual void FinishTexturePreload() {}
+    // A black screen with `uiLevel`'s UI over it.
+    virtual void DrawLoadingScreen(Level& /*uiLevel*/) {}
     [[nodiscard]] virtual bool IsBackgroundLoading() const { return false; }
     [[nodiscard]] virtual BackgroundLoadProgress GetBackgroundLoadProgress() const { return {}; }
 

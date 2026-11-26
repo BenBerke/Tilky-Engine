@@ -35,6 +35,7 @@
 
 #include "Headers/Engine/BuildVariant.hpp"
 #include "Headers/Project/ProjectManager.hpp"
+#include "Headers/Runtime/Renderer/EmbeddedShaders.hpp"
 
 using namespace VulkanInternal;
 
@@ -500,8 +501,12 @@ namespace {
     // translator above lives here, so rebuilding it starts the cache over).
     // The exported game compiles as before: it doesn't write to the player's
     // Documents folder.
+    //
+    // A file holds a fingerprint of that input, not the input itself, so no
+    // shader source is written to disk (format 1 held the source; the
+    // clean-up below removes those files).
 
-    constexpr uint32_t CACHE_FORMAT = 1;
+    constexpr uint32_t CACHE_FORMAT = 2;
     constexpr char CACHE_MAGIC[4] = {'T', 'S', 'P', 'V'};
     constexpr const char* CACHE_EXTENSION = ".tspv";
     // Files no engine has used for this long are removed when a new one is written.
@@ -531,12 +536,27 @@ namespace {
         input += vertexSource;
         input += '\0';
         input += fragmentSource;
-        return input;
+
+        // Two different 64-bit hashes and the length: a clash would need all
+        // three to match.
+        uint64_t fnv = 14695981039346656037ull;
+        for (const char c : input) {
+            fnv ^= static_cast<unsigned char>(c);
+            fnv *= 1099511628211ull;
+        }
+        const uint64_t hash = std::hash<std::string>{}(input);
+        const uint64_t size = input.size();
+
+        std::string fingerprint;
+        fingerprint.append(reinterpret_cast<const char*>(&fnv), sizeof(fnv));
+        fingerprint.append(reinterpret_cast<const char*>(&hash), sizeof(hash));
+        fingerprint.append(reinterpret_cast<const char*>(&size), sizeof(size));
+        return fingerprint;
     }
 
     std::filesystem::path ShaderCachePath(const std::string& name, const std::string& input) {
         // The name keeps the folder readable; the hash tells inputs apart (the
-        // file holds the whole input too, so a clash just misses).
+        // file holds the whole fingerprint too, so a clash just misses).
         std::string fileName;
         for (const char c : name) fileName += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
 
@@ -633,9 +653,21 @@ namespace {
         for (std::filesystem::directory_iterator it(ShaderCacheFolder(), ec), end; !ec && it != end; it.increment(ec)) {
             if (!it->is_regular_file() || it->path().extension() != CACHE_EXTENSION) continue;
 
+            // Another format (format 1 held shader source) goes at once.
+            bool otherFormat = false;
+            {
+                std::ifstream file(it->path(), std::ios::binary);
+                char header[8] = {};
+                uint32_t format = 0;
+                if (file.read(header, sizeof(header))) {
+                    std::memcpy(&format, header + 4, sizeof(format));
+                    otherFormat = std::memcmp(header, CACHE_MAGIC, 4) != 0 || format != CACHE_FORMAT;
+                }
+            }
+
             std::error_code timeError;
             const auto writeTime = it->last_write_time(timeError);
-            if (!timeError && now - writeTime > CACHE_UNUSED_LIFETIME) {
+            if (otherFormat || (!timeError && now - writeTime > CACHE_UNUSED_LIFETIME)) {
                 std::error_code removeError;
                 std::filesystem::remove(it->path(), removeError);
             }
@@ -717,15 +749,17 @@ size_t VulkanInternal::PipelineKeyHash::operator()(const PipelineKey& key) const
     return hash;
 }
 
-std::unique_ptr<Program> Vulkan::LoadProgram(const std::string& name, const std::filesystem::path& vertexPath,
-                                             const std::filesystem::path& fragmentPath, const char* define,
+std::unique_ptr<Program> Vulkan::LoadProgram(const std::string& name, const std::string_view vertexShader,
+                                             const std::string_view fragmentShader, const char* define,
                                              std::vector<VertexAttribute> attributes) {
-    std::string vertexSource;
-    std::string fragmentSource;
-    if (!ReadFile(vertexPath, vertexSource) || !ReadFile(fragmentPath, fragmentSource)) {
-        spdlog::error("Vulkan: shader files for {} not found ({}, {})", name, vertexPath.string(), fragmentPath.string());
+    const std::optional<std::string_view> vertexEmbedded = EmbeddedShaders::Find(vertexShader);
+    const std::optional<std::string_view> fragmentEmbedded = EmbeddedShaders::Find(fragmentShader);
+    if (!vertexEmbedded || !fragmentEmbedded) {
+        spdlog::error("Vulkan: shaders for {} aren't embedded ({}, {})", name, vertexShader, fragmentShader);
         return nullptr;
     }
+    const std::string vertexSource(*vertexEmbedded);
+    const std::string fragmentSource(*fragmentEmbedded);
 
     const bool useCache = !BuildVariant::IsStandalone();
     const std::string cacheInput = useCache ? ShaderCacheInput(name, define, vertexSource, fragmentSource) : std::string();
