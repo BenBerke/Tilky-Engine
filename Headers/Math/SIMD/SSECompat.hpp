@@ -7,10 +7,9 @@
 
 /// Include this header instead of sse2neon.h or immintrin.h individually
 
-#include <xmmintrin.h>
-#include <emmintrin.h>
-
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
+    #include <xmmintrin.h>
+    #include <emmintrin.h>
     #include <immintrin.h>
 #elif defined(__aarch64__) || defined(_M_ARM64) || defined(__ARM_NEON) || defined(__ARM_NEON__)
     #include "sse2neon.h"
