@@ -1706,22 +1706,30 @@ namespace {
         }, payload);
     }
 
+    // Plain function templates instead of a fold over lambdas inside a template
+    // lambda: Apple clang 17 (Xcode 16) segfaults instantiating that form.
+    template <typename Payload, typename Variant>
+    void TryPayloadFromJson(const json& j, const std::string& type, std::optional<Variant>& result) {
+        if (result || type != Payload::saveName) return;
+
+        Payload payload;
+        PayloadFieldsFromJson(j, payload);
+        result = std::move(payload);
+    }
+
+    template <typename Variant, size_t... I>
+    void PayloadFromJsonEach(const json& j, const std::string& type, std::optional<Variant>& result,
+                             std::index_sequence<I...>) {
+        (TryPayloadFromJson<std::variant_alternative_t<I, Variant>>(j, type, result), ...);
+    }
+
     // Throws if the type is unknown or a field is malformed.
     template <typename Variant>
     Variant PayloadFromJson(const json& j) {
         const std::string type = j.at("type").get<std::string>();
         std::optional<Variant> result;
 
-        [&]<size_t... I>(std::index_sequence<I...>) {
-            ([&] {
-                using Payload = std::variant_alternative_t<I, Variant>;
-                if (result || type != Payload::saveName) return;
-
-                Payload payload;
-                PayloadFieldsFromJson(j, payload);
-                result = std::move(payload);
-            }(), ...);
-        }(std::make_index_sequence<std::variant_size_v<Variant>>{});
+        PayloadFromJsonEach(j, type, result, std::make_index_sequence<std::variant_size_v<Variant>>{});
 
         if (!result) throw std::runtime_error("unknown type \"" + type + "\"");
         return std::move(*result);
