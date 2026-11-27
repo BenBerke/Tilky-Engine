@@ -15,8 +15,10 @@
 // same in each prefab, flipbook, UI layout and model it reaches, and in
 // each Lua script every string literal that names an asset (the whole path
 // from Assets or its end from a folder boundary, extension optional).
-// A name a script builds at runtime can't be seen: that's what the
-// warnings and Always Loaded are for.
+// A string with a folder in it that names no asset but starts asset paths
+// ("UI/Faces/", "UI/Digits/Big ") takes every asset it starts: a script
+// builds the rest of the name at runtime. A name built any other way can't
+// be seen: that's what the warnings and Always Loaded are for.
 
 #include <cstdint>
 #include <filesystem>

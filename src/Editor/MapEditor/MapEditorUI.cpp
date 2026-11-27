@@ -3084,6 +3084,35 @@ namespace {
     //  Project Settings window
     // =========================================================================
 
+    // Whether the loading screen would draw anything from this layout. It
+    // shows the layout as saved (no scripts or events run), so one whose
+    // images and texts all start disabled is a black screen.
+    bool LoadingLayoutShowsSomething(const std::uint64_t layoutID) {
+        // Built the way the exported game builds it, checked once a second
+        // at most: the layout may be edited while the window is open.
+        static std::uint64_t checkedID = 0;
+        static double checkedAt = -1.0;
+        static bool showsSomething = true;
+
+        const double now = ImGui::GetTime();
+        if (layoutID == checkedID && checkedAt >= 0.0 && now - checkedAt < 1.0) return showsSomething;
+        checkedID = layoutID;
+        checkedAt = now;
+
+        Level screen;
+        if (UILayouts::Instantiate(screen, layoutID).empty()) return showsSomething = true; // missing: the combo says so
+        screen.ApplyAllEntityEnabled();
+
+        const bool sprite = std::ranges::any_of(screen.ui_sprites.components, [](const ComponentUISprite& image) {
+            return image.isActive && image.ownerEnabled && image.color.w > 0.0f && (!image.texture.empty() || image.fillWhenEmpty);
+        });
+        const bool text = std::ranges::any_of(screen.ui_texts.components, [&screen](const ComponentUIText& label) {
+            return label.ownerEnabled && label.color.w > 0.0f && !screen.ShownUIText(label).empty();
+        });
+
+        return showsSomething = sprite || text;
+    }
+
     // Project Settings > Asset Loading: Strip, and the loading screen.
     void DrawAssetLoadingSettings() {
         AssetSets::Settings& settings = AssetSets::Current();
@@ -3115,6 +3144,12 @@ namespace {
                 ImGui::PopID();
             }
             ImGui::EndCombo();
+        }
+
+        if (layout != nullptr && !LoadingLayoutShowsSomething(settings.loadingScreenLayout)) {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s", Get("editor.project.loading_screen_empty").c_str());
+            ImGui::PopTextWrapPos();
         }
 
         ImGui::Spacing();

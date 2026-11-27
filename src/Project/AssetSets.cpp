@@ -240,8 +240,25 @@ struct Collector::State {
 
         if (const auto it = exact.find(name); it != exact.end()) { Add(it->second); return; }
         if (const auto it = exactLower.find(Lower(name)); it != exactLower.end()) { Add(it->second); return; }
-        if (const auto it = stem.find(name); it != stem.end())
+        if (const auto it = stem.find(name); it != stem.end()) {
             for (const std::string& file : it->second) Add(file);
+            return;
+        }
+        MatchPrefix(name);
+    }
+
+    // A name that is only the start of asset paths ("UI/Faces/", "UI/Digits/Big "):
+    // a script builds the rest at runtime, so every asset it starts is taken.
+    // Only with a folder in it, so a word like "S" doesn't take half the project.
+    bool MatchPrefix(const std::string& name) {
+        if (name.find('/') == std::string::npos) return false;
+
+        bool matched = false;
+        for (auto it = std::ranges::lower_bound(files, name); it != files.end() && it->starts_with(name); ++it) {
+            matched = true;
+            Add(*it);
+        }
+        return matched;
     }
 
     // A script's literal: also just the end of the path, from a folder boundary.
@@ -255,6 +272,8 @@ struct Collector::State {
         if (const auto it = exact.find(name); it != exact.end()) add(it->second);
         else if (const auto it2 = stem.find(name); it2 != stem.end())
             for (const std::string& file : it2->second) add(file);
+
+        if (!matched) matched = MatchPrefix(name);
 
         if (!matched) {
             if (const auto it = named.find(FileNameOf(name)); it != named.end()) {

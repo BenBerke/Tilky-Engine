@@ -1106,6 +1106,7 @@
   "editor.project.loading_screen": "Loading Screen",
   "editor.tooltip.project.loading_screen": "A UI layout shown while an exported game loads the next level's assets. Its scripts don't run. With none, the last frame stays on screen while it loads.",
   "editor.project.loading_screen_none": "(None)",
+  "editor.project.loading_screen_empty": "Every image and text in this layout starts disabled, so the loading screen shows nothing (a black screen). It shows the layout as saved: its scripts and events don't run.",
   "editor.project.loading_progress": "Loading Progress Variable",
   "editor.tooltip.project.loading_progress": "A global event variable set from 0 to 100 while a level loads, for the loading screen to show (a UI Text's Show Variable, for one).",
   "editor.project.loading_progress_missing": "(Deleted variable)",
