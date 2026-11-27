@@ -828,7 +828,7 @@ set(TILKY_EDITOR_SOURCES
 
         src/Editor/UIEditor/UIEditorUI.cpp
         src/Editor/UIEditor/UIEditorInput.cpp
-        src/Editor/UIEditor/UiEditorDraw.cpp
+        src/Editor/UIEditor/UIEditorDraw.cpp
         src/Editor/UIEditor/UIEditorFrame.cpp
 
         Headers/Editor/AssetBrowser.hpp

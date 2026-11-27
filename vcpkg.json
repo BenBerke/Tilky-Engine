@@ -29,6 +29,10 @@
     "glslang",
     "vk-bootstrap",
     "volk",
-    "vulkan-memory-allocator"
+    "vulkan-memory-allocator",
+    {
+      "name": "sse2neon",
+      "platform": "arm64"
+    }
   ]
 }
