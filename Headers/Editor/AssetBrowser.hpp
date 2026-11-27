@@ -561,9 +561,10 @@ private:
     int autocompleteReplaceBegin = 0; // byte offset accepting replaces from, up to the cursor
     int autocompleteSelectedIndex = 0;
     int autocompleteFirstVisible = 0;
+    bool autocompleteScrollToSelection = false; // set by the arrow keys
     bool autocompleteActive = false;
     bool autocompleteManual = false;
-    // Set by Escape: keeps the popup closed until the text or cursor
+    // Set by Escape and by accepting a suggestion: keeps the popup closed until the text or cursor
     // changes, so the next Enter/Tab reaches the editor instead.
     bool autocompleteSuppressed = false;
 

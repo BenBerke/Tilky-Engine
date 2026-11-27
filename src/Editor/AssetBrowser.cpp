@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -1052,6 +1053,12 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     // popup's exact position for THIS frame isn't known until after
     // Render(), since it follows the caret) - close enough in practice,
     // since the popup barely moves between two consecutive frames.
+    // The mouse wheel over the suggestion list scrolls the list. Owning the
+    // wheel keeps ImGui from also scrolling the code behind it; ImGui reads
+    // the owner at the start of the next frame and then drops it, so it has
+    // to be taken again every frame the mouse is over the list.
+    const ImGuiID wheelOwner = ImGui::GetID("##AutocompleteWheel");
+
     if (autocompleteActive) {
         const ImVec2 mousePos = io.MousePos;
         const bool mouseInsidePopup =
@@ -1060,6 +1067,13 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
 
         if (mouseInsidePopup) {
             scriptEditor.SetHandleMouseInputs(false);
+
+            ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, wheelOwner);
+            if (io.MouseWheel != 0.0f) {
+                const int rowsPerNotch = 3;
+                const int delta = static_cast<int>(std::lround(-io.MouseWheel * static_cast<float>(rowsPerNotch)));
+                autocompleteFirstVisible += delta != 0 ? delta : (io.MouseWheel > 0.0f ? -1 : 1);
+            }
 
             // Also keep this frame from re-deriving the suggestion list
             // below (see the UpdateAutocomplete() call further down): the
@@ -1178,6 +1192,7 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     if (autocompleteNavDelta != 0 && !autocompleteItems.empty()) {
         const int count = static_cast<int>(autocompleteItems.size());
         autocompleteSelectedIndex = (autocompleteSelectedIndex + autocompleteNavDelta + count) % count;
+        autocompleteScrollToSelection = true;
     }
 
     // Typing or moving the cursor ends an Escape dismissal.
@@ -1515,10 +1530,14 @@ void AssetBrowser::DrawAutocompletePopup() {
     const int count = static_cast<int>(autocompleteItems.size());
     const int rows = std::min(count, kAutocompleteRows);
 
-    // Keep the selection in view.
+    // Keep the selection in view after the arrow keys moved it (not after
+    // the mouse wheel scrolled the list away from it).
     autocompleteSelectedIndex = std::clamp(autocompleteSelectedIndex, 0, count - 1);
-    if (autocompleteSelectedIndex < autocompleteFirstVisible) autocompleteFirstVisible = autocompleteSelectedIndex;
-    if (autocompleteSelectedIndex >= autocompleteFirstVisible + rows) autocompleteFirstVisible = autocompleteSelectedIndex - rows + 1;
+    if (autocompleteScrollToSelection) {
+        if (autocompleteSelectedIndex < autocompleteFirstVisible) autocompleteFirstVisible = autocompleteSelectedIndex;
+        if (autocompleteSelectedIndex >= autocompleteFirstVisible + rows) autocompleteFirstVisible = autocompleteSelectedIndex - rows + 1;
+        autocompleteScrollToSelection = false;
+    }
     autocompleteFirstVisible = std::clamp(autocompleteFirstVisible, 0, std::max(0, count - rows));
 
     const ImGuiStyle& style = ImGui::GetStyle();
@@ -1679,6 +1698,9 @@ void AssetBrowser::AcceptAutocomplete(const int index) {
     scriptEditorDirty = true;
     autocompleteActive = false;
     autocompleteManual = false;
+    // Stay closed until the next keystroke or cursor move: rebuilding the
+    // list for the word just accepted would reopen it straight away.
+    autocompleteSuppressed = true;
 }
 
 void AssetBrowser::UpdateSignatureHelp() {
