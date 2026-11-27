@@ -52,6 +52,10 @@ jobs:
           set -euo pipefail
           git clone --depth 1 https://github.com/microsoft/vcpkg.git "${{ github.workspace }}/vcpkg"
           "${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          # Files GitHub sometimes fails to serve (504 on commit .patch URLs).
+          # vcpkg still checks each one against its port's SHA512.
+          mkdir -p "${{ github.workspace }}/vcpkg/downloads"
+          cp .github/vcpkg-downloads/* "${{ github.workspace }}/vcpkg/downloads/"
 
       - name: Configure CMake
         shell: bash
@@ -111,6 +115,10 @@ jobs:
           set -euo pipefail
           git clone --depth 1 https://github.com/microsoft/vcpkg.git "${{ github.workspace }}/vcpkg"
           "${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          # Files GitHub sometimes fails to serve (504 on commit .patch URLs).
+          # vcpkg still checks each one against its port's SHA512.
+          mkdir -p "${{ github.workspace }}/vcpkg/downloads"
+          cp .github/vcpkg-downloads/* "${{ github.workspace }}/vcpkg/downloads/"
 
       - name: Configure CMake
         shell: bash
