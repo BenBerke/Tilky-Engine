@@ -202,7 +202,7 @@ void LuaScriptSystem::RegisterMathBindings(sol::state &lua) {
 
     if (existing.get_type() == sol::type::table) math = existing.as<sol::table>();
     else {
-        if (existing.get_type() != sol::type::nil) spdlog::warn("Replacing Lua global 'mathT' because it is not a table");
+        if (existing.get_type() != sol::type::lua_nil) spdlog::warn("Replacing Lua global 'mathT' because it is not a table");
 
         math = lua.create_named_table("mathT");
     }

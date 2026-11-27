@@ -408,7 +408,7 @@ namespace {
     ) {
         const sol::object value = environment[functionName];
 
-        if (value.get_type() == sol::type::nil) return {};
+        if (value.get_type() == sol::type::lua_nil) return {};
 
         if (value.get_type() != sol::type::function) {
             spdlog::warn(

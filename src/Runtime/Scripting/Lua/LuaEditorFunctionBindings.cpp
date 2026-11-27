@@ -33,7 +33,7 @@ namespace {
             return existing.as<sol::table>();
         }
 
-        if (existing.get_type() != sol::type::nil) {
+        if (existing.get_type() != sol::type::lua_nil) {
             spdlog::warn("Replacing Lua global '{}' because it is not a table", name);
         }
 
