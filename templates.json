@@ -5,7 +5,7 @@
       "id": "fps-kit",
       "name": "Classic FPS Kit",
       "description": "Make a Doom-style game by dragging prefabs onto a map: 16 enemies, 9 weapons, pickups, keys, switches, menus and a HUD, with four example levels explained in comments. Art and sounds from Freedoom (BSD licence), music from OpenGameArt (CC0).",
-      "thumbnailUrl": "https://raw.githubusercontent.com/BenBerke/Tilky-Engine/85710d7ea80de8ba4ccafc354432673c2f63c52a/Templates/fps-kit/thumbnail.png",
+      "thumbnailUrl": "https://raw.githubusercontent.com/BenBerke/Tilky-Engine/aa7ed69d3b5a8e22346b2c1ef0abb3a467f57462/Templates/fps-kit/thumbnail.png",
       "builds": [
         {
           "version": "59abc2b74977",
@@ -14,6 +14,14 @@
           "downloadUrl": "https://github.com/BenBerke/Tilky-Engine/releases/download/templates/fps-kit-59abc2b74977.zip",
           "size": 17998004,
           "sha256": "f8d57e57a46cd5bc3e8b933ae5c10666f767c68e8fc4ba185d10866675e6aed9"
+        },
+        {
+          "version": "5651b21cd002",
+          "minEngineVersion": "2.1.0",
+          "maxEngineVersion": "",
+          "downloadUrl": "https://github.com/BenBerke/Tilky-Engine/releases/download/templates/fps-kit-5651b21cd002.zip",
+          "size": 18020158,
+          "sha256": "9c6b028ad77dbe5d66fd8ad83e16bca9aa751cd6c443fcda91584ecb578651f5"
         }
       ]
     }
