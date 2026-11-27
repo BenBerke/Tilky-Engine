@@ -8,8 +8,11 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 #include <TextEditor.h>
+
+#include "Headers/Editor/ScriptIntellisense.hpp"
 
 #include "Headers/Editor/FlipbookEditor.hpp"
 #include "Headers/Editor/PrefabEditor.hpp"
@@ -517,27 +520,49 @@ private:
     // the Lua-only editor tools.
     bool openFileIsLua = true;
 
-    // Autocomplete for the script editor - see DrawTextEditorWindow() in
-    // AssetBrowser.cpp. Suggestions come from Lua keywords/lifecycle
-    // function names plus every type/property/method name
-    // LuaBindingMetadata knows about (see LuaBindingMetadata.hpp), so the
-    // same registry that will eventually drive generated LuaLS stubs also
-    // drives this in-editor list - one source of truth.
-    void UpdateAutocomplete();
+    // The script editor's language smarts (see ScriptIntellisense.hpp):
+    // coloring, autocomplete, parameter hints and syntax-error markers, all
+    // from one analysis of the open script, redone whenever its text changes.
+    const ScriptIntellisense::Analysis& CurrentScriptAnalysis();
+    [[nodiscard]] const ScriptIntellisense::Context& ScriptContext();
+    // The cursor as a byte offset into CurrentScriptAnalysis().text, and back.
+    int ScriptCursorOffset();
+    TextEditor::Coordinates ScriptCoordinatesOf(int offset);
+    ScriptIntellisense::Analysis scriptAnalysis;
+    std::vector<int> scriptLineStarts;
+    unsigned analyzedTextVersion = 0;
+    bool scriptAnalysisValid = false;
+
+    // Other scripts, for GetScript("Name") members, and the project's names
+    // for string arguments (tags, scripts, levels, sounds). Rescanned at most
+    // every few seconds.
+    struct OtherScript {
+        std::filesystem::file_time_type writeTime;
+        ScriptIntellisense::Analysis analysis;
+    };
+    const ScriptIntellisense::Analysis* FindOtherScript(const std::string& scriptName);
+    std::vector<std::string> ProjectNames(ScriptIntellisense::StringKind kind);
+    void RescanProjectFiles();
+    std::unordered_map<std::string, std::filesystem::path> projectScriptPaths; // by file name without extension
+    std::vector<std::string> projectLevelNames;
+    std::vector<std::string> projectSoundNames;
+    double projectFilesScanTime = -1.0;
+    std::unordered_map<std::string, OtherScript> otherScripts; // by path
+    ScriptIntellisense::Context scriptContext;
+    bool scriptContextReady = false;
+
+    // Autocomplete - see DrawTextEditorWindow(). `manual` is Ctrl+Space,
+    // which keeps the list up even with fewer than two characters typed.
+    void UpdateAutocomplete(bool manual);
     void DrawAutocompletePopup();
     void AcceptAutocomplete(int index);
 
-    // The open script's own declarations (`public Entity target`), so their
-    // names are suggested and `target.` completes Entity members. Recompiled
-    // only when the text changed since the last lookup.
-    const std::vector<LuaScriptCompiler::DeclarationInfo>& OpenScriptDeclarations();
-    std::string declarationsSource;
-    std::vector<LuaScriptCompiler::DeclarationInfo> declarations;
-
-    std::vector<std::string> autocompleteMatches;
-    std::string autocompleteWordStart;
+    std::vector<ScriptIntellisense::CompletionItem> autocompleteItems;
+    int autocompleteReplaceBegin = 0; // byte offset accepting replaces from, up to the cursor
     int autocompleteSelectedIndex = 0;
+    int autocompleteFirstVisible = 0;
     bool autocompleteActive = false;
+    bool autocompleteManual = false;
     // Set by Escape: keeps the popup closed until the text or cursor
     // changes, so the next Enter/Tab reaches the editor instead.
     bool autocompleteSuppressed = false;
@@ -551,6 +576,19 @@ private:
     // in practice it barely moves between two consecutive frames of typing.
     ImVec2 autocompletePopupMin{};
     ImVec2 autocompletePopupMax{};
+
+    // Parameter hints: open on '(' or ',' and with Ctrl+Shift+Space, close
+    // when the cursor leaves the call's parentheses or on Escape.
+    void UpdateSignatureHelp();
+    void DrawSignatureHelp();
+    std::optional<ScriptIntellisense::SignatureHelp> signatureHelp;
+    bool signatureHelpOpen = false;
+
+    // Syntax errors, checked once typing pauses (see kSyntaxCheckDelay).
+    void CheckScriptSyntax();
+    std::vector<ScriptIntellisense::SyntaxError> syntaxErrors;
+    double syntaxCheckDueTime = -1.0;
+    unsigned syntaxScheduledVersion = 0;
 
     // IDE QoL commands - see DrawTextEditorWindow() in AssetBrowser.cpp for
     // the keybindings that trigger these (Ctrl+/, Ctrl+D, ...).

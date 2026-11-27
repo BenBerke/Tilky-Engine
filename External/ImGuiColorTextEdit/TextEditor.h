@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <map>
+#include <functional>
 #include <regex>
 #include "imgui.h"
 
@@ -36,6 +37,12 @@ public:
 		CurrentLineFill,
 		CurrentLineFillInactive,
 		CurrentLineEdge,
+		// Tilky: semantic colors set by an external colorizer (see
+		// SetExternalColorizer) for names a script itself defines.
+		Local,
+		Parameter,
+		Function,
+		Field,
 		Max
 	};
 
@@ -192,6 +199,23 @@ public:
 	void SetPalette(const Palette& aValue);
 
 	void SetErrorMarkers(const ErrorMarkers& aMarkers) { mErrorMarkers = aMarkers; }
+	const ErrorMarkers& GetErrorMarkers() const { return mErrorMarkers; }
+
+	// Tilky: host-driven coloring. While set, the built-in regex and
+	// comment colorizer is skipped; instead `aColorizer` is called from
+	// inside Render(), before anything is drawn, whenever the text changed
+	// since the last call (and once after SetText()/SetLanguageDefinition()).
+	// It is expected to call SetColors(). Pass an empty function to go back
+	// to the built-in colorizer.
+	void SetExternalColorizer(std::function<void()> aColorizer);
+	// One palette index per byte of GetText() (the newlines' entries are
+	// ignored). Ignored if the size doesn't match the current text.
+	void SetColors(const std::vector<PaletteIndex>& aColors);
+	// Tilky: changes on every change to the text (edits, undo, SetText).
+	unsigned GetTextVersion() const { return mTextVersion; }
+	// The byte index in its line of a (tab-expanded) coordinate, and back.
+	int GetCharacterIndexOf(const Coordinates& aCoords) const { return GetCharacterIndex(aCoords); }
+	Coordinates CoordinatesOfCharacter(int aLine, int aIndex) const { return Coordinates(aLine, GetCharacterColumn(aLine, aIndex)); }
 	void SetBreakpoints(const Breakpoints& aMarkers) { mBreakpoints = aMarkers; }
 
 	void Render(const char* aTitle, const ImVec2& aSize = ImVec2(), bool aBorder = false);
@@ -387,6 +411,8 @@ private:
 	RegexList mRegexList;
 
 	bool mCheckComments;
+	std::function<void()> mExternalColorizer;
+	unsigned mTextVersion = 0;
 	Breakpoints mBreakpoints;
 	ErrorMarkers mErrorMarkers;
 	ImVec2 mCharAdvance;

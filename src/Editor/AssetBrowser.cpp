@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <string_view>
 #include <system_error>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -30,6 +32,7 @@
 #include "Headers/Runtime/LevelSystem.hpp"
 #include "Headers/Runtime/Renderer/ModelLoader.hpp"
 #include "Headers/Runtime/Scripting/Lua/LuaBindingMetadata.hpp"
+#include "Headers/TagRegistry.hpp"
 
 namespace fs = std::filesystem;
 
@@ -71,6 +74,9 @@ namespace {
 
         static const TextEditor::LanguageDefinition definition = [] {
             TextEditor::LanguageDefinition lua = TextEditor::LanguageDefinition::Lua();
+            // Coloring comes from ScriptIntellisense (see RequestOpenScript),
+            // so the regexes would only cost time to compile.
+            lua.mTokenRegexStrings.clear();
 
             for (const std::string& keyword : LuaScriptCompiler::DeclarationKeywordNames())
                 lua.mKeywords.insert(keyword);
@@ -107,44 +113,6 @@ namespace {
         return definition;
     }
 
-    // Every identifier the script editor's autocomplete can suggest: Lua
-    // keywords, Tilky's declaration keywords/field types/attributes (see
-    // LuaScriptCompiler), and every callback, script global and
-    // type/property/method/enum value name registered with
-    // LuaBindingMetadata - the same data the LuaLS stub is generated from.
-    // Built once, lazily, on first use.
-    const std::vector<std::string>& AutocompleteCandidates() {
-        LevelSystem::EnsureScriptingInitialized();
-
-        static const std::vector<std::string> candidates = [] {
-            std::vector<std::string> list = LuaBindingMetadata::LuaKeywordNames();
-
-            for (const LuaBindingMetadata::CallbackDoc& callback : LuaBindingMetadata::AllCallbacks()) list.push_back(callback.name);
-            for (const LuaBindingMetadata::PropertyDoc& global : LuaBindingMetadata::AllScriptGlobals()) list.push_back(global.name);
-            for (const LuaBindingMetadata::MethodDoc& function : LuaBindingMetadata::AllScriptFunctions()) list.push_back(function.name);
-
-            for (std::vector<std::string> names : {LuaScriptCompiler::DeclarationKeywordNames(),
-                                                   LuaScriptCompiler::FieldTypeNames(),
-                                                   LuaScriptCompiler::FieldAttributeNames()})
-                list.insert(list.end(), names.begin(), names.end());
-
-            for (const LuaBindingMetadata::TypeDoc& type : LuaBindingMetadata::AllTypes()) {
-                list.push_back(type.name);
-
-                for (const LuaBindingMetadata::PropertyDoc& prop : type.properties) list.push_back(prop.name);
-                for (const LuaBindingMetadata::MethodDoc& method : type.methods) list.push_back(method.name);
-                for (const LuaBindingMetadata::EnumValueDoc& value : type.enumValues) list.push_back(value.name);
-            }
-
-            std::ranges::sort(list);
-            list.erase(std::ranges::unique(list).begin(), list.end());
-
-            return list;
-        }();
-
-        return candidates;
-    }
-
     std::string LowerCopy(std::string text) {
         std::ranges::transform(text, text.begin(), [](const unsigned char c) {
             return static_cast<char>(std::tolower(c));
@@ -157,174 +125,6 @@ namespace {
             return static_cast<char>(std::toupper(c));
         });
         return text;
-    }
-
-    // Case-insensitive: does `candidate` start with `prefixLower` (already
-    // lowercased)? Shared by both of UpdateAutocomplete()'s suggestion
-    // sources - the flat keyword/global list, and a resolved type's
-    // property/method names in its member-access branch.
-    bool StartsWithCaseInsensitive(const std::string& candidate, const std::string& prefixLower) {
-        if (candidate.size() < prefixLower.size()) return false;
-
-        return std::equal(
-            prefixLower.begin(), prefixLower.end(), candidate.begin(),
-            [](const char a, const char b) { return a == static_cast<char>(std::tolower(static_cast<unsigned char>(b))); }
-        );
-    }
-
-    // Every registered type, indexed by the LOWERCASED form of its
-    // Lua-visible name (e.g.
-    // "mathT", "Entity", "Transform") - what member-access completion
-    // (see ResolveMemberChainType()) resolves a dotted chain through.
-    // Pointers into LuaBindingMetadata::AllTypes()'s backing vector are
-    // safe to cache here because every RegisterType() call happens inside
-    // LuaScriptSystem::Initialize(), which EnsureScriptingInitialized()
-    // runs at most once (guarded by scriptingInitialized in
-    // LevelSystem.cpp) - by the time this function's own one-time
-    // initializer runs, that vector has permanently stopped growing, so it
-    // never reallocates out from under these pointers.
-    const std::unordered_map<std::string, const LuaBindingMetadata::TypeDoc*>& TypeDocsByName() {
-        LevelSystem::EnsureScriptingInitialized();
-
-        static const std::unordered_map<std::string, const LuaBindingMetadata::TypeDoc*> byName = [] {
-            std::unordered_map<std::string, const LuaBindingMetadata::TypeDoc*> map;
-            for (const LuaBindingMetadata::TypeDoc& type : LuaBindingMetadata::AllTypes()) map[LowerCopy(type.name)] = &type;
-            return map;
-        }();
-
-        return byName;
-    }
-
-    // The handful of global identifiers whose spelling doesn't match their
-    // registered TypeDoc name outright (everything else - "Tmath",
-    // "Input", "Game", "Debug", "GameTime", "entity"/"Entity",
-    // "sector"/"Sector" - already matches its TypeDoc name case-insensitively,
-    // so only genuine mismatches need an entry here). Keyed by the lowercased
-    // global name, same as TypeDocsByName() - the whole chain resolution is
-    // case-insensitive (see ResolveMemberChainType()), so this lookup has to
-    // be too. Empty today - kept so a future mismatch has somewhere to go.
-    const std::unordered_map<std::string, std::string>& GlobalAliasToTypeName() {
-        static const std::unordered_map<std::string, std::string> aliases = {};
-        return aliases;
-    }
-
-    // Strips the LuaLS-style nullable ("Transform?") and array ("Behaviour[]")
-    // suffixes LuaBindingMetadata's luaType/returnType strings sometimes
-    // carry, down to a bare type name that can be looked up in
-    // TypeDocsByName(). Primitive types ("number", "string", "boolean",
-    // "integer") pass through unchanged and simply won't be found there -
-    // that's the correct outcome (nothing further to suggest).
-    std::string StripLuaTypeAnnotations(std::string type) {
-        if (!type.empty() && type.back() == '?') type.pop_back();
-        if (type.size() >= 2 && type.compare(type.size() - 2, 2, "[]") == 0) type.resize(type.size() - 2);
-        return type;
-    }
-
-    // Splits the plain identifier-dot chain immediately before `dotIndex`
-    // (the index of the "." right before the word currently being typed)
-    // into its dot-separated segments, outermost first - e.g. for
-    // "entity.transform." with `dotIndex` pointing at the last ".",
-    // returns {"entity", "transform"}. Returns an empty vector if the
-    // text before the dot isn't a plain identifier chain (a call, an index
-    // expression, a numeric literal, or the very start of the line) -
-    // deliberately conservative, since this hand-rolled resolver only
-    // understands plain member access, not arbitrary expressions.
-    std::vector<std::string> SplitMemberChain(const std::string& line, int dotIndex) {
-        std::vector<std::string> segments;
-        int dot = dotIndex;
-
-        while (dot >= 0 && line[dot] == '.') {
-            const int segEnd = dot;
-            int segStart = segEnd;
-
-            while (segStart > 0 && (std::isalnum(static_cast<unsigned char>(line[segStart - 1])) != 0 || line[segStart - 1] == '_'))
-                --segStart;
-
-            if (segStart == segEnd) return {}; // "." with nothing identifier-like before it
-
-            const std::string segment = line.substr(segStart, segEnd - segStart);
-            if (std::isdigit(static_cast<unsigned char>(segment.front())) != 0) return {}; // e.g. "3."
-
-            segments.push_back(segment);
-
-            dot = segStart - 1; // the character right before this segment, if any
-            if (dot < 0 || line[dot] != '.') break; // chain ends here
-        }
-
-        std::ranges::reverse(segments);
-        return segments;
-    }
-
-    // Resolves a chain from SplitMemberChain() (e.g. {"entity",
-    // "transform"}) to the TypeDoc whose properties/methods should be
-    // suggested - walking each hop via the previous type's matching
-    // property's luaType or method's returnType. Returns nullptr if the
-    // base identifier isn't a known global/type, an intermediate member
-    // doesn't exist, or an intermediate member's type isn't itself
-    // registered (a primitive, or a type LuaBindingMetadata doesn't cover
-    // yet) - any of which means this resolver has nothing useful to offer.
-    // Every name comparison here is case-insensitive (matching
-    // UpdateAutocomplete()'s own case-insensitive prefix matching) -
-    // without that, e.g. typing "mathT." would fail to resolve at all
-    // against the registered type name "mathT", since the base lookup
-    // used to be an exact-case match.
-    //
-    // A chain can also start at one of the script's own declarations
-    // (`public Entity target` makes `target.` resolve as Entity).
-    const LuaBindingMetadata::TypeDoc* ResolveMemberChainType(
-        const std::vector<std::string>& chain,
-        const std::vector<LuaScriptCompiler::DeclarationInfo>& declarations
-    ) {
-        if (chain.empty()) return nullptr;
-
-        const auto& typesByName = TypeDocsByName();
-        const auto& aliases = GlobalAliasToTypeName();
-
-        const std::string baseLower = LowerCopy(chain.front());
-        const auto aliasIt = aliases.find(baseLower);
-        std::string baseTypeName = aliasIt != aliases.end() ? aliasIt->second : chain.front();
-
-        const auto declaration = std::ranges::find(declarations, chain.front(), &LuaScriptCompiler::DeclarationInfo::name);
-        if (declaration != declarations.end()) {
-            if (declaration->luaType.empty()) return nullptr;
-            baseTypeName = declaration->luaType;
-        }
-
-        const auto baseIt = typesByName.find(LowerCopy(baseTypeName));
-        if (baseIt == typesByName.end()) return nullptr;
-
-        const LuaBindingMetadata::TypeDoc* current = baseIt->second;
-
-        for (std::size_t i = 1; i < chain.size(); ++i) {
-            const std::string memberLower = LowerCopy(chain[i]);
-            std::string nextTypeName;
-            bool found = false;
-
-            for (const LuaBindingMetadata::PropertyDoc& prop : current->properties) {
-                if (LowerCopy(prop.name) != memberLower) continue;
-                nextTypeName = StripLuaTypeAnnotations(prop.luaType);
-                found = true;
-                break;
-            }
-
-            if (!found) {
-                for (const LuaBindingMetadata::MethodDoc& method : current->methods) {
-                    if (LowerCopy(method.name) != memberLower) continue;
-                    nextTypeName = StripLuaTypeAnnotations(method.returnType);
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found || nextTypeName.empty()) return nullptr;
-
-            const auto nextIt = typesByName.find(LowerCopy(nextTypeName));
-            if (nextIt == typesByName.end()) return nullptr;
-
-            current = nextIt->second;
-        }
-
-        return current;
     }
 
     bool IsHidden(const fs::path& path) {
@@ -1018,6 +818,58 @@ end
 // ============================================================================
 // Text Editor
 // ============================================================================
+namespace {
+    // How long typing has to pause before the script is checked for errors.
+    constexpr double kSyntaxCheckDelay = 0.5;
+    // How often the project's files are rescanned for script/level/sound names.
+    constexpr double kProjectScanInterval = 3.0;
+    constexpr int kAutocompleteRows = 12;
+
+    TextEditor::PaletteIndex PaletteIndexOf(const ScriptIntellisense::ColorRole role) {
+        using R = ScriptIntellisense::ColorRole;
+        using P = TextEditor::PaletteIndex;
+        switch (role) {
+            case R::Keyword: return P::Keyword;
+            case R::Number: return P::Number;
+            case R::String: return P::String;
+            case R::Punctuation: return P::Punctuation;
+            case R::Identifier: return P::Identifier;
+            case R::KnownIdentifier: return P::KnownIdentifier;
+            case R::Comment: return P::Comment;
+            case R::MultiLineComment: return P::MultiLineComment;
+            case R::Local: return P::Local;
+            case R::Parameter: return P::Parameter;
+            case R::Function: return P::Function;
+            case R::Field: return P::Field;
+            default: return P::Default;
+        }
+    }
+
+    // The short label beside a suggestion.
+    const char* ItemKindLabel(const ScriptIntellisense::ItemKind kind) {
+        using K = ScriptIntellisense::ItemKind;
+        switch (kind) {
+            case K::Keyword: return "keyword";
+            case K::Local: return "local";
+            case K::Parameter: return "param";
+            case K::Function: return "function";
+            case K::Field: return "field";
+            case K::Type: return "type";
+            case K::Global: return "global";
+            case K::EngineFunction: return "function";
+            case K::Callback: return "callback";
+            case K::Property: return "property";
+            case K::Method: return "method";
+            case K::EnumValue: return "enum";
+            case K::Tag: return "tag";
+            case K::Script: return "script";
+            case K::Level: return "level";
+            case K::Sound: return "sound";
+            default: return "";
+        }
+    }
+}
+
 bool AssetBrowser::IsPlainTextFile(const std::filesystem::path& path) {
     const std::string extension = LowerCopy(path.extension().string());
     return extension == ".txt" || extension == ".md" || extension == ".json";
@@ -1049,19 +901,34 @@ void AssetBrowser::RequestOpenScript(const std::filesystem::path& absolutePath) 
     };
 
     // One editor serves both kinds, so set the colorizer every time a file
-    // is opened: Lua highlighting for scripts, none for plain text.
-    if (isLua) scriptEditor.SetLanguageDefinition(ScriptLanguageDefinition());
-    else scriptEditor.SetLanguageDefinition(TextEditor::LanguageDefinition());
+    // is opened: scripts are colored from their ScriptIntellisense analysis
+    // (the language definition only supplies the hover tooltips), plain text
+    // not at all.
+    if (isLua) {
+        scriptEditor.SetLanguageDefinition(ScriptLanguageDefinition());
+        scriptEditor.SetExternalColorizer([this] { CurrentScriptAnalysis(); });
+    } else {
+        scriptEditor.SetLanguageDefinition(TextEditor::LanguageDefinition());
+        scriptEditor.SetExternalColorizer({});
+    }
     scriptEditor.SetColorizerEnable(isLua);
-
-    scriptEditor.SetText(contents);
 
     openFileIsLua = isLua;
     openScriptPath = absolutePath;
+    scriptAnalysisValid = false;
+
+    scriptEditor.SetText(contents);
+    scriptEditor.SetErrorMarkers({});
+
     scriptEditorOpen = true;
     scriptEditorDirty = false;
     autocompleteActive = false;
+    autocompleteManual = false;
     autocompleteSuppressed = false;
+    signatureHelpOpen = false;
+    syntaxErrors.clear();
+    syntaxScheduledVersion = scriptEditor.GetTextVersion();
+    syntaxCheckDueTime = isLua ? 0.0 : -1.0; // check a script right away
     lastOperationError.clear();
 }
 
@@ -1144,6 +1011,21 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
     bool autocompleteDismiss = false;
     int autocompleteNavDelta = 0;
     bool autocompleteClickPending = false;
+
+    // Ctrl+Space opens the suggestion list, Ctrl+Shift+Space the parameter
+    // hints. The space itself must not reach the editor.
+    bool manualSuggestions = false;
+    bool manualHints = false;
+
+    if (openFileIsLua && windowFocused && io.KeyCtrl && !io.KeyAlt) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Space, false)) (io.KeyShift ? manualHints : manualSuggestions) = true;
+        // The space can arrive a frame apart from the key press.
+        for (int i = io.InputQueueCharacters.Size - 1; i >= 0; --i)
+            if (io.InputQueueCharacters[i] == ' ') io.InputQueueCharacters.erase(io.InputQueueCharacters.Data + i);
+    }
+
+    // Escape closes the suggestion list first, then the parameter hints.
+    if (!autocompleteActive && signatureHelpOpen && windowFocused && ImGui::IsKeyPressed(ImGuiKey_Escape)) signatureHelpOpen = false;
 
     if (autocompleteActive) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) autocompleteDismiss = true;
@@ -1293,8 +1175,8 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
         scriptEditorDirty = true;
     }
 
-    if (autocompleteNavDelta != 0 && !autocompleteMatches.empty()) {
-        const int count = static_cast<int>(autocompleteMatches.size());
+    if (autocompleteNavDelta != 0 && !autocompleteItems.empty()) {
+        const int count = static_cast<int>(autocompleteItems.size());
         autocompleteSelectedIndex = (autocompleteSelectedIndex + autocompleteNavDelta + count) % count;
     }
 
@@ -1303,9 +1185,14 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
 
     if (autocompleteDismiss) {
         autocompleteActive = false;
+        autocompleteManual = false;
         autocompleteSuppressed = true;
-    } else if (autocompleteAccept && !autocompleteMatches.empty()) {
+    } else if (autocompleteAccept && !autocompleteItems.empty()) {
         AcceptAutocomplete(autocompleteSelectedIndex);
+    } else if (manualSuggestions) {
+        autocompleteSuppressed = false;
+        UpdateAutocomplete(true);
+        autocompleteManual = autocompleteActive;
     } else if (openFileIsLua && autocompleteNavDelta == 0 && !autocompleteClickPending &&
                ((!autocompleteActive && !autocompleteSuppressed) || scriptEditor.IsTextChanged() || scriptEditor.IsCursorPositionChanged())) {
         // Only re-derive suggestions from the buffer when something that
@@ -1320,10 +1207,36 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
         // sitting still over a suggestion, ...) undid the selection change
         // applied two lines above almost as soon as it happened, which is
         // why arrow-key navigation looked like it did nothing.
-        UpdateAutocomplete();
+        UpdateAutocomplete(autocompleteManual);
+        if (!autocompleteActive) autocompleteManual = false;
+    }
+
+    // Parameter hints open on a typed '(' or ',' (or Ctrl+Shift+Space) and
+    // follow the cursor until it leaves the call.
+    if (openFileIsLua) {
+        const bool typedOpener = windowFocused && std::ranges::any_of(typedChars, [](const ImWchar c) { return c == '(' || c == ','; });
+        if (manualHints || typedOpener || signatureHelpOpen) {
+            UpdateSignatureHelp();
+            signatureHelpOpen = signatureHelp.has_value();
+        }
+    } else {
+        signatureHelpOpen = false;
     }
 
     if (autocompleteActive) DrawAutocompletePopup();
+    if (signatureHelpOpen) DrawSignatureHelp();
+
+    // Syntax check once typing has paused for a moment.
+    if (openFileIsLua) {
+        if (scriptEditor.GetTextVersion() != syntaxScheduledVersion) {
+            syntaxScheduledVersion = scriptEditor.GetTextVersion();
+            syntaxCheckDueTime = ImGui::GetTime() + kSyntaxCheckDelay;
+        }
+        if (syntaxCheckDueTime >= 0.0 && ImGui::GetTime() >= syntaxCheckDueTime) {
+            syntaxCheckDueTime = -1.0;
+            CheckScriptSyntax();
+        }
+    }
 
     if (windowFocused && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S)) saveRequested = true;
 
@@ -1340,14 +1253,28 @@ void AssetBrowser::DrawTextEditorWindow(ImFont* scriptEditorFont) {
         scriptEditorDirty ? "unsaved changes" : "saved"
     );
 
+    if (openFileIsLua && !syntaxErrors.empty()) {
+        ImGui::SameLine();
+        char error[512];
+        std::snprintf(error, sizeof(error), Localisation::Get("editor.script_editor.error_status").c_str(),
+                      syntaxErrors.front().line, syntaxErrors.front().message.c_str());
+        std::string text = error;
+        if (syntaxErrors.size() > 1) {
+            std::snprintf(error, sizeof(error), Localisation::Get("editor.script_editor.error_more").c_str(), static_cast<int>(syntaxErrors.size()) - 1);
+            text += " ";
+            text += error;
+        }
+        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "|  %s", text.c_str());
+    }
+
     ImGui::End();
 }
 
 std::span<const AssetBrowser::ScriptEditorColorInfo> AssetBrowser::ScriptEditorColors() {
     using PI = TextEditor::PaletteIndex;
 
-    // Only the slots Lua and plain text actually use (no preprocessor,
-    // breakpoints or error markers).
+    // Only the slots Lua and plain text actually use (no preprocessor or
+    // breakpoints).
     static constexpr ScriptEditorColorInfo kColors[] = {
         {PI::Default, "default", "editor.script_editor.color.default"},
         {PI::Keyword, "keyword", "editor.script_editor.color.keyword"},
@@ -1365,6 +1292,11 @@ std::span<const AssetBrowser::ScriptEditorColorInfo> AssetBrowser::ScriptEditorC
         {PI::CurrentLineFill, "currentLineFill", "editor.script_editor.color.current_line_fill"},
         {PI::CurrentLineFillInactive, "currentLineFillInactive", "editor.script_editor.color.current_line_fill_inactive"},
         {PI::CurrentLineEdge, "currentLineEdge", "editor.script_editor.color.current_line_edge"},
+        {PI::ErrorMarker, "errorMarker", "editor.script_editor.color.error_marker"},
+        {PI::Local, "local", "editor.script_editor.color.local"},
+        {PI::Parameter, "parameter", "editor.script_editor.color.parameter"},
+        {PI::Function, "function", "editor.script_editor.color.function"},
+        {PI::Field, "field", "editor.script_editor.color.field"},
     };
 
     return kColors;
@@ -1437,136 +1369,178 @@ void AssetBrowser::DrawColorsMenu() {
     ImGui::EndMenu();
 }
 
-const std::vector<LuaScriptCompiler::DeclarationInfo>& AssetBrowser::OpenScriptDeclarations() {
-    std::string text = scriptEditor.GetText();
+const ScriptIntellisense::Analysis& AssetBrowser::CurrentScriptAnalysis() {
+    const unsigned version = scriptEditor.GetTextVersion();
+    if (scriptAnalysisValid && version == analyzedTextVersion) return scriptAnalysis;
 
-    if (text != declarationsSource) {
-        // Declarations that fail to compile are left out; the rest still help.
-        declarations = LuaScriptCompiler::Compile(text).declarations;
-        declarationsSource = std::move(text);
-    }
+    LevelSystem::EnsureScriptingInitialized();
 
-    return declarations;
+    scriptAnalysis = ScriptIntellisense::Analyze(scriptEditor.GetText(), ScriptContext());
+    analyzedTextVersion = version;
+    scriptAnalysisValid = true;
+
+    scriptLineStarts.assign(1, 0);
+    for (int i = 0; i < static_cast<int>(scriptAnalysis.text.size()); ++i)
+        if (scriptAnalysis.text[i] == '\n') scriptLineStarts.push_back(i + 1);
+
+    std::vector<TextEditor::PaletteIndex> colors(scriptAnalysis.colors.size());
+    std::ranges::transform(scriptAnalysis.colors, colors.begin(), PaletteIndexOf);
+    scriptEditor.SetColors(colors);
+
+    return scriptAnalysis;
 }
 
-void AssetBrowser::UpdateAutocomplete() {
+const ScriptIntellisense::Context& AssetBrowser::ScriptContext() {
+    if (!scriptContextReady) {
+        scriptContext.findScript = [this](const std::string& name) { return FindOtherScript(name); };
+        scriptContext.projectNames = [this](const ScriptIntellisense::StringKind kind) { return ProjectNames(kind); };
+        scriptContextReady = true;
+    }
+    return scriptContext;
+}
+
+int AssetBrowser::ScriptCursorOffset() {
+    const ScriptIntellisense::Analysis& analysis = CurrentScriptAnalysis();
+    const TextEditor::Coordinates cursor = scriptEditor.GetCursorPosition();
+    if (cursor.mLine < 0 || cursor.mLine >= static_cast<int>(scriptLineStarts.size())) return static_cast<int>(analysis.text.size());
+
+    const int index = std::max(0, scriptEditor.GetCharacterIndexOf(cursor));
+    return std::min(scriptLineStarts[cursor.mLine] + index, static_cast<int>(analysis.text.size()));
+}
+
+TextEditor::Coordinates AssetBrowser::ScriptCoordinatesOf(const int offset) {
+    CurrentScriptAnalysis();
+    const auto it = std::ranges::upper_bound(scriptLineStarts, offset);
+    const int line = std::max(0, static_cast<int>(it - scriptLineStarts.begin()) - 1);
+    return scriptEditor.CoordinatesOfCharacter(line, offset - scriptLineStarts[line]);
+}
+
+void AssetBrowser::RescanProjectFiles() {
+    const double now = ImGui::GetTime();
+    if (projectFilesScanTime >= 0.0 && now - projectFilesScanTime < kProjectScanInterval) return;
+    projectFilesScanTime = now;
+
+    projectScriptPaths.clear();
+    projectLevelNames.clear();
+    projectSoundNames.clear();
+
+    const fs::path assets = ProjectManager::GetAssetsPath();
+    std::vector<fs::path> files;
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(assets, ec), end; !ec && it != end; it.increment(ec))
+        if (it->is_regular_file(ec)) files.push_back(it->path());
+    std::ranges::sort(files);
+
+    for (const fs::path& file : files) {
+        const std::string extension = LowerCopy(file.extension().string());
+        if (extension == ".lua") projectScriptPaths.emplace(file.stem().string(), file);
+        else if (extension == kLevelFileExtension) projectLevelNames.push_back(file.stem().string());
+        else {
+            const std::string reference = RelativeOrFallback(file, assets).generic_string();
+            if (AssetSets::IsSoundFile(reference)) projectSoundNames.push_back(reference);
+        }
+    }
+}
+
+std::vector<std::string> AssetBrowser::ProjectNames(const ScriptIntellisense::StringKind kind) {
+    using K = ScriptIntellisense::StringKind;
+    std::vector<std::string> names;
+
+    if (kind == K::Tag) {
+        for (const auto& [name, id] : TagRegistry::GetAllOfKind(TagRegistry::TagKind::NORMAL)) names.push_back(name);
+        return names;
+    }
+
+    RescanProjectFiles();
+    switch (kind) {
+        case K::Script:
+            for (const auto& [name, path] : projectScriptPaths) names.push_back(name);
+            break;
+        case K::Level: names = projectLevelNames; break;
+        case K::Sound: names = projectSoundNames; break;
+        default: break;
+    }
+    return names;
+}
+
+const ScriptIntellisense::Analysis* AssetBrowser::FindOtherScript(const std::string& scriptName) {
+    RescanProjectFiles();
+
+    const auto pathIt = projectScriptPaths.find(scriptName);
+    if (pathIt == projectScriptPaths.end()) return nullptr;
+    const fs::path& path = pathIt->second;
+
+    // The open script itself: its live text, not what was last saved.
+    if (path == openScriptPath && scriptAnalysisValid) return &scriptAnalysis;
+
+    std::error_code ec;
+    const fs::file_time_type writeTime = fs::last_write_time(path, ec);
+    if (ec) return nullptr;
+
+    const std::string key = path.generic_string();
+    if (const auto cached = otherScripts.find(key); cached != otherScripts.end() && cached->second.writeTime == writeTime)
+        return &cached->second.analysis;
+
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) return nullptr;
+    std::string text{std::istreambuf_iterator<char>{file}, std::istreambuf_iterator<char>{}};
+
+    OtherScript& entry = otherScripts[key];
+    entry.writeTime = writeTime;
+    entry.analysis = ScriptIntellisense::Analyze(std::move(text));
+    return &entry.analysis;
+}
+
+void AssetBrowser::UpdateAutocomplete(const bool manual) {
     if (!scriptEditorOpen || scriptEditor.IsReadOnly() ||
         !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
         autocompleteActive = false;
         return;
     }
 
-    const TextEditor::Coordinates cursor = scriptEditor.GetCursorPosition();
-    const std::string line = scriptEditor.GetCurrentLineText();
+    const ScriptIntellisense::Analysis& analysis = CurrentScriptAnalysis();
+    ScriptIntellisense::Completion completion = ScriptIntellisense::Complete(analysis, ScriptCursorOffset(), manual, ScriptContext());
 
-    // Coordinates::mColumn is a tab-expanded "visual" column; treating it as
-    // a raw byte index into `line` is only exact for tab-free lines, which
-    // is the common case for Lua scripts (space indentation). A tab-indented
-    // line can shift the detected word slightly - a cosmetic edge case, not
-    // a crash risk, since this is clamped either way.
-    const int col = std::clamp(cursor.mColumn, 0, static_cast<int>(line.size()));
+    constexpr std::size_t kMaxItems = 200;
+    if (completion.items.size() > kMaxItems) completion.items.resize(kMaxItems);
 
-    int start = col;
-    while (start > 0 && (std::isalnum(static_cast<unsigned char>(line[start - 1])) != 0 || line[start - 1] == '_'))
-        --start;
-
-    const std::string word = line.substr(start, col - start);
-
-    // Member-access completion: if the partial word is directly preceded
-    // by a "." (e.g. "mathT." or "entity.transform."), resolve the
-    // dotted chain before it through LuaBindingMetadata instead of
-    // matching against the flat keyword/global list - suggesting a random
-    // global right after "." wouldn't make sense, and the chain tells us
-    // exactly which type's members belong there. See SplitMemberChain()/
-    // ResolveMemberChainType() above for what this chain-walk does and
-    // doesn't understand (plain identifier chains only - no calls,
-    // indexing, or local-variable type inference).
-    if (start > 0 && line[start - 1] == '.') {
-        const LuaBindingMetadata::TypeDoc* type = ResolveMemberChainType(SplitMemberChain(line, start - 1), OpenScriptDeclarations());
-
-        autocompleteMatches.clear();
-
-        if (type != nullptr) {
-            std::vector<std::string> memberNames;
-            memberNames.reserve(type->properties.size() + type->methods.size() + type->enumValues.size());
-            for (const LuaBindingMetadata::PropertyDoc& prop : type->properties) memberNames.push_back(prop.name);
-            for (const LuaBindingMetadata::MethodDoc& method : type->methods) memberNames.push_back(method.name);
-            for (const LuaBindingMetadata::EnumValueDoc& value : type->enumValues) memberNames.push_back(value.name);
-            std::ranges::sort(memberNames);
-
-            const std::string wordLower = LowerCopy(word);
-
-            for (const std::string& candidate : memberNames) {
-                if (!StartsWithCaseInsensitive(candidate, wordLower)) continue;
-
-                autocompleteMatches.push_back(candidate);
-                if (autocompleteMatches.size() >= 12) break; // keep the popup short
-            }
-        }
-
-        // No minimum length here (unlike the flat list below): right after
-        // "." the candidate set is already small and scoped to one type,
-        // so showing it immediately - even with zero characters typed - is
-        // the behavior a normal IDE gives you.
-        autocompleteWordStart = word;
-        autocompleteSelectedIndex = 0;
-        autocompleteActive = !autocompleteMatches.empty();
-        return;
-    }
-
-    // Require at least two characters before suggesting anything - a
-    // single letter matches too much of the candidate list to be useful.
-    if (word.size() < 2) {
-        autocompleteActive = false;
-        return;
-    }
-
-    autocompleteMatches.clear();
-
-    // Case-insensitive prefix match: most of the candidate list is
-    // PascalCase (Lua binding types/methods like "Update", "GameTime"),
-    // so a case-sensitive match missed the common case of typing a
-    // lowercase prefix ("upd") and expecting the PascalCase name
-    // ("Update") to show up - the main cause of suggestions silently not
-    // appearing. AcceptAutocomplete() replaces the whole typed word with
-    // the candidate's real casing rather than only appending a tail, so a
-    // case-mismatched accept still inserts correctly-cased text.
-    const std::string wordLower = LowerCopy(word);
-
-    std::vector<std::string> candidates = AutocompleteCandidates();
-    for (const LuaScriptCompiler::DeclarationInfo& declaration : OpenScriptDeclarations())
-        candidates.push_back(declaration.name);
-    std::ranges::sort(candidates);
-    candidates.erase(std::ranges::unique(candidates).begin(), candidates.end());
-
-    for (const std::string& candidate : candidates) {
-        if (candidate.size() <= word.size() || !StartsWithCaseInsensitive(candidate, wordLower)) continue;
-
-        autocompleteMatches.push_back(candidate);
-        if (autocompleteMatches.size() >= 12) break; // keep the popup short
-    }
-
-    autocompleteWordStart = word;
+    autocompleteItems = std::move(completion.items);
+    autocompleteReplaceBegin = completion.replaceBegin;
     autocompleteSelectedIndex = 0;
-    autocompleteActive = !autocompleteMatches.empty();
+    autocompleteFirstVisible = 0;
+    autocompleteActive = !autocompleteItems.empty();
 }
 
 void AssetBrowser::DrawAutocompletePopup() {
-    constexpr float popupWidth = 240.0f;
+    const int count = static_cast<int>(autocompleteItems.size());
+    const int rows = std::min(count, kAutocompleteRows);
+
+    // Keep the selection in view.
+    autocompleteSelectedIndex = std::clamp(autocompleteSelectedIndex, 0, count - 1);
+    if (autocompleteSelectedIndex < autocompleteFirstVisible) autocompleteFirstVisible = autocompleteSelectedIndex;
+    if (autocompleteSelectedIndex >= autocompleteFirstVisible + rows) autocompleteFirstVisible = autocompleteSelectedIndex - rows + 1;
+    autocompleteFirstVisible = std::clamp(autocompleteFirstVisible, 0, std::max(0, count - rows));
+
+    const ImGuiStyle& style = ImGui::GetStyle();
     const float itemHeight = ImGui::GetTextLineHeightWithSpacing();
-    const ImVec2 padding = ImGui::GetStyle().WindowPadding;
-    const float popupHeight = itemHeight * static_cast<float>(autocompleteMatches.size()) + padding.y * 2.0f;
+    const ImVec2 padding = style.WindowPadding;
+
+    float widest = 0.0f;
+    for (int i = autocompleteFirstVisible; i < autocompleteFirstVisible + rows; ++i) {
+        const ScriptIntellisense::CompletionItem& item = autocompleteItems[i];
+        widest = std::max(widest, ImGui::CalcTextSize(item.text.c_str()).x + ImGui::CalcTextSize(ItemKindLabel(item.kind)).x);
+    }
+    const float popupWidth = std::clamp(widest + padding.x * 2.0f + 24.0f, 240.0f, 480.0f);
+    const float popupHeight = itemHeight * static_cast<float>(rows) + padding.y * 2.0f;
 
     // Clamp against the host editor window AND the main viewport, so the
     // popup can never render below/right of the IDE window or spill off
-    // the screen - previously it was placed purely off the caret with no
-    // bounds check at all, so a caret near the bottom/right of the editor
-    // sent the suggestion list past both. Called from within the editor
-    // window's Begin()/End() (see DrawTextEditorWindow()), so
-    // GetWindowPos()/GetWindowSize() here still refer to that host window.
+    // the screen. Called from within the editor window's Begin()/End()
+    // (see DrawTextEditorWindow()), so GetWindowPos()/GetWindowSize() here
+    // still refer to that host window.
     const ImVec2 hostWindowMin = ImGui::GetWindowPos();
     const ImVec2 hostWindowSize = ImGui::GetWindowSize();
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGuiViewport* viewport = ImGui::GetWindowViewport();
 
     const ImVec2 clampMin = viewport->WorkPos;
     const ImVec2 clampMax(
@@ -1592,27 +1566,21 @@ void AssetBrowser::DrawAutocompletePopup() {
     autocompletePopupMax = ImVec2(pos.x + popupWidth, pos.y + popupHeight);
 
     // Drawn on the foreground draw list rather than as a separate ImGui
-    // window - deliberately. A real window here (what this used to be)
-    // competes with the editor for Dear ImGui's keyboard focus and
-    // Z-order the moment it's clicked: ImGui::Selectable()'s click
-    // handling calls FocusWindow() unconditionally with no way to opt
-    // out, which silently stole keyboard focus from the editor's own
-    // child window (breaking all further typing) and, depending on
-    // Z-order, could leave the popup rendered behind the editor (making
-    // it invisible despite being drawn correctly). The foreground draw
-    // list belongs to no window, always composites last on top of
-    // everything, and is immune to both problems by construction. Clicks
-    // are hit-tested manually below instead of through ImGui::Selectable();
-    // DrawTextEditorWindow() uses autocompletePopupMin/Max (set just above)
-    // to stop the editor's own click-to-move-cursor handling from also
-    // firing when a click lands in this rect.
-    ImDrawList* drawList = ImGui::GetForegroundDrawList();
-    const ImGuiStyle& style = ImGui::GetStyle();
+    // window - deliberately. A real window here competes with the editor
+    // for Dear ImGui's keyboard focus and Z-order the moment it's clicked
+    // (ImGui::Selectable() calls FocusWindow() unconditionally), which
+    // stole keyboard focus from the editor and could leave the popup
+    // behind it. The foreground draw list belongs to no window and always
+    // composites last. Clicks are hit-tested manually below;
+    // DrawTextEditorWindow() uses autocompletePopupMin/Max to stop the
+    // editor's own click-to-move-cursor handling from also firing.
+    ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
 
     drawList->AddRectFilled(autocompletePopupMin, autocompletePopupMax, ImGui::GetColorU32(ImGuiCol_PopupBg), style.PopupRounding);
     drawList->AddRect(autocompletePopupMin, autocompletePopupMax, ImGui::GetColorU32(ImGuiCol_Border), style.PopupRounding);
 
     const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+    const ImU32 kindColor = ImGui::GetColorU32(ImGuiCol_TextDisabled);
     const ImU32 highlightColor = ImGui::GetColorU32(ImGuiCol_HeaderHovered);
     const ImVec2 mousePos = ImGui::GetIO().MousePos;
     const bool mouseClickedThisFrame = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
@@ -1621,16 +1589,15 @@ void AssetBrowser::DrawAutocompletePopup() {
 
     int clickedIndex = -1;
 
-    for (int i = 0; i < static_cast<int>(autocompleteMatches.size()); ++i) {
-        const ImVec2 itemMin(autocompletePopupMin.x, autocompletePopupMin.y + padding.y + itemHeight * static_cast<float>(i));
+    for (int row = 0; row < rows; ++row) {
+        const int i = autocompleteFirstVisible + row;
+        const ImVec2 itemMin(autocompletePopupMin.x, autocompletePopupMin.y + padding.y + itemHeight * static_cast<float>(row));
         const ImVec2 itemMax(autocompletePopupMax.x, itemMin.y + itemHeight);
 
         const bool hovered = mousePos.x >= itemMin.x && mousePos.x < itemMax.x &&
                               mousePos.y >= itemMin.y && mousePos.y < itemMax.y;
 
-        // Hovering also moves the selection (as any dropdown does) - the
-        // keyboard-driven highlight from autocompleteSelectedIndex just
-        // stays put wherever the mouse last left it.
+        // Hovering also moves the selection (as any dropdown does).
         if (hovered) {
             autocompleteSelectedIndex = i;
             if (mouseClickedThisFrame) clickedIndex = i;
@@ -1638,45 +1605,171 @@ void AssetBrowser::DrawAutocompletePopup() {
 
         if (i == autocompleteSelectedIndex) drawList->AddRectFilled(itemMin, itemMax, highlightColor);
 
-        drawList->AddText(
-            ImVec2(itemMin.x + padding.x, itemMin.y + (itemHeight - ImGui::GetTextLineHeight()) * 0.5f),
-            textColor, autocompleteMatches[i].c_str()
-        );
+        const float textY = itemMin.y + (itemHeight - ImGui::GetTextLineHeight()) * 0.5f;
+        drawList->AddText(ImVec2(itemMin.x + padding.x, textY), textColor, autocompleteItems[i].text.c_str());
+
+        const char* kind = ItemKindLabel(autocompleteItems[i].kind);
+        drawList->AddText(ImVec2(itemMax.x - padding.x - ImGui::CalcTextSize(kind).x, textY), kindColor, kind);
     }
 
     drawList->PopClipRect();
 
-    // Deferred until after the loop finishes drawing, matching the same
-    // reasoning as the keyboard accept path: AcceptAutocomplete() mutates
-    // the script buffer, and doing that mid-loop while still reading
-    // autocompleteMatches for later items would be needlessly fragile.
+    // A scroll bar when not everything fits.
+    if (count > rows) {
+        const float trackHeight = popupHeight - padding.y * 2.0f;
+        const float thumbHeight = std::max(8.0f, trackHeight * static_cast<float>(rows) / static_cast<float>(count));
+        const float thumbY = autocompletePopupMin.y + padding.y +
+                             (trackHeight - thumbHeight) * static_cast<float>(autocompleteFirstVisible) / static_cast<float>(count - rows);
+        drawList->AddRectFilled(ImVec2(autocompletePopupMax.x - 4.0f, thumbY), ImVec2(autocompletePopupMax.x - 1.0f, thumbY + thumbHeight),
+                                ImGui::GetColorU32(ImGuiCol_ScrollbarGrab), 2.0f);
+    }
+
+    // The selected suggestion's signature and docs, beside the list.
+    const ScriptIntellisense::CompletionItem& selected = autocompleteItems[autocompleteSelectedIndex];
+    if (!selected.detail.empty() || !selected.doc.empty()) {
+        constexpr float docsWidth = 360.0f;
+        const float wrap = docsWidth - padding.x * 2.0f;
+        const ImVec2 detailSize = selected.detail.empty() ? ImVec2() : ImGui::CalcTextSize(selected.detail.c_str(), nullptr, false, wrap);
+        const ImVec2 docSize = selected.doc.empty() ? ImVec2() : ImGui::CalcTextSize(selected.doc.c_str(), nullptr, false, wrap);
+        const float gap = !selected.detail.empty() && !selected.doc.empty() ? style.ItemSpacing.y : 0.0f;
+        const float docsHeight = detailSize.y + gap + docSize.y + padding.y * 2.0f;
+
+        float x = autocompletePopupMax.x + 4.0f;
+        if (x + docsWidth > clampMax.x) x = autocompletePopupMin.x - 4.0f - docsWidth;
+        x = std::max(x, clampMin.x);
+        const float y = std::clamp(autocompletePopupMin.y, clampMin.y, std::max(clampMin.y, clampMax.y - docsHeight));
+
+        const ImVec2 docsMin(x, y);
+        const ImVec2 docsMax(x + docsWidth, y + docsHeight);
+        drawList->AddRectFilled(docsMin, docsMax, ImGui::GetColorU32(ImGuiCol_PopupBg), style.PopupRounding);
+        drawList->AddRect(docsMin, docsMax, ImGui::GetColorU32(ImGuiCol_Border), style.PopupRounding);
+
+        ImVec2 textPos(docsMin.x + padding.x, docsMin.y + padding.y);
+        if (!selected.detail.empty()) {
+            drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), textPos, textColor, selected.detail.c_str(), nullptr, wrap);
+            textPos.y += detailSize.y + gap;
+        }
+        if (!selected.doc.empty())
+            drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), textPos, kindColor, selected.doc.c_str(), nullptr, wrap);
+    }
+
+    // Deferred until after drawing: AcceptAutocomplete() changes the text
+    // and the list this loop reads.
     if (clickedIndex >= 0) AcceptAutocomplete(clickedIndex);
 }
 
 void AssetBrowser::AcceptAutocomplete(const int index) {
-    if (index < 0 || index >= static_cast<int>(autocompleteMatches.size())) return;
+    if (index < 0 || index >= static_cast<int>(autocompleteItems.size())) return;
 
-    const std::string& full = autocompleteMatches[index];
+    const std::string text = autocompleteItems[index].text;
 
-    // Matching is case-insensitive (see UpdateAutocomplete()), so the
-    // characters already typed may not share the candidate's actual
-    // casing (e.g. typing "upd" to reach "Update") - replace the whole
-    // typed word instead of only appending a tail, so what lands in the
-    // script always has the binding's real casing. Guarded on a non-empty
-    // word: member completion (see UpdateAutocomplete()'s "." branch) can
-    // accept with nothing typed yet, and TextEditor::HasSelection() treats
-    // a zero-length MoveLeft(0, true, ...) selection as "no selection" -
-    // Delete() would then fall through to its no-selection path and eat
-    // the character AFTER the cursor instead of doing nothing.
-    if (!autocompleteWordStart.empty()) {
-        scriptEditor.MoveLeft(static_cast<int>(autocompleteWordStart.size()), true, false);
+    // Replace what was typed of the word (matching is case-insensitive, so
+    // the typed part may not share the suggestion's casing). Guarded on a
+    // non-empty range: TextEditor::Delete() with an empty selection would
+    // eat the character after the cursor instead.
+    const TextEditor::Coordinates cursor = scriptEditor.GetCursorPosition();
+    const TextEditor::Coordinates start = ScriptCoordinatesOf(autocompleteReplaceBegin);
+    if (start < cursor) {
+        scriptEditor.SetSelection(start, cursor);
         scriptEditor.Delete();
     }
 
-    scriptEditor.InsertText(full);
+    scriptEditor.InsertText(text);
 
     scriptEditorDirty = true;
     autocompleteActive = false;
+    autocompleteManual = false;
+}
+
+void AssetBrowser::UpdateSignatureHelp() {
+    if (!scriptEditorOpen || !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+        signatureHelp.reset();
+        return;
+    }
+    signatureHelp = ScriptIntellisense::GetSignatureHelp(CurrentScriptAnalysis(), ScriptCursorOffset(), ScriptContext());
+}
+
+void AssetBrowser::DrawSignatureHelp() {
+    if (!signatureHelp) return;
+    const ScriptIntellisense::SignatureHelp& help = *signatureHelp;
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImVec2 padding = style.WindowPadding;
+    const float lineHeight = ImGui::GetTextLineHeight();
+    constexpr float maxWidth = 560.0f;
+    const float wrap = maxWidth - padding.x * 2.0f;
+
+    const ImVec2 labelSize = ImGui::CalcTextSize(help.label.c_str());
+    const ImVec2 docSize = help.doc.empty() ? ImVec2() : ImGui::CalcTextSize(help.doc.c_str(), nullptr, false, wrap);
+    const float width = std::min(maxWidth, std::max(labelSize.x, docSize.x) + padding.x * 2.0f);
+    const float height = labelSize.y + (help.doc.empty() ? 0.0f : style.ItemSpacing.y + docSize.y) + padding.y * 2.0f;
+
+    const ImVec2 hostMin = ImGui::GetWindowPos();
+    const ImVec2 hostSize = ImGui::GetWindowSize();
+    ImGuiViewport* viewport = ImGui::GetWindowViewport();
+    const ImVec2 clampMin(std::max(hostMin.x, viewport->WorkPos.x), std::max(hostMin.y, viewport->WorkPos.y));
+    const ImVec2 clampMax(std::min(hostMin.x + hostSize.x, viewport->WorkPos.x + viewport->WorkSize.x),
+                          std::min(hostMin.y + hostSize.y, viewport->WorkPos.y + viewport->WorkSize.y));
+
+    // Above the caret's line, so it never covers the suggestion list below
+    // it; below everything when there's no room above.
+    const ImVec2 caret = scriptEditor.GetCursorScreenPos(); // just below the caret's line
+    float y = caret.y - lineHeight - height - 2.0f;
+    if (y < clampMin.y) y = (autocompleteActive ? std::max(caret.y, autocompletePopupMax.y) : caret.y) + 2.0f;
+
+    const ImVec2 boxMin(std::clamp(caret.x - padding.x, clampMin.x, std::max(clampMin.x, clampMax.x - width)), y);
+    const ImVec2 boxMax(boxMin.x + width, boxMin.y + height);
+
+    ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
+    drawList->AddRectFilled(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_PopupBg), style.PopupRounding);
+    drawList->AddRect(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_Border), style.PopupRounding);
+    drawList->PushClipRect(boxMin, boxMax, true);
+
+    const ImU32 textColor = ImGui::GetColorU32(ImGuiCol_Text);
+    const ImU32 dimColor = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+    const ImU32 activeColor = scriptEditor.GetPalette()[static_cast<std::size_t>(TextEditor::PaletteIndex::Parameter)] | IM_COL32_A_MASK;
+
+    // The label in pieces: the active parameter in its own color, underlined.
+    int activeBegin = -1, activeEnd = -1;
+    if (help.activeParam >= 0 && help.activeParam < static_cast<int>(help.paramRanges.size()))
+        std::tie(activeBegin, activeEnd) = help.paramRanges[help.activeParam];
+
+    const char* label = help.label.c_str();
+    ImVec2 pos(boxMin.x + padding.x, boxMin.y + padding.y);
+    const auto drawPiece = [&](const int begin, const int end, const ImU32 color, const bool underline) {
+        if (end <= begin) return;
+        drawList->AddText(pos, color, label + begin, label + end);
+        const float pieceWidth = ImGui::CalcTextSize(label + begin, label + end).x;
+        if (underline) drawList->AddLine(ImVec2(pos.x, pos.y + lineHeight), ImVec2(pos.x + pieceWidth, pos.y + lineHeight), color);
+        pos.x += pieceWidth;
+    };
+
+    const int labelLength = static_cast<int>(help.label.size());
+    if (activeBegin < 0) {
+        drawPiece(0, labelLength, textColor, false);
+    } else {
+        drawPiece(0, activeBegin, textColor, false);
+        drawPiece(activeBegin, activeEnd, activeColor, true);
+        drawPiece(activeEnd, labelLength, textColor, false);
+    }
+
+    if (!help.doc.empty()) {
+        const ImVec2 docPos(boxMin.x + padding.x, boxMin.y + padding.y + labelSize.y + style.ItemSpacing.y);
+        drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), docPos, dimColor, help.doc.c_str(), nullptr, wrap);
+    }
+
+    drawList->PopClipRect();
+}
+
+void AssetBrowser::CheckScriptSyntax() {
+    syntaxErrors = ScriptIntellisense::CheckSyntax(CurrentScriptAnalysis());
+
+    // Keep every marker on a line the editor has.
+    for (ScriptIntellisense::SyntaxError& error : syntaxErrors) error.line = std::clamp(error.line, 1, std::max(1, scriptEditor.GetTotalLines()));
+
+    TextEditor::ErrorMarkers markers;
+    for (const ScriptIntellisense::SyntaxError& error : syntaxErrors) markers.emplace(error.line, error.message);
+    scriptEditor.SetErrorMarkers(markers);
 }
 
 void AssetBrowser::ToggleLineComment() {

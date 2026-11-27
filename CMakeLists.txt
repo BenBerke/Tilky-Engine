@@ -816,6 +816,8 @@ set(TILKY_EDITOR_SOURCES
         Headers/Editor/ObjExport.hpp
         src/Editor/CommandPalette.cpp
         Headers/Editor/CommandPalette.hpp
+        src/Editor/ScriptIntellisense.cpp
+        Headers/Editor/ScriptIntellisense.hpp
 
         src/Map/MapTopology.cpp
         Headers/Map/MapTopology.hpp

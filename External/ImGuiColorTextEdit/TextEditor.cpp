@@ -2057,6 +2057,10 @@ const TextEditor::Palette & TextEditor::GetDarkPalette()
 			0x40000000, // Current line fill
 			0x40808080, // Current line fill (inactive)
 			0x40a0a0a0, // Current line edge
+			0xfffedc9c, // Local
+			0xffc7d17f, // Parameter
+			0xffaadcdc, // Function
+			0xff6ea8e6, // Field
 		} };
 	return p;
 }
@@ -2085,6 +2089,10 @@ const TextEditor::Palette & TextEditor::GetLightPalette()
 			0x40000000, // Current line fill
 			0x40808080, // Current line fill (inactive)
 			0x40000000, // Current line edge
+			0xff800000, // Local
+			0xff808000, // Parameter
+			0xff265e79, // Function
+			0xff1060b0, // Field
 		} };
 	return p;
 }
@@ -2113,6 +2121,10 @@ const TextEditor::Palette & TextEditor::GetRetroBluePalette()
 			0x40000000, // Current line fill
 			0x40808080, // Current line fill (inactive)
 			0x40000000, // Current line edge
+			0xffffc080, // Local
+			0xff80ff80, // Parameter
+			0xff80ffff, // Function
+			0xff40c0ff, // Field
 		} };
 	return p;
 }
@@ -2120,7 +2132,13 @@ const TextEditor::Palette & TextEditor::GetRetroBluePalette()
 
 std::string TextEditor::GetText() const
 {
-	return GetText(Coordinates(), Coordinates((int)mLines.size(), 0));
+	// Up to the end of the last line, not past it: ending at (lines, 0)
+	// added a '\n' after the last line, so every open + save of a file
+	// grew it by one trailing newline (SetText("a\n") -> GetText() "a\n\n").
+	if (mLines.empty())
+		return std::string();
+	const int lastLine = (int)mLines.size() - 1;
+	return GetText(Coordinates(), Coordinates(lastLine, GetLineMaxColumn(lastLine)));
 }
 
 std::vector<std::string> TextEditor::GetTextLines() const
@@ -2163,6 +2181,7 @@ void TextEditor::ProcessInputs()
 
 void TextEditor::Colorize(int aFromLine, int aLines)
 {
+	++mTextVersion;
 	int toLine = aLines == -1 ? (int)mLines.size() : std::min((int)mLines.size(), aFromLine + aLines);
 	mColorRangeMin = std::min(mColorRangeMin, aFromLine);
 	mColorRangeMax = std::max(mColorRangeMax, toLine);
@@ -2276,10 +2295,50 @@ void TextEditor::ColorizeRange(int aFromLine, int aToLine)
 	}
 }
 
+void TextEditor::SetExternalColorizer(std::function<void()> aColorizer)
+{
+	mExternalColorizer = std::move(aColorizer);
+	Colorize();
+}
+
+void TextEditor::SetColors(const std::vector<PaletteIndex>& aColors)
+{
+	size_t total = mLines.empty() ? 0 : mLines.size() - 1; // the newlines between lines
+	for (const auto& line : mLines)
+		total += line.size();
+	if (total != aColors.size())
+		return;
+
+	size_t index = 0;
+	for (auto& line : mLines)
+	{
+		for (auto& glyph : line)
+		{
+			glyph.mColorIndex = aColors[index++];
+			glyph.mComment = false;
+			glyph.mMultiLineComment = false;
+			glyph.mPreprocessor = false;
+		}
+		++index; // the newline
+	}
+}
+
 void TextEditor::ColorizeInternal()
 {
 	if (mLines.empty() || !mColorizerEnabled)
 		return;
+
+	if (mExternalColorizer)
+	{
+		if (mCheckComments || mColorRangeMin < mColorRangeMax)
+		{
+			mCheckComments = false;
+			mColorRangeMin = std::numeric_limits<int>::max();
+			mColorRangeMax = 0;
+			mExternalColorizer();
+		}
+		return;
+	}
 
 	if (mCheckComments)
 	{
