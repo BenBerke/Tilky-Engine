@@ -138,7 +138,7 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
         "target", sol::property(
             [](const ScriptPathfinder& self, const sol::this_state state) -> sol::object {
                 const ID targetID = self.GetTargetID();
-                if (targetID == INVALID_ENTITY_ID) return sol::make_object(state, sol::nil);
+                if (targetID == INVALID_ENTITY_ID) return sol::make_object(state, sol::lua_nil);
                 return sol::make_object(state, ScriptEntity{self.level, targetID});
             }
         ),
@@ -210,7 +210,7 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
             [](const ScriptMonsterAI& self, const sol::this_state state) -> sol::object {
                 const auto* c = self.GetComponent();
                 if (c == nullptr || c->state != MonsterAIState::CHASING || self.level->GetEntity(c->targetID) == nullptr)
-                    return sol::make_object(state, sol::nil);
+                    return sol::make_object(state, sol::lua_nil);
                 return sol::make_object(state, ScriptEntity{self.level, c->targetID});
             }),
         "canSeeTarget", sol::property(
@@ -421,7 +421,7 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
         "Raycast", [](sol::this_state state, const ScriptCamera& self, const sol::optional<float> length,
                       const sol::optional<bool> requireCollider, const sol::optional<int> rayType) -> sol::object {
             const ComponentCamera* camera = self.GetComponent();
-            if (camera == nullptr) return sol::make_object(state, sol::nil);
+            if (camera == nullptr) return sol::make_object(state, sol::lua_nil);
 
             return LuaRayHit::ToLua(state, *self.level, GameFunctions::Raycast(
                 *self.level,
@@ -438,7 +438,7 @@ void LuaScriptSystem::RegisterGameplayComponentBindings(sol::state& lua) {
 
         "WorldToScreen", [](sol::this_state state, const ScriptCamera& self, const Vector3& point) -> sol::object {
             const std::optional<Vector2> screen = self.WorldToScreen(point);
-            if (!screen.has_value()) return sol::make_object(state, sol::nil);
+            if (!screen.has_value()) return sol::make_object(state, sol::lua_nil);
             return sol::make_object(state, *screen);
         },
 

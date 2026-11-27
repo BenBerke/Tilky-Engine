@@ -427,7 +427,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          cmake --build build --target Tilky_All --parallel
+          cmake --build build --target Tilky_All --parallel -- -k 0
 
       - name: Package versioned ZIP
         shell: bash

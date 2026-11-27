@@ -2360,7 +2360,7 @@ inline sol::object ScriptBehaviourRef::LuaGet(const std::string& key, const sol:
     if (key == "isValid") return sol::make_object(luaView, IsValid());
     if (key == "entity") return sol::make_object(luaView, GetEntity());
     if (key == "enabled") return sol::make_object(luaView, GetEnabled());
-    if (!OwnerCurrent()) return sol::make_object(luaView, sol::nil);
+    if (!OwnerCurrent()) return sol::make_object(luaView, sol::lua_nil);
 
     return LuaScriptRuntime::GetInstanceField(ownerID, instanceID, key, state);
 }

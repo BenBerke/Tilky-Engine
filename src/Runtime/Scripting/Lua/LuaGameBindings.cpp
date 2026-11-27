@@ -533,7 +533,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         if (key.is<std::string>() && key.as<std::string>() == "nextLevelName")
             return sol::make_object(state, LevelManager::NextLevelName());
 
-        return sol::make_object(state, sol::nil);
+        return sol::make_object(state, sol::lua_nil);
     };
 
     gameMeta[sol::meta_function::new_index] = [](sol::table self, const sol::object& key, const sol::object& value) {
@@ -578,7 +578,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         if (argument.is<ScriptEntity>()) {
             const ScriptEntity source = argument.as<ScriptEntity>();
             Entity* original = source.GetEntity();
-            if (original == nullptr) return sol::make_object(state, sol::nil);
+            if (original == nullptr) return sol::make_object(state, sol::lua_nil);
 
             throwIfUI(source.level->transforms.Get(original->id) == nullptr);
 
@@ -590,7 +590,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
                 newID = level.CreateEntity(copy);
             }
 
-            if (newID == INVALID_ID) return sol::make_object(state, sol::nil);
+            if (newID == INVALID_ID) return sol::make_object(state, sol::lua_nil);
 
             place(newID);
             LuaScriptRuntime::QueueEntityScriptsStart(newID);
@@ -615,7 +615,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         for (const Entity& candidate : level.entities)
             if (candidate.name == name) return sol::make_object(state, ScriptEntity{&level, candidate.id});
 
-        return sol::make_object(state, sol::nil);
+        return sol::make_object(state, sol::lua_nil);
     });
 
     game.set_function("FindEntities", [](const std::string& name) -> sol::as_table_t<std::vector<ScriptEntity>> {
@@ -653,7 +653,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         if (from.is<ScriptEntity>()) {
             self = from.as<ScriptEntity>().ownerID;
             const ComponentTransform* transform = level.transforms.Get(self);
-            if (transform == nullptr) return sol::make_object(state, sol::nil); // gone, or a UI entity
+            if (transform == nullptr) return sol::make_object(state, sol::lua_nil); // gone, or a UI entity
             origin = transform->position;
         }
         else if (from.is<Vector3>()) origin = from.as<Vector3>();
@@ -666,7 +666,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         }
 
         const std::optional<TagId> tagId = TagRegistry::Find(tag);
-        if (!tagId.has_value()) return sol::make_object(state, sol::nil);
+        if (!tagId.has_value()) return sol::make_object(state, sol::lua_nil);
 
         ID nearest = INVALID_ENTITY_ID;
         float nearestSq = limit * limit;
@@ -686,7 +686,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
             }
         }
 
-        if (nearest == INVALID_ENTITY_ID) return sol::make_object(state, sol::nil);
+        if (nearest == INVALID_ENTITY_ID) return sol::make_object(state, sol::lua_nil);
         return sol::make_object(state, ScriptEntity{&level, nearest});
     });
 
@@ -759,7 +759,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
     game.set_function("GetEntity", [](sol::this_state state, const ID id) -> sol::object {
         Level& level = LevelManager::CurrentLevel();
 
-        if (level.GetEntity(id) == nullptr) return sol::make_object(state, sol::nil);
+        if (level.GetEntity(id) == nullptr) return sol::make_object(state, sol::lua_nil);
 
         return sol::make_object(state, ScriptEntity{&level, id});
     });
@@ -779,7 +779,7 @@ void LuaScriptSystem::RegisterGameBindings(sol::state &lua) {
         Level& level = LevelManager::CurrentLevel();
 
         const int index = MapQueries::FindSectorContainingPoint(level.sectors, point);
-        if (index < 0) return sol::make_object(state, sol::nil);
+        if (index < 0) return sol::make_object(state, sol::lua_nil);
 
         return sol::make_object(state, ScriptSector{&level, level.sectors[index].id});
     };
@@ -963,7 +963,7 @@ RayType LuaRayHit::ToRayType(const sol::optional<int>& value, const char* functi
 }
 
 sol::object LuaRayHit::ToLua(sol::state_view lua, Level &level, const std::optional<RayHit> &hit) {
-    if (!hit.has_value()) return sol::make_object(lua, sol::nil);
+    if (!hit.has_value()) return sol::make_object(lua, sol::lua_nil);
 
     sol::table result = lua.create_table();
 
@@ -991,7 +991,7 @@ sol::object LuaRayHit::ToLua(sol::state_view lua, Level &level, const std::optio
             .ownerID = hit->entity->id
         };
     }
-    else result["entity"] = sol::nil;
+    else result["entity"] = sol::lua_nil;
 
     if (hit->wall != nullptr) {
         result["wall"] = ScriptWall{
@@ -999,7 +999,7 @@ sol::object LuaRayHit::ToLua(sol::state_view lua, Level &level, const std::optio
             .wallID = hit->wall->id
         };
     }
-    else result["wall"] = sol::nil;
+    else result["wall"] = sol::lua_nil;
 
     if (hit->sector != nullptr) {
         result["sector"] = ScriptSector {
@@ -1007,7 +1007,7 @@ sol::object LuaRayHit::ToLua(sol::state_view lua, Level &level, const std::optio
             .sectorID = hit->sector->id
         };
     }
-    else result["sector"] = sol::nil;
+    else result["sector"] = sol::lua_nil;
 
     return sol::make_object(lua, result);
 }

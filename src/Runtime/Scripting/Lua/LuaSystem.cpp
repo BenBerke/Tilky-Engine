@@ -803,12 +803,12 @@ namespace {
     template<typename Wrapper, typename Storage>
     sol::object ResolveInstanceRef(const sol::state_view luaView, Level& level, Storage& storage, const ComponentRefValue& ref) {
         const auto* component = storage.GetInstance(ref.instanceId);
-        if (component == nullptr || component->ownerID != ref.entityId) return sol::make_object(luaView, sol::nil);
+        if (component == nullptr || component->ownerID != ref.entityId) return sol::make_object(luaView, sol::lua_nil);
         return sol::make_object(luaView, Wrapper{&level, ref.entityId, ref.instanceId});
     }
 
     sol::object ResolveComponentRef(const sol::state_view luaView, Level& level, const ComponentRefValue& ref) {
-        if (ref.entityId == INVALID_ID) return sol::make_object(luaView, sol::nil);
+        if (ref.entityId == INVALID_ID) return sol::make_object(luaView, sol::lua_nil);
 
         switch (ref.componentType) {
             case CMP_TRANSFORM:
@@ -830,7 +830,7 @@ namespace {
             default: break;
         }
 
-        return sol::make_object(luaView, sol::nil);
+        return sol::make_object(luaView, sol::lua_nil);
     }
 
     sol::object ResolveScriptValueImpl(const sol::state_view luaView, Level& level, const ScriptValue& value) {
@@ -841,35 +841,35 @@ namespace {
                 if constexpr (std::is_same_v<T, EntityRefValue>) {
                     if (!typedValue.prefab.empty()) {
                         Level* copy = Prefab::GetScriptCopy(typedValue.prefab);
-                        if (copy == nullptr) return sol::make_object(luaView, sol::nil);
+                        if (copy == nullptr) return sol::make_object(luaView, sol::lua_nil);
                         return sol::make_object(luaView, ScriptEntity{copy, Prefab::RootOf(*copy).id});
                     }
 
                     if (typedValue.entityId == INVALID_ID || level.GetEntity(typedValue.entityId) == nullptr)
-                        return sol::make_object(luaView, sol::nil);
+                        return sol::make_object(luaView, sol::lua_nil);
 
                     return sol::make_object(luaView, ScriptEntity{&level, typedValue.entityId});
                 }
                 else if constexpr (std::is_same_v<T, ComponentRefValue>) return ResolveComponentRef(luaView, level, typedValue);
                 else if constexpr (std::is_same_v<T, BehaviourRefValue>) {
                     if (typedValue.entityId == INVALID_ID || typedValue.instanceId == INVALID_SCRIPT_INSTANCE_ID)
-                        return sol::make_object(luaView, sol::nil);
+                        return sol::make_object(luaView, sol::lua_nil);
 
                     if (!LuaScriptRuntime::IsInstanceValid(typedValue.entityId, typedValue.instanceId))
-                        return sol::make_object(luaView, sol::nil);
+                        return sol::make_object(luaView, sol::lua_nil);
 
                     return sol::make_object(luaView, ScriptBehaviourRef{&level, typedValue.entityId, typedValue.instanceId});
                 }
                 else if constexpr (std::is_same_v<T, AssetRefValue>) return sol::make_object(luaView, typedValue.path);
                 else if constexpr (std::is_same_v<T, WallRefValue>) {
                     const ScriptWall wall{&level, typedValue.wallId};
-                    if (!wall.IsValid()) return sol::make_object(luaView, sol::nil);
+                    if (!wall.IsValid()) return sol::make_object(luaView, sol::lua_nil);
 
                     return sol::make_object(luaView, wall);
                 }
                 else if constexpr (std::is_same_v<T, SectorRefValue>) {
                     const ScriptSector sector{&level, typedValue.sectorId};
-                    if (!sector.IsValid()) return sol::make_object(luaView, sol::nil);
+                    if (!sector.IsValid()) return sol::make_object(luaView, sol::lua_nil);
 
                     return sol::make_object(luaView, sector);
                 }
@@ -1587,7 +1587,7 @@ namespace LuaScriptRuntime {
         const std::string assetId = FindScriptIdByName(name);
 
         Entity* entity = level.GetEntity(entityId);
-        if (entity == nullptr) return sol::make_object(state, sol::nil);
+        if (entity == nullptr) return sol::make_object(state, sol::lua_nil);
 
         ComponentScript& attached = entity->AddScript();
         attached.fileName = assetId;
@@ -1602,7 +1602,7 @@ namespace LuaScriptRuntime {
         if (!instance || script == nullptr) {
             // Already reported; a script that can't run isn't left attached.
             if (Entity* owner = level.GetEntity(entityId)) owner->RemoveScript(instanceID);
-            return sol::make_object(state, sol::nil);
+            return sol::make_object(state, sol::lua_nil);
         }
 
         script->publicValues = std::move(loaded.publicValues);
@@ -1642,7 +1642,7 @@ namespace LuaScriptRuntime {
         const ScriptInstance* instance = FindInstanceById(instanceId);
 
         if (instance == nullptr || instance->ownerID != entityId || instance->destroyed || !instance->environment.valid())
-            return sol::make_object(luaView, sol::nil);
+            return sol::make_object(luaView, sol::lua_nil);
 
         ThrowIfExposedField(*instance, key);
         return instance->environment.get<sol::object>(key);
@@ -1912,7 +1912,7 @@ void LuaScriptSystem::DispatchSectorChangeEvents(Level& level) {
 
     for (const auto& [entityID, sectorID] : changed) {
         const sol::object sectorObject = sectorID == INVALID_ID
-            ? sol::make_object(lua, sol::nil)
+            ? sol::make_object(lua, sol::lua_nil)
             : sol::make_object(lua, ScriptSector{&level, sectorID});
 
         // By index: a handler can't add instances, but keep it safe anyway.
@@ -1966,7 +1966,7 @@ bool LuaScriptSystem::DispatchEntityEvent(Level&, const ID entityID, const std::
 bool LuaScriptSystem::DispatchEntityEvent(Level& level, const ID entityID, const std::string& functionName,
                                           const ID argumentEntityID) {
     const sol::object argument = level.GetEntity(argumentEntityID) == nullptr
-        ? sol::make_object(lua, sol::nil)
+        ? sol::make_object(lua, sol::lua_nil)
         : sol::make_object(lua, ScriptEntity{&level, argumentEntityID});
 
     return DispatchToEntityScripts(entityID, functionName, argument);
@@ -2157,7 +2157,7 @@ void LuaScriptSystem::DispatchMonsterNotice(Level& level, const ID entityID, con
 
         if (!passesEntity) CallLifecycle(instance, instance.*callback, name);
         else if (level.GetEntity(otherID) != nullptr) CallLifecycle(instance, instance.*callback, name, ScriptEntity{&level, otherID});
-        else CallLifecycle(instance, instance.*callback, name, sol::nil);
+        else CallLifecycle(instance, instance.*callback, name, sol::lua_nil);
     }
 }
 

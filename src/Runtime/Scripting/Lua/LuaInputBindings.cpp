@@ -173,7 +173,7 @@ namespace {
         for (const LuaKey& key : LUA_KEYS)
             if (matches(key.scancode)) return sol::make_object(state, static_cast<int>(key.scancode));
 
-        return sol::make_object(state, sol::nil);
+        return sol::make_object(state, sol::lua_nil);
     }
 }
 
