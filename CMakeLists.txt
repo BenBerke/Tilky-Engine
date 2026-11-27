@@ -1459,16 +1459,22 @@ set(TILKY_LAUNCHER_PACKAGE_COMMANDS
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "$<TARGET_FILE:Tilky_Launcher>"
         "${TILKY_LAUNCHER_PACKAGE_DIR}/Tilky_Launcher${CMAKE_EXECUTABLE_SUFFIX}"
-
-        # Copy release DLLs first. Some dependencies only exist here.
-        COMMAND "${CMAKE_COMMAND}" -E copy_directory_if_different
-        "${TILKY_LAUNCHER_VCPKG_ROOT}/bin"
-        "${TILKY_LAUNCHER_PACKAGE_DIR}"
 )
+
+# Copy release DLLs first. Some dependencies only exist here. Windows only:
+# on Linux and macOS vcpkg links statically, and its bin folder holds only
+# command-line tools (some of them symlinks, which the copy fails on).
+if(WIN32)
+    list(APPEND TILKY_LAUNCHER_PACKAGE_COMMANDS
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory_if_different
+            "${TILKY_LAUNCHER_VCPKG_ROOT}/bin"
+            "${TILKY_LAUNCHER_PACKAGE_DIR}"
+    )
+endif()
 
 # Debug DLLs overwrite matching release DLLs and add debug-only names such as
 # libpng16d.dll and libzlibd1.dll.
-if(TILKY_BUILD_TYPE_UPPER STREQUAL "DEBUG")
+if(WIN32 AND TILKY_BUILD_TYPE_UPPER STREQUAL "DEBUG")
     list(APPEND TILKY_LAUNCHER_PACKAGE_COMMANDS
             COMMAND "${CMAKE_COMMAND}" -E copy_directory_if_different
             "${TILKY_LAUNCHER_VCPKG_ROOT}/debug/bin"

@@ -1,0 +1,145 @@
+# Builds the launcher-only package for Linux x64 and macOS arm64 and uploads
+# each as a workflow artifact. Publishing stays manual: the release goes to
+# the separate Tilky-Engine-Launcher repository, and the Windows build is made
+# locally with MinGW like the earlier launcher releases.
+#
+# Runs on demand, or on a push to the launcher-build branch.
+name: Build Launcher
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher-build
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-x64:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # CMakeLists.txt needs CMake 4.1+, newer than Ubuntu's.
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-14 g++-14 \
+            pkg-config autoconf autoconf-archive automake libtool bison flex nasm \
+            python3-venv python3-jinja2 \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxinerama-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \
+            libdbus-1-dev libudev-dev libibus-1.0-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libltdl-dev
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "${{ github.workspace }}/vcpkg"
+          "${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_C_COMPILER=gcc-14 \
+            -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTILKY_ENABLE_TRACY=OFF
+
+      - name: Build launcher package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build build --target Launcher_Only --parallel
+          test -x "build/Launcher Only/Tilky_Launcher"
+
+      # zip keeps the executable bit.
+      - name: Zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          (cd build && zip -r -q "${GITHUB_WORKSPACE}/dist/Tilky_Launcher-Linux-x64.zip" "Launcher Only")
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-linux-x64
+          path: dist/*.zip
+          if-no-files-found: error
+
+  build-macos-arm64:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install autoconf autoconf-archive automake libtool pkg-config nasm
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git "${{ github.workspace }}/vcpkg"
+          "${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-osx \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTILKY_ENABLE_TRACY=OFF
+
+      - name: Build launcher package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build build --target Launcher_Only --parallel
+          test -x "build/Launcher Only/Tilky_Launcher"
+
+      - name: Zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          (cd build && zip -r -q -y "${GITHUB_WORKSPACE}/dist/Tilky_Launcher-macOS-arm64.zip" "Launcher Only")
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-macos-arm64
+          path: dist/*.zip
+          if-no-files-found: error
