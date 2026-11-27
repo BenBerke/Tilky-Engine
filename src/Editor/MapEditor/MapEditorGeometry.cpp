@@ -1871,16 +1871,8 @@ namespace MapEditorInternal {
 
         PushGeometryUndoSnapshot(std::move(snapshot), "editor.history.draw_sector");
 
-        if (!applyResult.affectedSectorIDs.empty()) {
-            // Through the shared helper rather than assigning
-            // selectedSectorID on its own: a primary that isn't in
-            // selectedSectors is exactly the inconsistent shape the
-            // hierarchy highlight and the inspector's multi-edit fan-out
-            // both read, so a freshly drawn sector has to land in the
-            // plural selection too.
-            SelectSector(applyResult.affectedSectorIDs.front());
-            editingSector = true;
-        }
+        // A freshly drawn sector is deliberately NOT selected or opened in
+        // the inspector - drawing leaves the current selection alone.
 
         lastGeometryError.clear();
 
@@ -1966,13 +1958,8 @@ namespace MapEditorInternal {
 
         PushGeometryUndoSnapshot(snapshot, "editor.history.create_staircase", static_cast<int>(affectedSectorIDs.size()));
 
-        if (!affectedSectorIDs.empty()) {
-            // Every newly created step sector, not just the primary - see
-            // the header comment on CommitStaircasePlan.
-            selectedSectors = affectedSectorIDs;
-            selectedSectorID = affectedSectorIDs.front();
-            editingSector = true;
-        }
+        // Like a single drawn sector, the new steps are not selected or
+        // opened in the inspector.
 
         lastGeometryError.clear();
 

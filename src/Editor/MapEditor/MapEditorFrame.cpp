@@ -344,6 +344,9 @@ namespace MapEditorInternal {
         }
 
         void SnapIndicator() {
+            // Hidden while the middle button pans the map.
+            if (InputManager::GetMouseButton(SDL_BUTTON_MIDDLE)) return;
+
             const Vector2 mouseWorld = ScreenToWorld(MapMousePosition(), cameraPos);
             const bool freehandDrawing = currentMode == MODE_SECTOR && currentDrawTool == DRAWTOOL_FREEHAND && !manualSectorMode;
 

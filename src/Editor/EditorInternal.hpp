@@ -948,8 +948,8 @@ namespace MapEditorInternal {
     // GeometrySnapshot/UNDO_GEOMETRY step rather than one per
     // step. If any step is rejected partway through, every step already
     // applied this call is rolled back and the level is left exactly as
-    // it was before the call. Selects every newly created sector on
-    // success. Returns false (and sets lastGeometryError) on rejection or
+    // it was before the call. Does not select the new sectors.
+    // Returns false (and sets lastGeometryError) on rejection or
     // if `plan` isn't valid.
     bool CommitStaircasePlan(const StaircasePlan& plan);
 
@@ -973,8 +973,8 @@ namespace MapEditorInternal {
     // open polyline - repeat the first point at the end to close a loop
     // back on itself. Returns false and leaves the level untouched if
     // the edit is rejected (see lastGeometryError for why); on success,
-    // pushes one UNDO_GEOMETRY undo step and selects one of the
-    // resulting sectors.
+    // pushes one UNDO_GEOMETRY undo step (the new sectors are not
+    // selected).
     bool ApplyDrawnGeometry(const std::vector<Vector2>& drawnPoints, const PendingSectorParams& params);
 
     // Restores level walls/sectors/ID counters and the affected

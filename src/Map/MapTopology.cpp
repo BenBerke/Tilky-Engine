@@ -775,6 +775,9 @@ namespace {
         Vector3 lightValue = {255.0f, 255.0f, 255.0f};
         std::vector<SectorScript> scripts;
         ScriptInstanceID nextScriptInstanceID = 1;
+        std::vector<uint16_t> tagIds;
+        std::vector<Event> events;
+        std::vector<Dispatch> dispatches;
         std::vector<Vector2> vertices;
         std::vector<std::vector<Vector2>> innerLoops;
         Vector2 samplePoint{};
@@ -794,6 +797,9 @@ namespace {
             info.lightValue = sector.light;
             info.scripts = sector.scripts;
             info.nextScriptInstanceID = sector.nextScriptInstanceID;
+            info.tagIds = sector.tagIds;
+            info.events = sector.events;
+            info.dispatches = sector.dispatches;
             info.vertices = sector.vertices;
             info.innerLoops = sector.innerLoops;
             info.samplePoint = InteriorSamplePoint(sector.vertices, sector.triangles);
@@ -930,16 +936,21 @@ namespace {
                 // children still point at its ID, so they stay with the keeper.
                 sector.parentID = reconciledFace.source->parentID;
 
-                // Name and scripts belong to the sector's identity, not to a
-                // piece of its area: only the face that keeps the old
-                // sector's ID (the "keeper", see ReconcileFaces) inherits
-                // them. Siblings split off with a fresh ID start with none,
-                // so a split never runs one script twice or leaves two
-                // sectors answering to the same name.
+                // Name, scripts, tags, events and dispatches belong to the
+                // sector's identity, not to a piece of its area: only the
+                // face that keeps the old sector's ID (the "keeper", see
+                // ReconcileFaces) inherits them. Siblings split off with a
+                // fresh ID start with none, so a split never runs one script
+                // or door twice or leaves two sectors answering to the same
+                // name. Without this every geometry edit anywhere in the
+                // level wiped every sector's doors, lifts and light effects.
                 if (reconciledFace.sectorID == reconciledFace.source->id) {
                     sector.name = reconciledFace.source->name;
                     sector.scripts = reconciledFace.source->scripts;
                     sector.nextScriptInstanceID = reconciledFace.source->nextScriptInstanceID;
+                    sector.tagIds = reconciledFace.source->tagIds;
+                    sector.events = reconciledFace.source->events;
+                    sector.dispatches = reconciledFace.source->dispatches;
                 }
             }
             else {
