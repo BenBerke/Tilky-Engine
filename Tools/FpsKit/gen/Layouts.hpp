@@ -137,11 +137,36 @@ struct LayoutB {
     }
 };
 
+// The IDs the layouts had before this run, by file name (main.cpp reads them before
+// clearing the folder). Levels store layout IDs, so keeping them means projects made
+// from an older kit still find the new kit's layouts.
+inline std::map<Str, uint64_t> gKeptLayoutIDs;
+
+inline void ReadKeptLayoutIDs() {
+    const fs::path folder = gAssets / "UI Layouts";
+    if (!fs::is_directory(folder)) return;
+    for (const auto& file : fs::directory_iterator(folder)) {
+        if (file.path().extension() != ".uilayout") continue;
+        std::ifstream in(file.path(), std::ios::binary);
+        const json data = json::from_bson(in, true, false);
+        if (data.is_object() && data.contains("layoutId")) gKeptLayoutIDs[file.path().stem().string()] = data["layoutId"].get<uint64_t>();
+    }
+}
+
 inline void BuildLayout(const Str& fileName, uint64_t& outID, const std::function<void(LayoutB&)>& fill) {
     const fs::path file = gAssets / "UI Layouts" / (fileName + ".uilayout");
     fs::create_directories(file.parent_path());
     Str error;
     if (!UILayouts::Create(file, &outID, &error)) Fail("layout " + fileName + ": " + error);
+    if (const auto kept = gKeptLayoutIDs.find(fileName); kept != gKeptLayoutIDs.end()) {
+        std::ifstream in(file, std::ios::binary);
+        json data = json::from_bson(in);
+        in.close();
+        data["layoutId"] = kept->second;
+        const std::vector<std::uint8_t> bytes = json::to_bson(data);
+        std::ofstream(file, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        outID = kept->second;
+    }
     UILayouts::Rescan();
     Level* level = UILayouts::Get(outID);
     if (level == nullptr) { Fail("layout " + fileName + " didn't load"); return; }

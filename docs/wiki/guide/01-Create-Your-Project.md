@@ -57,6 +57,7 @@ Look at the **Asset Browser**, the panel that lists your project's files.
 | **Level 4 - The Tripod** | A boss fight, and an exit that opens when the boss dies |
 | **Blank Base Level** | One empty room with a player. Copy this to start your own level. |
 | **Prefab Gallery** | Every prefab in the kit, in rows |
+| **Gateway Showcase** | Gateways: walls you see and walk through into another place, an endless corridor |
 
 Open any level from the **Levels** folder in the Asset Browser. You'll see **yellow comment pins**
 on the map. Click them to read what each part of the level does and how it was made. They only

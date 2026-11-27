@@ -229,7 +229,7 @@ static void EditorViewTick(const int frames) {
         for (ComponentTransform& transform : level.transforms.components) transform.UpdateObjectSectorAndFloor(level.sectors);
         RuntimeSession::RenderEditorView();
 
-        if (const GLuint texture = renderer->GetPanelTexture(IRenderer::PanelTarget::Scene); texture != 0) {
+        if (const GLuint texture = static_cast<GLuint>(renderer->GetPanelImage(IRenderer::PanelTarget::Scene).texture); texture != 0) {
             GLint textureWidth = 0, textureHeight = 0;
             glBindTexture(GL_TEXTURE_2D, texture);
             glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &textureWidth);

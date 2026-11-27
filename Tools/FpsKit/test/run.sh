@@ -8,6 +8,6 @@ mkdir -p "$T/fk"
 cp -r "$REPO/Templates/fps-kit/project" "$T/fk/proj"
 mkdir -p "$T/fk/proj/Assets/Scripts/Test"
 cp "$REPO/Tools/FpsKit/test/Bot.lua" "$T/fk/proj/Assets/Scripts/Test/Bot.lua"
-cd "$T/tbj"
+cd "$T/${TB:-tbj}"
 timeout 900 ./playtest.exe "C:/Users/berke/AppData/Local/Temp/fk/proj/project.tilky" "$1" "C:/Users/berke/AppData/Local/Temp/fk/$2" "${3:-40000}" </dev/null > "$T/fk/$2.log" 2>&1
 echo "exit $?"

@@ -5,6 +5,9 @@
 #include "Kit.hpp"
 #include "Layouts.hpp"
 #include "src/Editor/EditorInternal.hpp"
+#include "Headers/Map/Gateways.hpp"
+
+#include <array>
 
 struct Room {
     Str name;
@@ -84,8 +87,8 @@ struct LevelB {
         texture.frames.push_back(frame);
         return texture;
     }
-    static SurfaceTexture WallTex(const Str& name) { return name.empty() ? SurfaceTexture{} : Tex("Textures/Walls/" + name + ".png"); }
-    static SurfaceTexture FlatTex(const Str& name) { return name.empty() ? SurfaceTexture{} : Tex("Textures/Flats/" + name + ".png"); }
+    static SurfaceTexture WallTex(const Str& name) { return name.empty() ? SurfaceTexture{} : Tex(TexturePath("wall", name)); }
+    static SurfaceTexture FlatTex(const Str& name) { return name.empty() ? SurfaceTexture{} : Tex(TexturePath("flat", name)); }
 
     // Draws the rooms, then fills them in. Rooms inside other rooms must come
     // after them, and must not cover the outer room's low corner.
@@ -195,6 +198,37 @@ struct LevelB {
         transform->position.z = z + normal.y * side * snap.gap;
         transform->rotation = Quaternion::FromAxisAngle(0.0f, 1.0f, 0.0f, std::atan2(normal.x * side, normal.y * side));
         return id;
+    }
+
+    // The wall through the map point (x, z): put it on a wall's middle.
+    Wall* WallAt(const float x, const float z) {
+        for (Wall& each : level.walls) {
+            const float dx = each.end.x - each.start.x, dz = each.end.y - each.start.y;
+            const float lengthSq = dx * dx + dz * dz;
+            if (lengthSq <= 0.0f) continue;
+            const float t = ((x - each.start.x) * dx + (z - each.start.y) * dz) / lengthSq;
+            if (t < 0.0f || t > 1.0f) continue;
+            const float ox = each.start.x + dx * t - x, oz = each.start.y + dz * t - z;
+            if (ox * ox + oz * oz < 0.0001f) return &each;
+        }
+        Fail(level.name + ": no wall at " + std::to_string(x) + "," + std::to_string(z));
+        return nullptr;
+    }
+
+    // The same as the wall inspector's Gateway target (with Two-Way ticked when twoWay):
+    // walking into the wall through (x0, z0) comes out of the wall through (x1, z1).
+    void Gateway(const float x0, const float z0, const float x1, const float z1, const bool twoWay) {
+        Wall* from = WallAt(x0, z0);
+        Wall* to = WallAt(x1, z1);
+        if (from == nullptr || to == nullptr) return;
+        from->gatewayTarget = to->id;
+        if (twoWay) to->gatewayTarget = from->id;
+        std::array<Gateways::Opening, 2> openings;
+        Gateways::Problem problem = Gateways::Problem::NONE;
+        for (const Wall* wall : {from, twoWay ? to : from})
+            if (Gateways::Compute(level, *wall, openings, &problem) == 0)
+                Fail(level.name + ": gateway at " + std::to_string(x0) + "," + std::to_string(z0) +
+                     " doesn't open, problem " + std::to_string(static_cast<int>(problem)));
     }
 
     void Note(const float x, const float z, const Str& text) {
@@ -320,7 +354,7 @@ struct LevelB {
 
         if (!skyTexture.empty()) {
             level.sky.mode = SkyMode::Cylinder;
-            level.sky.texture = "Textures/Sky/" + skyTexture + ".png";
+            level.sky.texture = TexturePath("sky", skyTexture);
         }
 
         // Links every placed prefab up with what it overrides.
@@ -589,7 +623,7 @@ inline void Level2(LevelB& b) {
     b.Note(-190, 80, "KEYS: Prefabs/Pickups/Keys. Taking one adds a tag to the player, and the HUD shows it.");
     b.Note(30, 140, "A LOCKED DOOR is a normal door with Locked ticked on its Door dispatch, and the player's key tag as the Required Tag.");
     b.Note(0, 60, "TOXIC FLOOR: select this sector. Its Entity Stay event hurts the player every second, unless RadSuit is on. "
-                  "Copy these two lines to any sector. NUKAGE1 is a flat from Textures/Flats.");
+                  "Copy these two lines to any sector. NUKAGE1 is a flat from Textures/Liquids.");
     b.Note(-40, 170, "THIS SWITCH fires the event tag 'Switch 1'. The first stair has a Raise Stairs dispatch listening on the same tag. "
                      "Stairs follow neighbouring sectors with the same floor texture.");
     b.Note(56, 260, "A TELEPORTER: Prefabs/Level Logic/Teleport Trigger. Its Destination field holds the Teleport Destination at the hub. "
@@ -830,4 +864,112 @@ inline void LevelGallery(LevelB& b) {
     b.Note(0, 492, "A WATER POOL. To make a sector splash, give it the tags Liquid and Water, Nukage or Lava.");
     b.Note(0, 8, "EVERY PREFAB IN THE KIT, in rows. Play to walk around them. To use one, drag it from the Prefabs folder onto your own map.");
     b.Finish();
+}
+
+// ── Gateway Showcase: walls that lead somewhere else ────────────────────────
+//
+// Every area is its own island, far from the others: only gateways join them.
+
+inline void LevelGateways(LevelB& b) {
+    // The hall you start in, with an alcove on each side. Each alcove's back wall is a gateway.
+    b.R("Gateway Hall", -96, 0, 96, 160, 0, 72, "TEKWALL4", "FLOOR0_1", "CEIL3_1", 200);
+    b.R("North Alcove", -24, 160, 24, 184, 0, 56, "METAL2", "FLOOR0_1", "CEIL3_1", 220);
+    b.R("East Alcove", 96, 56, 120, 104, 0, 56, "METAL2", "FLOOR0_1", "CEIL3_1", 220);
+    b.R("West Alcove", -120, 56, -96, 104, 0, 56, "METAL2", "FLOOR0_1", "CEIL3_1", 220);
+    b.R("South Alcove", -24, -24, 24, 0, 0, 56, "METAL2", "FLOOR0_1", "CEIL3_1", 220);
+
+    // North: a courtyard far away, under the sky, with a stone gate standing in it.
+    b.R("Courtyard Porch", -24, 976, 24, 1000, 0, 56, "STONE2", "FLOOR7_1", "CEIL3_1", 200);
+    {Room& r = b.R("Courtyard", -160, 1000, 160, 1320, 0, 112, "ROCK2", "GRASS1", "", 255); r.sky = true;}
+    {Room& r = b.R("Stone Gate", -16, 1156, 16, 1164, 0, 56, "STONE2", "FLOOR7_1", "FLAT5", 220); r.top = "STONE2";}
+
+    // East: a computer room, turned a quarter and 24 units higher than the hall.
+    b.R("Tech Alcove", -24, -1224, 24, -1200, 24, 80, "SILVER2", "FLOOR0_5", "CEIL3_5", 220);
+    b.R("Tech Room", -64, -1200, 64, -1072, 24, 96, "TEKGREN2", "FLAT20", "CEIL3_5", 200);
+
+    // West: a corridor whose far end leads back to its own start.
+    b.R("Endless Corridor", -1400, 64, -1100, 96, 0, 48, "STARTAN3", "FLOOR4_8", "CEIL3_5", 190);
+
+    // Far east: a hell garden. Its bone gate is the other end of the stone gate, and the
+    // return arch at the back leads home.
+    {Room& r = b.R("Hell Garden", 1000, 0, 1256, 256, 0, 112, "ROCKRED1", "RROCK09", "", 230); r.sky = true;}
+    {Room& r = b.R("Bone Gate", 1112, 124, 1144, 132, 0, 56, "SKULWALL", "FLAT5_6", "FLAT5", 220); r.top = "SKULWALL";}
+    b.R("Return Arch", 1104, 256, 1152, 280, 0, 56, "MARBFACE", "FLAT5_6", "FLAT5", 220);
+
+    b.Lamp("Gateway Hall", -16, 64, 16, 96);
+    b.Pillar("Gateway Hall", -72, 24, -64, 32, "SUPPORT3");
+    b.Pillar("Gateway Hall", 64, 24, 72, 32, "SUPPORT3");
+    b.Pillar("Gateway Hall", -72, 128, -64, 136, "SUPPORT3");
+    b.Pillar("Gateway Hall", 64, 128, 72, 136, "SUPPORT3");
+    b.Pillar("Courtyard", -32, 1156, -16, 1164, "STONE2", 112);   // the gate's two sides, up to the sky
+    b.Pillar("Courtyard", 16, 1156, 32, 1164, "STONE2", 112);
+    b.Pillar("Courtyard", 90, 1220, 106, 1236, "ROCK3", 40);
+    b.Lamp("Tech Room", -16, -1152, 16, -1120, "TLITE6_5");
+    for (const float x : {-1360.0f, -1296.0f, -1232.0f, -1168.0f}) b.Lamp("Endless Corridor", x - 4, 76, x + 4, 84, "TLITE6_6");
+    b.Pillar("Hell Garden", 1096, 124, 1112, 132, "SKSPINE1", 112);
+    b.Pillar("Hell Garden", 1144, 124, 1160, 132, "SKSPINE1", 112);
+    b.Build();
+
+    // Each call is what the wall inspector's Gateway section does: Leads To, and Two-way.
+    b.Gateway(0, 184, 0, 976, true);            // North Alcove <-> Courtyard Porch
+    b.Gateway(120, 80, 0, -1224, true);         // East Alcove <-> Tech Alcove: a quarter turn and 24 up
+    b.Gateway(-120, 80, -1100, 80, true);       // West Alcove <-> the corridor's near end
+    b.Gateway(-1400, 80, -1100, 80, false);     // the corridor's far end -> its near end, one way
+    b.Gateway(0, 1156, 1128, 124, true);        // Stone Gate <-> Bone Gate: two-sided walls
+    b.Gateway(1128, 280, 0, -24, false);        // Return Arch -> the hall's South Alcove, one way
+    b.level.rendererSettings.gatewayDepth = 4;  // World Settings > Rendering > Gateway Depth
+
+    b.LightFx("Hell Garden", PayloadDispatchSectorLightEffect::FIRE_FLICKER, 190.0f);
+
+    b.Put("Player/Player", 0, 40, 0);
+    b.Put("Decorations/Tall Lamp", -88, 152);
+    b.Put("Decorations/Tall Lamp", 88, 152);
+    b.Put("Pickups/Ammo/Clip", -40, 20);
+    b.Put("Pickups/Health/Stimpack", 40, 20);
+
+    b.Put("Weapons/Pickups/Shotgun", 0, 1040);
+    b.Put("Pickups/Ammo/Shells", -12, 1040);
+    b.Put("Pickups/Ammo/Shells", 12, 1040);
+    b.Put("Decorations/Burnt Tree", -110, 1080);
+    b.Put("Decorations/Big Tree", 120, 1290);
+    b.Put("Decorations/Stump", -120, 1250);
+    b.Put("Enemies/Zombie", -60, 1260);
+    b.Put("Enemies/Zombie", 60, 1270);
+
+    b.Put("Decorations/Tech Pillar", -48, -1088);
+    b.Put("Decorations/Tech Pillar", 48, -1088);
+    b.Put("Decorations/Tech Pillar", -48, -1184);
+    b.Put("Decorations/Tech Pillar", 48, -1184);
+    b.Put("Pickups/Armor/Green Armor", 0, -1100);
+    b.Put("Pickups/Ammo/Ammo Box", -20, -1100);
+
+    for (const float x : {-1380.0f, -1250.0f, -1120.0f}) b.Put("Pickups/Health/Health Bonus", x, 80);
+
+    b.Put("Decorations/Red Torch", 1016, 16);
+    b.Put("Decorations/Red Torch", 1240, 16);
+    b.Put("Decorations/Red Torch", 1016, 240);
+    b.Put("Decorations/Red Torch", 1240, 240);
+    b.Put("Decorations/Skull Pile", 1060, 200);
+    b.Put("Decorations/Impaled", 1200, 80);
+    b.Put("Enemies/Serpentipede", 1060, 60);
+    b.Put("Enemies/Serpentipede", 1200, 200);
+    b.Put("Pickups/Health/Medikit", 1128, 230);
+    b.PutOnWall("Level Logic/Exit Switch", 1256, 160, 1240, 160);
+
+    b.Note(0, 12, "GATEWAYS: a wall that leads to another wall. You see through it, and whatever walks or shoots into it "
+                  "comes out of the other wall. Each alcove of this hall is one. The areas they lead to are far apart on the map.");
+    b.Note(0, 150, "TO MAKE ONE: select a wall, open Gateway in the wall inspector, and set Leads To with Pick on Map "
+                   "(or drag a wall onto it). Two-way makes the other wall lead back. Nothing to place, no scripts.");
+    b.Note(0, 990, "This porch is the North Alcove's other end. The two walls line up on their middles and floors; "
+                   "the opening is as big as the smaller of the two.");
+    b.Note(104, 70, "A TURN AND A STEP: this gateway leads to a wall facing another way, 24 units higher. "
+                    "The view and the player are turned and lifted to match, by themselves.");
+    b.Note(-104, 70, "AN ENDLESS CORRIDOR: its far end is a one-way gateway back to its near end. "
+                     "How many gateways deep you can see is World Settings > Rendering > Gateway Depth (4 here); past it, black.");
+    b.Note(0, 1140, "A GATEWAY IN A DOORWAY: the gate's wall has a sector on each side. Walking through comes out of the bone gate "
+                    "in another place; walking round it doesn't. Entered From picks which side works.");
+    b.Note(1128, 250, "THE RETURN ARCH is one way: it takes you home, but nothing leads back here through it.");
+    b.Note(-1250, 90, "Shots pass through gateways too. Monsters can't walk through them yet.");
+    b.Music("Rocky Musicloop", 0.37f);
+    b.Finish(true, "SKY2");
 }

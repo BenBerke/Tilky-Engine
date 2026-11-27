@@ -261,3 +261,14 @@ inline const json& Art(const Str& group, const Str& name) {
     }
     return gManifest[group][name];
 }
+
+// Where extract.py put a wall, flat or sky texture: Textures/<folder>/<name>.png,
+// folders from ../texture_folders.py.
+inline Str TexturePath(const Str& kind, const Str& name) {
+    const json& paths = gManifest["textures"][kind];
+    if (!paths.contains(name)) {
+        Fail("no " + kind + " texture " + name + " (add it to extract.py's lists and rerun manifest.py)");
+        return "Textures/" + name + ".png";
+    }
+    return paths[name].get<Str>();
+}

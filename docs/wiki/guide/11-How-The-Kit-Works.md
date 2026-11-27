@@ -31,7 +31,7 @@ Everything is in your project's `Assets` folder.
 
 | Folder | What's in it |
 |---|---|
-| `Levels` | The menu, the Prefab Gallery, Blank Base Level and the four example levels |
+| `Levels` | The menu, the Prefab Gallery, Blank Base Level, the Gateway Showcase and the four example levels |
 | `Prefabs/Player` | The player. Most of the game's rules are in here. |
 | `Prefabs/Enemies` | One prefab for each enemy |
 | `Prefabs/Projectiles` | Fireballs, rockets, plasma and grenades |
@@ -43,7 +43,8 @@ Everything is in your project's `Assets` folder.
 | `UI Layouts` | The HUD and all the menu screens |
 | `Scripts` | The kit's Lua scripts, for the few jobs dispatches can't do |
 | `Animations` | Flipbooks: the animation frames for enemies and weapons |
-| `Sprites`, `Textures`, `Sounds`, `Music`, `UI`, `Fonts` | Art and audio |
+| `Textures` | Wall and floor pictures, sorted by kind: `Doors`, `Switches`, `Lights`, `Technology`, `Metal`, `Wood`, `Crates`, `Brick`, `Stone`, `Nature`, `Hell`, `Liquids`, `Steps`, `Floors`, `Ceilings`, `Teleporters`, `Sky` |
+| `Sprites`, `Sounds`, `Music`, `UI`, `Fonts` | Art and audio |
 | `Freedoom` | The licence for the art, which must stay with your game if you use that art |
 
 ## The variables

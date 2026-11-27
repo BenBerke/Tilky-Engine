@@ -86,7 +86,7 @@ replace that picture with your own.
 
 Drop files into the project's `Assets` folder, using the Asset Browser or your computer's file manager:
 
-- **Walls and floors:** add pictures to `Textures/Walls` and `Textures/Flats`. They then appear with the rest.
+- **Walls and floors:** add pictures to any folder in `Textures` (`Doors`, `Wood`, `Technology`, `Floors`...), or make a new folder. They then appear with the rest.
 - **Sounds:** add `.wav`, `.mp3`, `.ogg` or `.flac` files to `Sounds`. Dispatches can then play them.
 - **Music:** the kit comes with a track for the menu and each example level, in the `Music` folder. To change
   a level's music, add your own `.mp3` or `.ogg` file to the project, then pick it in **World Settings > Music**.

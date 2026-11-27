@@ -27,11 +27,12 @@ namespace {
             {"CurrentAmmo", 0},      // what the HUD's big ammo number shows
             {"IncomingDamage", 0},   // how much the next "Take Damage" does
             {"MenuState", 0},        // 0 playing, 1 pause menu open, 2 any other screen
-            {"PistolStart", 0},      // 1: the next level start gives a Pistol Start (Restart Level sets it)
             {"GoreLevel", 1},        // Options menu: 0 off, 1 normal, 2 extra
             // The screen between levels: what's shown so far, counting up.
             {"TallyKills", 0}, {"TallyItems", 0}, {"TallySecrets", 0}, {"TallyMinutes", 0}, {"TallySeconds", 0},
             {"TallyDone", 0}, {"TallySkip", 0},
+            // Last, so the kit's older variables keep their IDs.
+            {"PistolStart", 0},      // 1: the next level start gives a Pistol Start (Restart Level sets it)
         };
         for (const auto& [name, value] : variables) GlobalEventVariables::Create(name, value);
     }
@@ -47,6 +48,7 @@ namespace {
         for (const Str& level : kLevels) data["levels"].push_back(level);
         data["levels"].push_back("Blank Base Level");
         data["levels"].push_back("Prefab Gallery");
+    data["levels"].push_back("Gateway Showcase");
         std::ofstream(project / "project.tilky") << data.dump(4);
     }
 
@@ -76,6 +78,7 @@ int main(int argc, char** argv) {
     gAssets = project / "Assets";
     std::ifstream(argv[2]) >> gManifest;
 
+    ReadKeptLayoutIDs();
     ClearGenerated(gAssets);
     WriteProjectFile(project);
     if (!ProjectManager::LoadProjectMetaData(project / "project.tilky")) {
@@ -112,6 +115,7 @@ int main(int argc, char** argv) {
     BuildLevel(kLevels[3], layouts, Level4);
     BuildLevel("Blank Base Level", layouts, LevelBlank);
     BuildLevel("Prefab Gallery", layouts, LevelGallery);
+    BuildLevel("Gateway Showcase", layouts, LevelGateways);
 
     WriteSettings(project);
 

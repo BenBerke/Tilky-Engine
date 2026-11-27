@@ -37,7 +37,7 @@ Press **P**, walk up to it and press **E**. It opens, waits, and closes again.
 Now it works, so give it the right look. Each wall of the door sector can have its own texture.
 
 1. **Right-click the wall facing Room A.** Drag a door picture onto its **top** texture. In
-   `Textures/Walls`, look for `DOOR1`, `BIGDOOR1` or `BIGDOOR2`.
+   `Textures/Doors`, look for `DOOR1`, `BIGDOOR1` or `BIGDOOR2`.
 2. Do the same for the wall facing Room B.
 3. Give the two short walls at the sides `DOORTRAK`, the classic door track.
 

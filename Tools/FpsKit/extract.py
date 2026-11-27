@@ -15,6 +15,7 @@ import zlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from letters import GLYPHS, draw_word, rows_of  # noqa: E402
 from ttf import write_pixel_font  # noqa: E402
+from texture_folders import all_paths  # noqa: E402
 from wad import Wad, decode_picture  # noqa: E402
 
 # ── What to extract ─────────────────────────────────────────────────────────
@@ -397,21 +398,21 @@ def main():
         extract_weapon(wad, frames, os.path.join(assets, "Sprites", "Weapons", name), WEAPON_LIFT.get(name, 0))
 
     missing = []
-    for name in WALLS:
-        if name not in wad.texture_defs():
-            missing.append(name)
-            continue
+    # Textures/<folder>/<name>.png, folders from texture_folders.py. The old
+    # Walls/Flats folders go, so a moved texture isn't left behind twice.
+    for folder in os.listdir(os.path.join(assets, "Textures")) if os.path.isdir(os.path.join(assets, "Textures")) else []:
+        shutil.rmtree(os.path.join(assets, "Textures", folder), ignore_errors=True)
+    walls = [n for n in WALLS if n in wad.texture_defs()]
+    flats = [n for n in FLATS if wad.has(n)]
+    missing += [n for n in WALLS if n not in walls] + [n for n in FLATS if n not in flats]
+    manifest["textures"] = paths = all_paths(walls, flats, SKIES)
+    for name in walls + SKIES:
         w, h, pixels = wad.texture(name)
-        write_png(os.path.join(assets, "Textures", "Walls", name + ".png"), w, h, indices_to_rgba(wad.palette, w, h, pixels))
-    for name in SKIES:
-        w, h, pixels = wad.texture(name)
-        write_png(os.path.join(assets, "Textures", "Sky", name + ".png"), w, h, indices_to_rgba(wad.palette, w, h, pixels))
-    for name in FLATS:
-        if not wad.has(name):
-            missing.append(name)
-            continue
+        path = paths["sky" if name in SKIES else "wall"][name]
+        write_png(os.path.join(assets, path), w, h, indices_to_rgba(wad.palette, w, h, pixels))
+    for name in flats:
         w, h, pixels = wad.flat(name)
-        write_png(os.path.join(assets, "Textures", "Flats", name + ".png"), w, h, indices_to_rgba(wad.palette, w, h, pixels))
+        write_png(os.path.join(assets, paths["flat"][name]), w, h, indices_to_rgba(wad.palette, w, h, pixels))
     for name in UI_PICS:
         if not wad.has(name):
             missing.append(name)

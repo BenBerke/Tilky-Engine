@@ -816,7 +816,7 @@ inline void MakeLevelLogic() {
         MakePrefab("Prefabs/Level Logic/" + name + ".prefab", false, [&](Level&, Entity& e) {
             auto* sprite = AddSprite(e, widthPx, heightPx, false);
             sprite->isStatic = true;
-            sprite->textureFileNames.fill("Textures/Walls/" + offTexture + ".png");
+            sprite->textureFileNames.fill(TexturePath("wall", offTexture));
             e.GetComponent<ComponentTransform>()->scale.z = 16.0f;
 
             PayloadReceiveRay use;
@@ -828,7 +828,7 @@ inline void MakeLevelLogic() {
             e.events.push_back(Ev(use, calls, {}, maxTriggers));
 
             PayloadDispatchEntitySetSprite on;
-            on.textures.fill("Textures/Walls/" + onTexture + ".png");
+            on.textures.fill(TexturePath("wall", onTexture));
             e.dispatches.push_back(Dp("Press", on));
             e.dispatches.push_back(Dp("Press", Play(sound)));
         });

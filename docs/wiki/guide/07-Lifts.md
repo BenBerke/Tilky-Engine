@@ -46,8 +46,8 @@ comes down. Step on, wait a few seconds, and it takes you up to the ledge.
 ## Make it look like a lift
 
 The wall below the lift is what the player sees. Right-click that wall, the one between your room and
-the lift, and drag a texture onto its **bottom** field. `PLAT1` from `Textures/Walls` is the classic
-choice. Give the lift's floor `STEP2` from `Textures/Flats`, so it stands out.
+the lift, and drag a texture onto its **bottom** field. `PLAT1` from `Textures/Technology` is the classic
+choice. Give the lift's floor `STEP2` from `Textures/Floors`, so it stands out.
 
 To see it in Level 1, right-click **Lift**.
 

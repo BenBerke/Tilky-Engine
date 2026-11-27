@@ -149,6 +149,27 @@ local ROUTES = {
         { wait = 1 }, { wait = 0.1 }, { shot = "fx_stress" }, { wait = 1 }, { call = function() FxReport("end") end },
         { done = true },
     },
+    ["Gateway Showcase"] = {
+        -- `through` walks at a point behind a gateway and ends when the walk jumps somewhere else.
+        { wait = 0.5 }, { shot = "gw_start" }, { report = "start" },
+        { go = { 0, 150 } }, { face = { 0, 184 } }, { shot = "gw_north_view" },
+        { through = { 0, 200 } }, { wait = 0.2 }, { shot = "gw_porch" }, { report = "porch" },
+        { face = { 0, 960 } }, { shot = "gw_porch_back" },
+        { go = { 0, 1040 } }, { go = { 0, 1140 } }, { face = { 0, 1160 } }, { shot = "gw_stone_gate" },
+        { through = { 0, 1180 } }, { wait = 0.2 }, { shot = "gw_hell" }, { report = "hell garden" },
+        { go = { 1128, 230 } }, { go = { 1128, 262 } }, { shot = "gw_return_arch" },
+        { through = { 1128, 300 } }, { wait = 0.2 }, { shot = "gw_home" }, { report = "home" },
+        { go = { 0, 80 } }, { go = { 100, 80 } }, { face = { 120, 80 } }, { shot = "gw_east_view" },
+        { through = { 140, 80 } }, { wait = 0.3 }, { shot = "gw_tech" }, { report = "tech" },
+        { face = { 0, -1240 } }, { shot = "gw_tech_back" },
+        { through = { 0, -1240 } }, { wait = 0.2 }, { report = "back from tech" },
+        { go = { 0, 80 } }, { go = { -100, 80 } }, { face = { -120, 80 } }, { shot = "gw_west_view" },
+        { through = { -140, 80 } }, { wait = 0.2 }, { shot = "gw_corridor" }, { report = "corridor" },
+        { through = { -1420, 80 } }, { wait = 0.2 }, { shot = "gw_endless" }, { report = "endless" },
+        { face = { -1080, 80 } }, { shot = "gw_corridor_back" },
+        { through = { -1080, 80 } }, { wait = 0.2 }, { report = "back in the hall" },
+        { done = true },
+    },
     ["Blank Base Level"] = { { wait = 0.5 }, { shot = "blank" }, { load = "Prefab Gallery" } },
 }
 
@@ -350,6 +371,21 @@ function Update()
     elseif s.report then
         Report(s.report)
         advance = true
+    elseif s.through then
+        local p = entity.transform.position
+        if s.last ~= nil and math.abs(s.last.x - p.x) + math.abs(s.last.z - p.z) > 40 then
+            log("THROUGH from", s.last.x, s.last.y, s.last.z, "to", p.x, p.y, p.z, "yaw", entity.camera.yaw)
+            advance = true
+        else
+            s.last = Vector3(p.x, p.y, p.z)
+            entity.camera.yaw = math.deg(math.atan(s.through[1] - p.x, s.through[2] - p.z))
+            entity.camera.pitch = 0
+            keys[#keys + 1] = "W"
+            if stepTime > 15 then
+                log("STUCK going through to", s.through[1], s.through[2], "at", p.x, p.y, p.z, "in", Game.levelName)
+                advance = true
+            end
+        end
     elseif s.go then
         local p = entity.transform.position
         local dx, dz = s.go[1] - p.x, s.go[2] - p.z

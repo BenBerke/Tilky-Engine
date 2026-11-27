@@ -9,10 +9,11 @@ The step-by-step guide starts at `docs/wiki/guide/README.md` in the engine's doc
 
 | Folder | What's inside |
 |---|---|
-| `Assets/Levels` | Main Menu, four example levels, Blank Base Level and Prefab Gallery |
+| `Assets/Levels` | Main Menu, four example levels, Blank Base Level, Prefab Gallery and Gateway Showcase |
 | `Assets/Prefabs` | Everything you can drag into a level |
 | `Assets/UI Layouts` | The HUD, menus and the screen between levels |
-| `Assets/Textures`, `Sprites`, `Animations`, `Sounds` | Art and sound |
+| `Assets/Textures` | Wall and floor pictures in folders by kind: Doors, Wood, Technology, Stone, Floors... |
+| `Assets/Sprites`, `Animations`, `Sounds` | Art and sound |
 | `Assets/Scripts` | The few things that needed code, each explained in comments |
 | `Assets/Music` | A track for the menu and each example level, with `CREDITS.txt` |
 | `Assets/Freedoom` | The art's licence and a README explaining it. Keep the licence with your game. |
