@@ -3710,7 +3710,17 @@ namespace {
                 if (ImGui::Checkbox(Get(platform.labelKey).c_str(), &ticked)) gameExportPlatformTicked[i] = ticked;
                 ImGui::EndDisabled();
 
-                if (!available) HoverTooltip(Get("editor.tooltip.export.platform_missing").c_str());
+                // A disabled item doesn't count as hovered unless asked: without
+                // this the reason it's greyed out never showed.
+                if (!available) {
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::BeginTooltip();
+                        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 22.0f);
+                        ImGui::TextUnformatted(Get("editor.tooltip.export.platform_missing").c_str());
+                        ImGui::PopTextWrapPos();
+                        ImGui::EndTooltip();
+                    }
+                }
                 else if (std::string_view(platform.id) == "macos-arm64") HoverTooltip(Get("editor.tooltip.export.platform_macos").c_str());
                 else if (!platform.windows) HoverTooltip(Get("editor.tooltip.export.platform_linux").c_str());
             }

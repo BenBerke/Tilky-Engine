@@ -1297,11 +1297,15 @@ int main(int argc, char** argv) {
         }
     } stagingCleanup{stagingDir};
 
+    // Before the data: the model check reads levels, and their prefab
+    // instances are looked up in the project's Assets.
+    const bool projectLoaded = ProjectManager::LoadProjectMetaData(metadataPath);
+
     if (!ExportGameData(metadataPath, projectDir, standaloneDir, stagingDir, renderer, modelProblems)) return 1;
 
     // UI layouts are found through the project; the sets need their IDs.
     AssetSetResult assetSets;
-    if (ProjectManager::LoadProjectMetaData(metadataPath)) {
+    if (projectLoaded) {
         UILayouts::Rescan();
         if (!AssetSets::LoadFromProjectSettings(projectDir / "ProjectSettings.json"))
             std::cout << "Couldn't read the asset loading settings; using the defaults\n";
