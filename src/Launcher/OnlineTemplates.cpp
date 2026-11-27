@@ -142,7 +142,7 @@ namespace OnlineTemplates {
 
         void SetUpSession(cpr::Session& session, const std::string& url, const long timeoutMs) {
             session.SetUrl(cpr::Url{url});
-            session.SetTimeout(cpr::Timeout{timeoutMs});
+            session.SetTimeout(cpr::Timeout{std::chrono::milliseconds{timeoutMs}});
             session.SetConnectTimeout(cpr::ConnectTimeout{CONNECT_TIMEOUT_MS});
             session.SetRedirect(cpr::Redirect{true});
         }
